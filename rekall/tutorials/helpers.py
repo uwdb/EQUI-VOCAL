@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import cv2 
 
 # Hack to disable warnings about olimar's certificate
-#
 urllib3.disable_warnings()
 
 # Construct metadata
