@@ -1,0 +1,3 @@
+*.mp4
+rekall/data/*
+detectron2/demo/*.mp4
