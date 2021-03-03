@@ -73,7 +73,7 @@ video_metadata_intel = [
 # 4th: [x1, x2, y1, y2, class, score, img_name]
 maskrcnn_bboxes_intel = []
 # bbox_file_dir = "/home/ubuntu/CSE544-project/rekall/data/bbox_files/"
-bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files_skip5/"
+bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files_binary_search_rare_last/"
 
 bbox_list = os.listdir(bbox_file_dir)
 bbox_list.sort()
@@ -90,8 +90,10 @@ def get_maskrcnn_bboxes():
         vm.id: IntervalSet([
             Interval(
                 Bounds3D(
-                    t1 = (frame_num + (frame_num / 4)) / vm.fps,
-                    t2 = (frame_num + 1 + ((frame_num + 1) / 4)) / vm.fps,
+                    # t1 = (frame_num + (frame_num / 9)) / vm.fps,
+                    # t2 = (frame_num + 1 + ((frame_num + 1) / 9)) / vm.fps,
+                    t1 = frame_num / vm.fps,
+                    t2 = (frame_num + 1) / vm.fps,
                     x1 = bbox[0] / vm.width,
                     x2 = bbox[2] / vm.width,
                     y1 = bbox[1] / vm.height,
