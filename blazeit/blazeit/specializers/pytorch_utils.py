@@ -131,6 +131,7 @@ def val_epoch(val_loader, model, criterion, metric):
             if target_var.size() != output.size():
                 target_var = target_var.view(output.size())
         loss = criterion(output, target_var)
+        # print(output.data, target)
         prec1 = compute_metric(output.data, target, metric)
 
         losses.update(loss.data.item(), inp.size(0))
