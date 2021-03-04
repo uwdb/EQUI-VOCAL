@@ -120,8 +120,7 @@ def train_and_test(DATA_PATH, TRAIN_DATE, THRESH_DATE, TEST_DATE,
     total_time = time.time()
     # train
     csv_fname = get_csv_fname(DATA_PATH, base_name, TRAIN_DATE)
-    # sample_freq = get_nyquist(csv_fname)
-    sample_freq = 3
+    sample_freq = get_nyquist(csv_fname)
     video_fname = get_video_fname(DATA_PATH, base_name, TRAIN_DATE, load_video=load_video)
     spec = PytorchCount(base_name, video_fname, csv_fname, objects, normalize,
                         base_model, model_dump_fname, **spec_kwargs)

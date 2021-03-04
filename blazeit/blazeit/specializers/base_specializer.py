@@ -12,7 +12,7 @@ import torch.utils.data
 from collections import defaultdict
 from scipy.special import expit
 
-from blazeit.data.video_data import get_video_data
+# from blazeit.data.video_data import get_video_data
 
 from .pytorch_utils import *
 from . import resnet_simple
@@ -34,37 +34,11 @@ class BaseSpecializer(object):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-        self.vid_data = get_video_data(base_name)
+        # self.vid_data = get_video_data(base_name)
 
-    def getX(self, dump=True, data_path='/lfs/1/ddkang/blazeit/data/'):
+    def getX(self, dump=True, data_path=''):
         if self.video_fname[-4:] == '.npy':
             X = np.load(self.video_fname, mmap_mode='r')
-        elif self.video_fname[-4:] == '.mp4' or self.video_fname[-5:] == '.webm':
-            # TODO: make swag parallel decode
-            raise NotImplementedError
-            _, json_fname = tempfile.mkstemp()
-            self.vid_data.serialize(json_fname)
-            bd = SingleVideoDecoder(json_fname, self.video_fname)
-            X = bd.read()
-            logger.info('Finished decoding video')
-            try:
-                os.remove(json_fname)
-            except:
-                pass
-            logger.info('Removed temp json, starting normalizing')
-            if self.normalize:
-                X[...,:] -= [0.485, 0.456, 0.406]
-                X[...,:] /= [0.229, 0.224, 0.225]
-                dir_name = 'resol-65'
-            else:
-                dir_name = 'resol-65-avg'
-            logger.info('Finished normalizing')
-            npy_dir = os.path.join(data_path, dir_name, self.base_name)
-            out_fname = os.path.splitext(os.path.basename(self.video_fname))[0]
-            out_fname = os.path.join(npy_dir, out_fname + '.npy')
-            logger.info('Writing video to %s', out_fname)
-            np.save(out_fname, X)
-            logger.info('Wrote out file')
         else:
             logger.critical('File format of %s not supported', self.video_fname)
             raise NotImplementedError
@@ -85,7 +59,7 @@ class BaseSpecializer(object):
         return X, Y
 
     # TODO: other methods of splitting data?
-    def get_train_val(self, nb_train=100000, nb_val=20000, selection='balanced', XY=None):
+    def get_train_val(self, nb_train=50000, nb_val=6000, selection='balanced', XY=None):
         def random_inds(X, Y):
             nb_total = nb_train + nb_val
             inds = np.random.permutation(len(X))[0:nb_total]
@@ -157,8 +131,8 @@ class BaseSpecializer(object):
             X_val, Y_val = t2
         else:
             X_train, Y_train, X_val, Y_val = data
-        X_train = X_train.transpose((0, 3, 1, 2))
-        X_val = X_val.transpose((0, 3, 1, 2))
+        # X_train = X_train.transpose((0, 3, 1, 2))
+        # X_val = X_val.transpose((0, 3, 1, 2))
 
         self.X_train = X_train
         self.X_val = X_val

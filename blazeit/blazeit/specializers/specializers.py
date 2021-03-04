@@ -30,7 +30,8 @@ class BinarySpecializer(BaseSpecializer):
         if not nb_frames:
             nb_frames = max(frame_to_rows) + 1
 
-        Y = np.zeros(nb_frames)
+        # Y = np.zeros(nb_frames)
+        Y = np.zeros(nb_frames, dtype=np.int64)
         for frame in frame_to_rows:
             Y[frame] = 1
         return Y
@@ -39,11 +40,19 @@ class BinarySpecializer(BaseSpecializer):
         # criterion = nn.BCEWithLogitsLoss().cuda()
         from sklearn.utils import class_weight
         weights = class_weight.compute_class_weight('balanced', [0,1], self.Y_train)
-        criterion = BCEWeightLL(weights)
-        self._train(criterion, metric='bce', **kwargs)
+        # criterion = BCEWeightLL(weights)
+        # self._train(criterion, metric='bce', **kwargs)
+
+        # weights = class_weight.compute_class_weight('balanced', range(self.max_count + 1), self.Y_train)
+        weights = weights.astype(np.float32)
+        weights = torch.autograd.Variable(torch.from_numpy(weights).cuda())
+        criterion = nn.CrossEntropyLoss(weights)
+        # criterion = nn.CrossEntropyLoss()
+        self._train(criterion, metric='topk', **kwargs)
 
     def eval(self, X, **kwargs):
-        return self._eval(X, **kwargs).ravel()
+        # return self._eval(X, **kwargs).ravel()
+        return self._eval(X, **kwargs)
 
     def find_threshold(self, Y_prob, Y_true, fnr=0.02, fpr=0.02):
         total_num_pos = np.sum(Y_true)
@@ -61,31 +70,23 @@ class BinarySpecializer(BaseSpecializer):
         return tmp[-1][0], len(tmp)
 
     def find_two_sided_thresh(self, Y_prob, Y_true, fnr=0.02, fpr=0.02):
+        # each row of Y_prob is [prob_false, prob_true]
+        # each row of Y_true is either 0 or 1
         total_num_pos = np.sum(Y_true)
-        total_num_neg = len(Y_true) - total_num_pos
         cutoff_fn = total_num_pos * fnr
-        cutoff_fp = total_num_neg * fpr
-
+        print(total_num_pos, cutoff_fn)
         tmp = list(zip(Y_prob, Y_true))
-        tmp.sort()
+        tmp.sort(key=lambda tup: tup[0][1])
         npos = 0
         for i, (prob, label) in enumerate(tmp):
+            # print(prob, label)
             npos += label
             if npos > cutoff_fn:
-                lo_thresh = prob
+                lo_thresh = prob[1]
                 nb_lo = i
                 break
 
-        tmp.reverse()
-        nneg = 0
-        for i, (prob, label) in enumerate(tmp):
-            nneg += not label
-            if nneg > cutoff_fp:
-                hi_thresh = prob
-                nb_hi = i
-                break
-
-        return (lo_thresh, nb_lo), (hi_thresh, nb_hi)
+        return lo_thresh, nb_lo
 
     def poison_metrics(self, Y_prob, Y_true, threshold=0.0, window=10):
         to_check = set()

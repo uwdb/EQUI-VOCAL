@@ -2,7 +2,7 @@ import argparse
 import logging
 import pandas as pd
 import numpy as np
-from blazeit.aggregation.counter import train_and_test
+from blazeit.aggregation.binary_specializer import train_and_test
 
 
 def interleave(y, repeat):
@@ -15,7 +15,7 @@ def main():
     logging.basicConfig(level=logging.CRITICAL)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_path', default='/lfs/1/ddkang/blazeit/data/')
+    parser.add_argument('--data_path', default='/home/ubuntu/CSE544-project/blazeit/data/')
     parser.add_argument('--base_name', required=True)
     parser.add_argument('--train_date', required=True)
     parser.add_argument('--thresh_date', required=True)
@@ -45,10 +45,10 @@ def main():
             tiny_name=tiny_name,
             load_video=args.load_video
     )
-    if args.out_csv is not None:
-        Y_pred = interleave(Y_pred, sample_freq)
-        df = pd.DataFrame(Y_pred, columns=['pred'])
-        df.to_csv(args.out_csv, index=None)
+    # if args.out_csv is not None:
+    #     Y_pred = interleave(Y_pred, sample_freq)
+    #     df = pd.DataFrame(Y_pred, columns=['pred'])
+    #     df.to_csv(args.out_csv, index=None)
 
 if __name__ == '__main__':
     main()

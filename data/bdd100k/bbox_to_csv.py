@@ -18,17 +18,21 @@ test_list = bbox_list[(2*num_per_set):total_num]
 
 suffix = ["train", "thresh", "test"]
 
+
 for idx, sub_list in enumerate([train_list, thresh_list, test_list]):
+    total_frames = 0
     for file in sub_list:
         if os.path.splitext(file)[1] != '.pkl':
             continue
         with open(os.path.join(bbox_file_dir, file), 'rb') as f:
             maskrcnn_bboxes = pickle.load(f)
+        frame_cnt_per_video = 0
         for frame_id, res_per_frame in enumerate(maskrcnn_bboxes):
+            frame_cnt_per_video += 1
             for bbox in res_per_frame:
                 # each bbox has format: [638.4600219726562, 421.3493957519531, 741.8064575195312, 507.1121520996094, "car", 0.9954990744590759, "0000000001.jpg"]
-                rows.append([os.path.splitext(file)[0], frame_id, bbox[4], bbox[5], bbox[0], bbox[2], bbox[1], bbox[3]])
-
+                rows.append([os.path.splitext(file)[0], frame_id + total_frames, bbox[4], bbox[5], bbox[0], bbox[2], bbox[1], bbox[3]])
+        total_frames += frame_cnt_per_video
     filename = "bdd100k_" + suffix[idx] + ".csv"
 
     with open("bdd100k_video_list_" + suffix[idx] + ".txt", "w") as f:
