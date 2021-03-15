@@ -29,11 +29,13 @@ class BinarySpecializer(BaseSpecializer):
         frame_to_rows = self.get_frame_to_rows()
         if not nb_frames:
             nb_frames = max(frame_to_rows) + 1
-
-        # Y = np.zeros(nb_frames)
-        Y = np.zeros(nb_frames, dtype=np.int64)
+        X = self.getX()
+        Y = np.zeros(len(X), dtype=np.int64)
+        # Y = np.ones(len(X), dtype=np.int64)
         for frame in frame_to_rows:
-            Y[frame] = 1
+            # Y[frame] = 1 # Used by Query 3
+            Y[frame] = int(len(frame_to_rows[frame]) > 6) # Used by Query 2 
+            # Y[frame] = 1 - int(len(frame_to_rows[frame]) >= 5)
         return Y
 
     def train(self, **kwargs):
@@ -74,7 +76,6 @@ class BinarySpecializer(BaseSpecializer):
         # each row of Y_true is either 0 or 1
         total_num_pos = np.sum(Y_true)
         cutoff_fn = total_num_pos * fnr
-        print(total_num_pos, cutoff_fn)
         tmp = list(zip(Y_prob, Y_true))
         tmp.sort(key=lambda tup: tup[0][1])
         npos = 0

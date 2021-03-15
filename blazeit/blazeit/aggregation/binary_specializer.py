@@ -17,7 +17,7 @@ np.set_printoptions(threshold=sys.maxsize)
 
 class PytorchBinary(BinarySpecializer):
     def train(self, write_out=False, **kwargs):
-        super().train(**kwargs, epochs=[10, 0], lrs=[0.001, 0.001])
+        super().train(**kwargs, epochs=[1, 0], lrs=[0.01, 0.001])
         self.write_out = write_out
 
     def eval(self, X):
@@ -48,6 +48,11 @@ class PytorchBinary(BinarySpecializer):
         acc_correct = 0
         Y_prob = self.eval(X)
         Y_pred = np.argmax(Y_prob, axis=1)
+        print(np.sum(Y_true))
+        if len(Y_pred) < len(Y_true):
+            Y_pred = np.pad(Y_pred, (0, len(Y_true) - len(Y_pred)), 'constant')
+        if len(Y_true) < len(Y_pred):
+            Y_true = np.pad(Y_true, (0, len(Y_pred) - len(Y_true)), 'constant')
         for i, prob in enumerate(Y_prob):
             if Y_pred[i] == Y_true[i]:
                 acc_correct += 1
@@ -57,7 +62,7 @@ class PytorchBinary(BinarySpecializer):
                     correct += 1
                 else:
                     incorrect += 1
-                
+        print("fnr: ", incorrect / np.sum(Y_true))
         return len(Y_prob), pred_neg, correct, incorrect, acc_correct / len(Y_prob)
 
 
@@ -114,17 +119,7 @@ def train_and_test(DATA_PATH, TRAIN_DATE, THRESH_DATE, TEST_DATE,
                    base_name, objects,
                    tiny_name='trn10', normalize=True, nb_classes=-1,
                    load_video=False):
-    # if nb_classes < 0:
-    #     DATE = TRAIN_DATE
-    #     csv_fname = os.path.join(DATA_PATH, 'filtered', base_name, '%s-%s.csv' % (base_name, DATE))
-    #     spec_kwargs = {'max_count': 10000}
-    #     spec = PytorchCount(base_name, None, csv_fname, objects, normalize,
-    #                         None, None, **spec_kwargs)
-    #     nb_classes = spec.get_max_count() + 1
-    #     print('Selected %d as nb_classes, %d as max_count' % (nb_classes, nb_classes - 1))
-    # spec_kwargs = {'max_count': nb_classes - 1}
-    
-    # Binary specializer has only 2 classes: car or not_car
+
     nb_classes = 2
 
    # setup
@@ -143,6 +138,26 @@ def train_and_test(DATA_PATH, TRAIN_DATE, THRESH_DATE, TEST_DATE,
                         base_model, model_dump_fname)
 
     start = time.time()
+    ###### Computing stats ######
+    # spec.load_data(selection='balanced', nb_train=50000)
+    print("total count: ", len(spec.getY()))
+    print("true count: ", np.sum(spec.getY()))
+    
+    csv_fname = "/home/ubuntu/CSE544-project/data/bdd100k/bdd100k_" + THRESH_DATE + ".csv"
+    video_fname = "/home/ubuntu/CSE544-project/blazeit/data/resol-65/bdd100k/bdd100k-" + THRESH_DATE + ".npy"
+    spec = PytorchBinary(base_name, video_fname, csv_fname, objects, normalize,
+                        spec.model, model_dump_fname)
+    print("total count: ", len(spec.getY()))
+    print("true count: ", np.sum(spec.getY()))
+
+    csv_fname = "/home/ubuntu/CSE544-project/data/bdd100k/bdd100k_" + TEST_DATE + ".csv"
+    video_fname = "/home/ubuntu/CSE544-project/blazeit/data/resol-65/bdd100k/bdd100k-" + TEST_DATE + ".npy"
+    spec = PytorchBinary(base_name, video_fname, csv_fname, objects, normalize,
+                        spec.model, model_dump_fname)
+    print("total count: ", len(spec.getY()))
+    print("true count: ", np.sum(spec.getY()))
+    exit(1)
+    ###### End #########
     spec.load_data(selection='balanced', nb_train=50000)
     
     end = time.time()
@@ -165,7 +180,7 @@ def train_and_test(DATA_PATH, TRAIN_DATE, THRESH_DATE, TEST_DATE,
     thresh_time = time.time()
     Y_prob = spec.eval(X)
     
-    lo_thresh, nb_lo = spec.find_two_sided_thresh(Y_prob, Y_true, fnr=0.01, fpr=0.01)
+    lo_thresh, nb_lo = spec.find_two_sided_thresh(Y_prob, Y_true, fnr=0.005, fpr=0.02)
     # thresh = get_thresh(Y_prob, Y_true)
     thresh_time = time.time() - thresh_time
     del X, Y_prob, Y_true
