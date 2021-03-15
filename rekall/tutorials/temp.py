@@ -4,7 +4,7 @@ import json
 import urllib3, requests, os, posixpath
 
 
-with open("/home/ubuntu/CSE544-project/data/bdd100k/bbox_files/cabc30fc-e7726578.pkl", 'rb') as f:
+with open("/home/ubuntu/CSE544-project/data/bdd100k/bbox_files_binary_search_gt20_first_q2/cabc30fc-fd79926f.pkl", 'rb') as f:
     maskrcnn_bboxes_intel = pickle.load(f)
 # VIDEO_COLLECTION_BASEURL_INTEL = "https://storage.googleapis.com/esper/dan_olimar/rekall_tutorials/cydet" 
 # maskrcnn_bbox_files_intel = [ 'maskrcnn_bboxes_0001.pkl' ]

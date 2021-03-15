@@ -72,8 +72,8 @@ video_metadata_intel = [
 # 3rd: all objects in that frame. maskrcnn_bboxes_intel[0][0][0]: first object in the first frame of the first video.
 # 4th: [x1, x2, y1, y2, class, score, img_name]
 maskrcnn_bboxes_intel = []
-# bbox_file_dir = "/home/ubuntu/CSE544-project/rekall/data/bbox_files/"
-bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files_binary_search_rare_last/"
+# bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files/"
+bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files_binary_search/"
 
 bbox_list = os.listdir(bbox_file_dir)
 bbox_list.sort()

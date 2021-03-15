@@ -3,7 +3,6 @@ import pickle
 import os 
 
 fields = ["file_name", "frame", "object_name", "confidence", "xmin", "ymin", "xmax", "ymax"]
-rows = []
 bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files/"
 
 bbox_list = os.listdir(bbox_file_dir)
@@ -21,6 +20,7 @@ suffix = ["train", "thresh", "test"]
 
 for idx, sub_list in enumerate([train_list, thresh_list, test_list]):
     total_frames = 0
+    rows = []
     for file in sub_list:
         if os.path.splitext(file)[1] != '.pkl':
             continue
