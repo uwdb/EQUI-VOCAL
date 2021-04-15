@@ -6,3 +6,6 @@ data/bdd100k/videos/
 *.csv
 *.txt
 *.zip
+*.avi
+rekall/tutorials/test_results/*
+person_attribute/checkpoints/*
