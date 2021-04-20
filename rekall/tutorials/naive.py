@@ -30,6 +30,11 @@ from detectron2.checkpoint import DetectionCheckpointer
 sys.path.append('/home/ubuntu/CSE544-project/vehicle_counting_tensorflow')
 from utils.color_recognition_module import color_recognition_api
 
+import mysql.connector
+
+from construct_input_streams import *
+from pattern_matching import *
+
 def frame_from_video(video):
     while video.isOpened():
         success, frame = video.read()
@@ -89,24 +94,45 @@ def load_person_attribute_model():
     model.eval()
     return model 
 
-# Temporal predicates
-def before(intrvl1, intrvl2, min_dist=0, max_dist="infty"):
-    return intrvl1[0] + min_dist <= intrvl2[0] and (intrvl1[0] + max_dist >= intrvl2[0] or max_dist == "infty")
-
-
-def pattern_matching(person_stream, car_stream):
-    out_stream = []
-    # Person, followed by car, within 5 seconds
-    for intrvl1 in person_stream:
-        for intrvl2 in car_stream:
-            if before(intrvl1, intrvl2, max_dist=5):
-                out_stream.append((intrvl1[0], intrvl2[1], intrvl1[2], intrvl1[3], intrvl2[2], intrvl2[3]))
-    return out_stream
-
 
 def visualize_results(out_stream):
     # Write start_time, end_time to csv file
-    with open('naive_results.csv', 'w') as f:
+    with open('naive_results_watch_out_person_cross_road_when_car_turn_left.csv', 'w') as f:
+        writer = csv.writer(f)
+        csv_line = "start_time, end_time"
+        writer.writerows([csv_line.split(',')])
+        
+        for row in out_stream:
+            writer.writerow([row[0], row[1]])
+
+    video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-4k-002.mp4")
+    num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = video.get(cv2.CAP_PROP_FPS)
+    
+    # Visualize bboxes
+    for i, row in enumerate(out_stream):
+        start_time, end_time, person_x1, person_y1, person_x2, person_y2, person_frame_id, car_x1, car_y1, car_x2, car_y2, car_frame_id = row 
+        
+        video.set(cv2.CAP_PROP_POS_FRAMES, person_frame_id)
+    
+        ret, person_frame = video.read()
+    
+        cv2.rectangle(person_frame, (int(person_x1), int(person_y1)), (int(person_x2), int(person_y2)), (0, 255, 0), 3)
+        # cropped_person = person_frame[int(person_box[1].item()):int(person_box[3].item()), int(person_box[0].item()):int(person_box[2].item())]
+        cv2.imwrite("test_results_watch_out_person_cross_road_when_car_turn_left/" + str(i) + "-" + str(start_time) + "-" + str(end_time) + "-person.jpg", person_frame)
+
+        video.set(cv2.CAP_PROP_POS_FRAMES, car_frame_id)
+    
+        ret, car_frame = video.read()
+
+        cv2.rectangle(car_frame, (int(car_x1), int(car_y1)), (int(car_x2), int(car_y2)), (0, 255, 0), 3)
+        # cropped_car = car_frame[int(car_box[1].item()):int(car_box[3].item()), int(car_box[0].item()):int(car_box[2].item())]
+        cv2.imwrite("test_results_watch_out_person_cross_road_when_car_turn_left/" + str(i) + "-" + str(start_time) + "-" + str(end_time) + "-car.jpg", car_frame)
+    
+
+def visualize_results_three_motorbikes_in_a_row(out_stream):
+    # Write start_time, end_time to csv file
+    with open('naive_results_three_people_overlap.csv', 'w') as f:
         writer = csv.writer(f)
         csv_line = "start_time, end_time"
         writer.writerows([csv_line.split(',')])
@@ -116,23 +142,57 @@ def visualize_results(out_stream):
 
     # Visualize bboxes
     for i, row in enumerate(out_stream):
-        start_time, end_time, person_box, person_frame, car_box, car_frame = row 
-        cropped_person = person_frame[int(person_box[1].item()):int(person_box[3].item()), int(person_box[0].item()):int(person_box[2].item())]
-        cv2.imwrite("test_results/" + str(i) + "-" + str(start_time) + "-" + str(end_time) + "-person.jpg", cropped_person)
+        start_time, end_time, e1_x1, e1_y1, e1_x2, e1_y2, e2_x1, e2_y1, e2_x2, e2_y2, e3_x1, e3_y1, e3_x2, e3_y2, frame_id = row 
 
-        cropped_car = car_frame[int(car_box[1].item()):int(car_box[3].item()), int(car_box[0].item()):int(car_box[2].item())]
-        cv2.imwrite("test_results/" + str(i) + "-" + str(start_time) + "-" + str(end_time) + "-car.jpg", cropped_car)
-    
 
+        video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-4k-002.mp4")
+        num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = video.get(cv2.CAP_PROP_FPS)
+        
+        video.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+        
+        ret, frame = video.read()
+        
+        cv2.rectangle(frame, (int(e1_x1), int(e1_y1)), (int(e1_x2), int(e1_y2)), (0, 255, 0), 3)
+
+        cv2.rectangle(frame, (int(e2_x1), int(e2_y1)), (int(e2_x2), int(e2_y2)), (0, 255, 0), 3)
+
+        cv2.rectangle(frame, (int(e3_x1), int(e3_y1)), (int(e3_x2), int(e3_y2)), (0, 255, 0), 3)
+        
+        cv2.imwrite("test_results_three_people_overlap/" + str(i) + "-" + str(start_time) + "-" + str(end_time) + ".jpg", frame)
+
+
+def draw_bounding_box_on_image():
+    frame_id = 9630
+    video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-4k-002.mp4")
+    num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = video.get(cv2.CAP_PROP_FPS)
     
+    video.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+    
+    ret, frame = video.read()
+
+    cursor = connection.cursor()
+    cursor.execute("SELECT e.start_time, e.end_time, e.event_type, v.x1, v.x2, v.y1, v.y2 FROM Event e, VisibleAt v WHERE e.event_id = v.event_id AND v.filename = 'traffic-4k-002.mp4' AND v.frame_id = %s", [frame_id])
+
+    for row in cursor:
+        start_time, end_time, event_type, x1, x2, y1, y2 = row
+        cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 3)
+    
+    cv2.imwrite("test.jpg", frame)
+
+    cursor.close()
+
 def preprocess_faster_rcnn():
     img_id = 0
-    display_video_list = ["cabc30fc-e7726578"]
+    display_video_list = ["car-pov-2k-000-shortened", "car-pov-2k-001-shortened", "traffic-4k-000", "traffic-4k-000-ds2k", "traffic-4k-002"]
+    # display_video_list = ["cabc30fc-e7726578"]
     # display_video_list = ["cabc30fc-e7726578", "cabc30fc-eb673c5a", "cabc30fc-fd79926f", "cabc9045-1b8282ba", "cabc9045-5a50690f"]
     # display_video_list = ["VIRAT_S_000201_00_000018_000380"] # 6 min video
     # display_video_list = ["VIRAT_S_000200_00_000100_000171"] # 1 min video
     # input_video_dir = "/home/ubuntu/CSE544-project/data/"
-    input_video_dir = "/home/ubuntu/CSE544-project/data/bdd100k/videos/test/"
+    input_video_dir = "/home/ubuntu/CSE544-project/data/visual_road/"
+    # input_video_dir = "/home/ubuntu/CSE544-project/data/bdd100k/videos/test/"
     # bbox_file_dir = "/home/ubuntu/CSE544-project/rekall/data/bbox_files/"
     # bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files_original"
 
@@ -164,8 +224,6 @@ def preprocess_faster_rcnn():
         fps = video.get(cv2.CAP_PROP_FPS)
         
         frame_id = 0
-        person_stream = []
-        car_stream = []
 
         if not video.isOpened():
             print("Error opening video stream or file: ", file)
@@ -178,7 +236,21 @@ def preprocess_faster_rcnn():
                 scores = instances.scores
                 # pred_class is idx, not string; need coco_names[pred_class.item()] to access class name 
                 pred_classes = instances.pred_classes
+
+                start_time, end_time = frame_id_to_time_interval(frame_id, fps)
+
                 for pred_box, score, pred_class in zip(pred_boxes, scores, pred_classes):
+                    cursor = connection.cursor()
+                    # Store object detection results 
+
+                    # Populate Event table
+                    cursor.execute("INSERT INTO Event (event_type, start_time, end_time) VALUES (%s, %s, %s)", [coco_names[pred_class.item()], start_time, end_time])
+                    event_id = cursor.lastrowid
+                    
+                    # Populate VisibleAt table 
+                    # TODO: video_id is hardcoded to 0
+                    cursor.execute("INSERT INTO VisibleAt VALUES (%s, %s, %s, %s, %s, %s, %s)", [file, frame_id, event_id, pred_box[0].item(), pred_box[2].item(), pred_box[1].item(), pred_box[3].item()])
+                    
                     # Recognize person attribute 
                     if coco_names[pred_class.item()] == "person":
                         cropped_frame = frame[int(pred_box[1].item()):int(pred_box[3].item()), int(pred_box[0].item()):int(pred_box[2].item())]
@@ -188,14 +260,11 @@ def preprocess_faster_rcnn():
 
                         pred = torch.gt(out, torch.ones_like(out)/2 )  # threshold=0.5
                         pred = pred.squeeze(dim=0)
-                        # female and upwhite
-                        if pred[12] and pred[14]:
-                            start_time, end_time = frame_id_to_time_interval(frame_id, fps)
-                            person_stream.append((start_time, end_time, pred_box, frame))
-                            # cv2.imwrite("test_results/test" + str(img_id) + ".jpg", cropped_frame)
-                            # print(img_id)
-                            # img_id += 1
-                    elif coco_names[pred_class.item()] in ["car", "truck"]:
+                        
+                        # Populate Person table 
+                        cursor.execute("INSERT INTO Person VALUES (%s, %s, %s)", [event_id, pred[12].item(), pred[14].item()])
+
+                    elif coco_names[pred_class.item()] in ["car"]:
                         image_pil = Image.fromarray(np.uint8(frame)).convert('RGB')
                         image_temp = np.array(image_pil)
                         
@@ -209,22 +278,36 @@ def preprocess_faster_rcnn():
 
                         predicted_color = color_recognition_api.color_recognition(detected_vehicle_image)
 
-                        if predicted_color == "white" and predicted_size >= 30000:
-                            start_time, end_time = frame_id_to_time_interval(frame_id, fps)
-                            car_stream.append((start_time, end_time, pred_box, frame))
+                        # Populate Car table 
+                        cursor.execute("INSERT INTO Car VALUES (%s, %s, %s)", [event_id, predicted_color, predicted_size])
 
                         # cv2.imwrite("test_results/test" + str(img_id) + "-" + predicted_color + ".jpg", detected_vehicle_image)
                         # print(img_id)
                         # img_id += 1
+                    
+                # Commit and close connection 
+                connection.commit()
+                cursor.close()
 
                 frame_id += 1 
-    return person_stream, car_stream
 
 if __name__ == '__main__':
-    load_person_attribute_model()
+    connection = mysql.connector.connect(user='admin', password='123456abcABC',
+                              host='database-1.cld3cb8o2zkf.us-east-1.rds.amazonaws.com',
+                              database='complex_event')
+
+    # draw_bounding_box_on_image()
+    # exit(1)
+    # load_person_attribute_model()
     print("start preprocessing")
-    person_stream, car_stream = preprocess_faster_rcnn()
+    # First time 
+    # preprocess_faster_rcnn()
+    person_stream, car_stream = construct_input_streams_watch_out_person_cross_road_when_car_turn_left(connection)
+    # motorbike_stream = construct_input_streams_three_motorbikes_in_a_row(connection)
     print("start pattern matching")
-    out_stream = pattern_matching(person_stream, car_stream)
+    out_stream = pattern_matching_before_within_5s(person_stream, car_stream)
+    # out_stream = pattern_matching_three_objects_overlap(motorbike_stream)
     print("start visualizing")
     visualize_results(out_stream)
+    # visualize_results_three_motorbikes_in_a_row(out_stream)
+    connection.close()
