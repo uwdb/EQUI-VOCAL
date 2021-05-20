@@ -3,7 +3,7 @@ import pandas as pd
 
 # Temporal predicates
 def before(intrvl1, intrvl2, min_dist=0, max_dist="infty"):
-    return intrvl1[0] + min_dist <= intrvl2[0] and (intrvl1[0] + max_dist >= intrvl2[0] or max_dist == "infty")
+    return intrvl1[0] + min_dist <= intrvl2[0] and (max_dist == "infty" or intrvl1[0] + max_dist >= intrvl2[0])
 
 
 def isOverlapping(box1, box2):
@@ -20,6 +20,29 @@ def pattern_matching_before_within_5s(person_stream, car_stream):
         for intrvl2 in car_stream:
             if before(intrvl1, intrvl2, max_dist=5):
                 out_stream.append((intrvl1[0], intrvl2[1], intrvl1[2], intrvl1[3], intrvl1[4], intrvl1[5], intrvl1[6], intrvl2[2], intrvl2[3], intrvl2[4], intrvl2[5], intrvl2[6]))
+    return out_stream
+
+def pattern_matching_reappear_within_20s(car_stream):
+    out_stream = []
+    # Input: car stream: (start_time, end_time, x1, y1, x2, y2, frame_id)
+    for i in range(len(car_stream) - 1):
+        # Two adjacent car events
+        intrvl1 = car_stream[i]
+        intrvl2 = car_stream[i + 1]
+        # In order to "reappear", there needs to be a time gap between the two events.
+        if before(intrvl1, intrvl2, min_dist=20):
+            # prefix-suffix extension
+            prefix = i 
+            suffix = i + 1
+            while prefix > 0 and car_stream[prefix - 1][1] == car_stream[prefix][0]:
+                    prefix -= 1
+            intrvl1 = car_stream[prefix]
+            while suffix < len(car_stream) - 1 and car_stream[suffix][1] == car_stream[suffix + 1][0]:
+                    suffix += 1
+            intrvl1 = car_stream[prefix]
+            intrvl2 = car_stream[suffix]
+
+            out_stream.append((intrvl1[0], intrvl2[0], intrvl1[2], intrvl1[3], intrvl1[4], intrvl1[5], intrvl1[6], intrvl2[2], intrvl2[3], intrvl2[4], intrvl2[5], intrvl2[6]))
     return out_stream
 
 def pattern_matching_three_objects_overlap(motorbike_stream):

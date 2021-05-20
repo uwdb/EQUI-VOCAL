@@ -106,8 +106,7 @@ def construct_input_streams_three_motorbikes_in_a_row(connection):
 
     motorbike_stream = []
     
-    # person_stream: (start_time, end_time, x1, y1, x2, y2, frame)
-    # car_stream: (start_time, end_time, x1, y1, x2, y2, frame)
+    # motorbike_stream: (start_time, end_time, x1, y1, x2, y2, frame_id)
     cursor = connection.cursor()
     
     # Construct motorbike stream 
@@ -119,3 +118,89 @@ def construct_input_streams_three_motorbikes_in_a_row(connection):
     connection.commit()
     cursor.close()
     return motorbike_stream
+
+
+def construct_input_streams_same_car_reappears(connection):
+    # Query: Same car (orange) reappears in the video
+
+    car_stream = []
+    
+    # car_stream: (start_time, end_time, x1, y1, x2, y2, frame_id)
+    cursor = connection.cursor()
+    
+    # Construct car stream 
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Event e, VisibleAt v, Car c WHERE c.event_id = e.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-4k-002.mp4' AND c.color = 'orange' AND c.size >= 40000 ORDER BY e.start_time")
+
+    for row in cursor:
+        start_time, end_time, x1, x2, y1, y2, frame_id = row
+        car_stream.append((start_time, end_time, x1, y1, x2, y2, frame_id))
+
+    connection.commit()
+    cursor.close()
+    return car_stream
+
+
+def construct_input_streams_car_turning_right(connection):
+    # Query: Car turning right. 
+    # Heuristic: object detection for car, and bounding box overlaps a specific region. 
+    
+    # intersection = (900, 1650, 2153, 1832)
+    intersection = (140, 470, 720, 500)
+    count = 0
+    car_stream = []
+    
+    # car_stream: (start_time, end_time, x1, y1, x2, y2, frame)
+    cursor = connection.cursor()
+    
+    # Construct car stream
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-1.mp4'")
+    for row in cursor:
+        start_time, end_time, x1, x2, y1, y2, frame_id = row
+        car_box = (x1, y1, x2, y2)
+        if isOverlapping(intersection, car_box):
+            car_stream.append((start_time, end_time, x1, y1, x2, y2, frame_id))
+
+        # if not isOverlapping(intersection, car_box):
+        #     count += 1
+        #     if count % 60 == 0:
+        #         car_stream.append((start_time, end_time, x1, y1, x2, y2, frame_id))
+
+    connection.commit()
+    cursor.close()
+    return car_stream
+
+
+def construct_input_streams_person_edge_corner(connection):
+    # Query: Person at edge corner.
+    # Heuristic: object detection for person, and bounding box overlaps a specific region. 
+    
+    # intersection = (1554, 1299, 2400, 1583)
+    intersection = (384, 355, 515, 400)
+    count = 0
+    count_neg = 0
+    person_stream = []
+    
+    # car_stream: (start_time, end_time, x1, y1, x2, y2, frame)
+    cursor = connection.cursor()
+    
+    # Construct person stream
+    # cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Person p, Event e, VisibleAt v WHERE e.event_id = p.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-4k-002.mp4' AND e.start_time > 600")
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Person p, Event e, VisibleAt v WHERE e.event_id = p.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-20.mp4' AND e.start_time < 600")
+    for row in cursor:
+        start_time, end_time, x1, x2, y1, y2, frame_id = row
+        person_box = (x1, y1, x2, y2)
+        # if isOverlapping(intersection, person_box):
+        #     # count += 1
+        #     # if count % 5 == 0:
+        #     person_stream.append((start_time, end_time, x1, y1, x2, y2, frame_id))
+        if not isOverlapping(intersection, person_box):
+            count += 1
+            if count % 60 == 0:
+                person_stream.append((start_time, end_time, x1, y1, x2, y2, frame_id))
+
+    connection.commit()
+    cursor.close()
+    return person_stream
+
+    # select count(*) from Person p, Event e, VisibleAt v WHERE e.event_id = p.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-5.mp4' AND e.start_time < 600;
+    # delete from VisibleAt v where v.filename = 'traffic-3.mp4';  
