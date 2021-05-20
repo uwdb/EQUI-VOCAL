@@ -8,5 +8,6 @@ data/bdd100k/videos/
 *.zip
 *.avi
 *.jpg
-rekall/tutorials/test_results*
+rekall/tutorials/*/
 person_attribute/checkpoints/*
+*.pkl
