@@ -15,30 +15,45 @@ from torchvision.utils import save_image
 
 # plt.ion()   # interactive mode
 
-def crop224(image):
-    return transforms.functional.crop(image, 0, 0, 224, 224)
+def crop(image):
+    return transforms.functional.crop(image, 350, 0, 190, 820)
 
 # Data augmentation and normalization for training
 # Just normalization for validation
 data_transforms = {
     'train': transforms.Compose([
-        # transforms.Resize((224, 224)),
-        transforms.Resize(256),
-        # transforms.Lambda(crop224),
+        transforms.Lambda(crop),
+        transforms.Resize((256,256)),
         transforms.CenterCrop(224),
-        # transforms.RandomHorizontalFlip(),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
-        transforms.Resize(256),
-        # transforms.Lambda(crop224),
+        transforms.Lambda(crop),
+        transforms.Resize((256,256)),
         transforms.CenterCrop(224),
-        # transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
 }
+
+# data_transforms = {
+#     'train': transforms.Compose([
+#         transforms.RandomResizedCrop(224),
+#         transforms.RandomHorizontalFlip(),
+#         transforms.ToTensor(),
+#         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+#     ]),
+#     'val': transforms.Compose([
+#         transforms.Resize(256),
+#         # transforms.Lambda(crop224),
+#         transforms.CenterCrop(224),
+#         # transforms.Resize((224, 224)),
+#         transforms.ToTensor(),
+#         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+#     ]),
+# }
 
 inv_transforms = transforms.Compose([
         transforms.Normalize(mean = [ 0., 0., 0. ],
@@ -107,6 +122,10 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
             running_loss = 0.0
             running_corrects = 0
+            running_tp = 0
+            running_tn = 0
+            running_fp = 0
+            running_fn = 0
 
             # Iterate over data.
             for inputs, labels in dataloaders[phase]:
@@ -131,14 +150,26 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
+                running_tp += (labels.data * preds).sum()
+                running_tn += ((1 - labels.data) * (1 - preds)).sum()
+                running_fp += ((1 - labels.data) * preds).sum()
+                running_fn += (labels.data * (1 - preds)).sum()
+
             if phase == 'train':
                 scheduler.step()
+
+            epsilon = 1e-7
+
+            precision = running_tp / (running_tp + running_fp + epsilon)
+            recall = running_tp / (running_tp + running_fn + epsilon)
+            
+            f1 = 2 * (precision*recall) / (precision + recall + epsilon)
 
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
-            print('{} Loss: {:.4f} Acc: {:.4f}'.format(
-                phase, epoch_loss, epoch_acc))
+            print('{} Loss: {:.4f} Acc: {:.4f} F1: {:.4f}'.format(
+                phase, epoch_loss, epoch_acc, f1))
 
             # deep copy the model
             if phase == 'val' and epoch_acc > best_acc:
@@ -155,35 +186,6 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     # load best model weights
     model.load_state_dict(best_model_wts)
     return model
-
-############################
-# Visualizing the model predictions
-############################
-def visualize_model(model, num_images=6):
-    was_training = model.training
-    model.eval()
-    images_so_far = 0
-    fig = plt.figure()
-
-    with torch.no_grad():
-        for i, (inputs, labels) in enumerate(dataloaders['val']):
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-
-            outputs = model(inputs)
-            _, preds = torch.max(outputs, 1)
-
-            for j in range(inputs.size()[0]):
-                images_so_far += 1
-                ax = plt.subplot(num_images//2, 2, images_so_far)
-                ax.axis('off')
-                ax.set_title('predicted: {}'.format(class_names[preds[j]]))
-                imshow(inputs.cpu().data[j])
-
-                if images_so_far == num_images:
-                    model.train(mode=was_training)
-                    return
-        model.train(mode=was_training)
 
 
 ######################################
@@ -211,7 +213,7 @@ exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=25)
 
 # Save the model (state_dict) for inference
-torch.save(model_ft.state_dict(), "/home/ubuntu/CSE544-project/rekall/tutorials/car_turning_right_test/state_dict_model.pt")
+torch.save(model_ft.state_dict(), "/home/ubuntu/CSE544-project/rekall/tutorials/car_turning_right_test/state_dict_model_no_car_and_passing_car.pt")
 
 # model_ft.load_state_dict(torch.load('/home/ubuntu/CSE544-project/rekall/tutorials/person_edge_corner/state_dict_model.pt'))
 

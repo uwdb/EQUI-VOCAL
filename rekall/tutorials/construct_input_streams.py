@@ -1,7 +1,7 @@
 import os, cv2
 from tqdm import tqdm
 import mysql.connector
-
+from random import sample
 
 def frame_from_video(video):
     while video.isOpened():
@@ -140,7 +140,7 @@ def construct_input_streams_same_car_reappears(connection):
     return car_stream
 
 
-def construct_input_streams_car_turning_right(connection):
+def construct_input_streams_car_turning_right(connection, idx):
     # Query: Car turning right. 
     # Heuristic: object detection for car, and bounding box overlaps a specific region. 
     
@@ -152,19 +152,33 @@ def construct_input_streams_car_turning_right(connection):
     # car_stream: (start_time, end_time, x1, y1, x2, y2, frame)
     cursor = connection.cursor()
     
-    # Construct car stream
-    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-1.mp4'")
-    for row in cursor:
-        start_time, end_time, x1, x2, y1, y2, frame_id = row
-        car_box = (x1, y1, x2, y2)
-        if isOverlapping(intersection, car_box):
-            car_stream.append((start_time, end_time, x1, y1, x2, y2, frame_id))
+    # # Construct car stream: some car turning in the intersection
+    # cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-1.mp4'")
+    # for row in cursor:
+    #     start_time, end_time, x1, x2, y1, y2, frame_id = row
+    #     car_box = (x1, y1, x2, y2)
+    #     if isOverlapping(intersection, car_box):
+    #         car_stream.append(frame_id)
 
-        # if not isOverlapping(intersection, car_box):
-        #     count += 1
-        #     if count % 60 == 0:
-        #         car_stream.append((start_time, end_time, x1, y1, x2, y2, frame_id))
-
+    # Construct car stream: no car turning in the intersection
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-%s.mp4' ORDER BY v.frame_id", [idx])
+    current_frame_id = 0
+    results = cursor.fetchall()
+    for row in results:
+        if row[6] >= current_frame_id:
+            if row[6] > current_frame_id:
+                # Start a new frame
+                for i in range(current_frame_id, row[6], 10):
+                    car_stream.append(i)
+                current_frame_id = row[6]
+            start_time, end_time, x1, x2, y1, y2, frame_id = row
+            car_box = (x1, y1, x2, y2)
+            if isOverlapping(intersection, car_box):
+                # Current frame contains turning car, skip it. 
+                current_frame_id += 10
+        # Else, the examined frame already contains turning car; skip it
+    car_stream = sample(car_stream, 25)
+    
     connection.commit()
     cursor.close()
     return car_stream

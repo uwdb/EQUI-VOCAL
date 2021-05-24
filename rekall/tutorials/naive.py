@@ -95,31 +95,30 @@ def load_person_attribute_model():
     return model 
 
 
-def visualize_results_car_turning_right(out_stream):
+def visualize_results_car_turning_right(out_stream, idx):
     # Write start_time, end_time to csv file
-    with open('naive_results_car_turning_right.csv', 'w') as f:
-        writer = csv.writer(f)
-        csv_line = "start_time, end_time"
-        writer.writerows([csv_line.split(',')])
+    # with open('naive_results_car_turning_right.csv', 'w') as f:
+    #     writer = csv.writer(f)
+    #     csv_line = "start_time, end_time"
+    #     writer.writerows([csv_line.split(',')])
         
-        for row in out_stream:
-            writer.writerow([row[0], row[1]])
+    #     for row in out_stream:
+    #         writer.writerow([row[0], row[1]])
     
 
-    video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-1.mp4")
+    video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-{0}.mp4".format(idx))
     num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = video.get(cv2.CAP_PROP_FPS)
     
     # Visualize bboxes
-    for i, row in enumerate(out_stream):
-        start_time, end_time, car_x1, car_y1, car_x2, car_y2, car_frame_id = row 
+    for i, car_frame_id in enumerate(out_stream):
 
         video.set(cv2.CAP_PROP_POS_FRAMES, car_frame_id)
     
         ret, car_frame = video.read()
 
         # cv2.rectangle(car_frame, (int(car_x1), int(car_y1)), (int(car_x2), int(car_y2)), (0, 255, 0), 3)
-        cv2.imwrite("car_turning_right_test/train/traffic1-" + str(i) + ".jpg", car_frame)
+        cv2.imwrite("car_turning_right_test/val/neg/traffic{0}-{1}.jpg".format(idx, i), car_frame)
 
 
 def visualize_results_person_edge_corner(out_stream):
@@ -422,13 +421,13 @@ def watch_out_person_cross_road_when_car_turning(connection):
     print("start visualizing")
     visualize_results_watch_out_person_cross_road_when_car_turning(out_stream)
 
-def car_turning_right(connection):
+def car_turning_right(connection, idx):
     print("start preprocessing")
     # First time 
     # preprocess_faster_rcnn()
-    car_stream = construct_input_streams_car_turning_right(connection)
+    car_stream = construct_input_streams_car_turning_right(connection, idx)
     print("start visualizing")
-    visualize_results_car_turning_right(car_stream)
+    visualize_results_car_turning_right(car_stream, idx)
 
 
 def person_edge_corner(connection):
@@ -448,7 +447,8 @@ if __name__ == '__main__':
 
     # preprocess_faster_rcnn()
     # watch_out_person_cross_road_when_car_turning(connection)
-    car_turning_right(connection)
+    for i in range(16, 21):
+        car_turning_right(connection, i)
     # person_edge_corner(connection)
     # same_car_reappears(connection)
 
