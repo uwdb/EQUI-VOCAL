@@ -20,15 +20,23 @@ from PIL import Image
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-tsfm = transforms.Compose([
-        # transforms.Resize((224, 224)),
-        transforms.Resize(256),
-        # transforms.Lambda(crop224),
-        transforms.CenterCrop(224),
-        # transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
+def crop(image):
+    return transforms.functional.crop(image, 350, 0, 190, 820)
+
+tsfm_car = transforms.Compose([
+    transforms.Lambda(crop),
+    transforms.Resize((256,256)),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+
+tsfm_person = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
 
 # Temporal predicates
 def before(intrvl1, intrvl2, min_dist=0, max_dist="infty"):
@@ -92,12 +100,16 @@ def query_atomic(model_person_edge_corner, model_car_turning_right, video_idx):
                 break
             color_coverted = cv2.cvtColor(frame_raw, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(color_coverted)
-            transformed_frame = tsfm(pil_image)
+            transformed_frame = tsfm_car(pil_image)
             frame = torch.unsqueeze(transformed_frame, 0)
             frame = frame.to(device)
+
+            transformed_frame_person = tsfm_person(pil_image)
+            frame_person = torch.unsqueeze(transformed_frame_person, 0)
+            frame_person = frame_person.to(device)
             
             # Run Model: person edge corner
-            output = model_person_edge_corner(frame)
+            output = model_person_edge_corner(frame_person)
             _, pred = torch.max(output, 1)
             predicted_label = pred[0].item()
             person_edge_corner_results[frame_id] = predicted_label
@@ -174,7 +186,7 @@ def construct_video_clips(video_idx):
     frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_id = 0
 
-    output_dir = 'video_clips_test/traffic' + str(video_idx)
+    output_dir = 'video_clips_test2/traffic' + str(video_idx)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -207,13 +219,13 @@ if __name__ == '__main__':
     model_car_turning_right = models.resnet18(pretrained=False)
     num_ftrs = model_car_turning_right.fc.in_features
     model_car_turning_right.fc = nn.Linear(num_ftrs, 2)
-    model_car_turning_right.load_state_dict(torch.load('/home/ubuntu/CSE544-project/rekall/tutorials/car_turning_right_test/state_dict_model.pt'))
+    model_car_turning_right.load_state_dict(torch.load('/home/ubuntu/CSE544-project/rekall/tutorials/car_turning_right_test/state_dict_model_no_car_and_passing_car.pt'))
     model_car_turning_right.eval()
     model_car_turning_right.to(device)
     
     # construct_video_clips(2)
-    # traffic-2, traffic-3, ..., traffic-20
-    for i in range(4, 21):
+    # traffic-1, traffic-2, ..., traffic-20
+    for i in range(1, 21):
         print("processing video: traffic-" + str(i))
         query_atomic(model_person_edge_corner, model_car_turning_right, i)
         construct_video_clips(i)
