@@ -17,54 +17,15 @@ def isOverlapping(box1, box2):
     x2min, y2min, x2max, y2max = box2
     return x1min < x2max and x2min < x1max and y1min < y2max and y2min < y1max
 
-def construct_input_streams_person_female_upwhite_then_car_white_size_ge_30000(connection):
-    person_stream = []
-    car_stream = []
-    
-    frames = []
-    display_video_list = ["cabc30fc-e7726578"]
-    input_video_dir = "/home/ubuntu/CSE544-project/data/bdd100k/videos/test/"
+def isInsideIntersection(box):
+    # box: x1, y1, x2, y2
+    xmin, ymin, xmax, ymax = box
+    centroid_x = (xmin + xmax) / 2
+    centroid_y = (ymin + ymax) / 2 
 
-    for file in os.listdir(input_video_dir):
-        if os.path.splitext(file)[1] != '.mp4' and os.path.splitext(file)[1] != '.mov':
-            continue
-        if os.path.splitext(file)[0] not in display_video_list:
-            continue
+    x0, y0, x1, y1, x2, y2 = 0, 480, 450, 394, 782, 492
 
-        video = cv2.VideoCapture(os.path.join(input_video_dir, file))
-        num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = video.get(cv2.CAP_PROP_FPS)
-
-        if not video.isOpened():
-            print("Error opening video stream or file: ", file)
-        else:
-            frame_gen = frame_from_video(video)
-            for frame in tqdm(frame_gen, total=num_frames):
-                frames.append(frame)
-    
-    # person_stream: (start_time, end_time, x1, y1, x2, y2, frame)
-    # car_stream: (start_time, end_time, x1, y1, x2, y2, frame)
-    cursor = connection.cursor()
-    
-    # Construct person stream 
-    # Female and upwhite
-    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Person p, Event e, VisibleAt v WHERE e.event_id = p.event_id AND e.event_id = v.event_id AND p.female = true AND p.upwhite = true")
-    for row in cursor:
-        start_time, end_time, x1, x2, y1, y2, frame_id = row
-        frame = frames[frame_id]
-        person_stream.append((start_time, end_time, x1, y1, x2, y2, frame))
-
-    # Construct car stream
-    # White and size >= 30000
-    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND c.color = 'white' AND c.size >= 30000")
-    for row in cursor:
-        start_time, end_time, x1, x2, y1, y2, frame_id = row
-        frame = frames[frame_id]
-        car_stream.append((start_time, end_time, x1, y1, x2, y2, frame))
-
-    connection.commit()
-    cursor.close()
-    return person_stream, car_stream
+    return centroid_y > (y0 - y1) * centroid_x / (x0 - x1) + (x0 * y1 - x1 * y0) / (x0 - x1) and centroid_y > (y1 - y2) * centroid_x / (x1 - x2) + (x1 * y2 - x2 * y1) / (x1 - x2)
 
 
 def construct_input_streams_watch_out_person_cross_road_when_car_turn_left(connection):
@@ -152,13 +113,30 @@ def construct_input_streams_car_turning_right(connection, idx):
     # car_stream: (start_time, end_time, x1, y1, x2, y2, frame)
     cursor = connection.cursor()
     
-    # # Construct car stream: some car turning in the intersection
-    # cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-1.mp4'")
-    # for row in cursor:
-    #     start_time, end_time, x1, x2, y1, y2, frame_id = row
-    #     car_box = (x1, y1, x2, y2)
-    #     if isOverlapping(intersection, car_box):
-    #         car_stream.append(frame_id)
+    # Construct car stream: some car turning in the intersection
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-%s.mp4'", [idx])
+    for row in cursor:
+        start_time, end_time, x1, x2, y1, y2, frame_id = row
+        car_box = (x1, y1, x2, y2)
+        if isOverlapping(intersection, car_box):
+            car_stream.append(frame_id)
+    
+    connection.commit()
+    cursor.close()
+    return car_stream
+
+
+def construct_input_streams_car_turning_right_neg(connection, idx):
+    # Query: Car turning right. 
+    # Heuristic: object detection for car, and bounding box overlaps a specific region. 
+    
+    # intersection = (900, 1650, 2153, 1832)
+    intersection = (140, 470, 720, 500)
+    count = 0
+    car_stream = []
+    
+    # car_stream: (start_time, end_time, x1, y1, x2, y2, frame)
+    cursor = connection.cursor()
 
     # Construct car stream: no car turning in the intersection
     cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-%s.mp4' ORDER BY v.frame_id", [idx])
@@ -218,3 +196,65 @@ def construct_input_streams_person_edge_corner(connection):
 
     # select count(*) from Person p, Event e, VisibleAt v WHERE e.event_id = p.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-5.mp4' AND e.start_time < 600;
     # delete from VisibleAt v where v.filename = 'traffic-3.mp4';  
+
+
+def construct_input_streams_motorbike_crossing(connection, idx):
+    # Query: Motorbike crossing in the intersection. 
+    # Heuristic: object detection for bike, and bounding box overlaps a specific region. 
+    
+    # intersection = (103, 416, 750, 540)
+    count = 0
+    motorbike_stream = []
+    
+    # motorbike_stream: (start_time, end_time, x1, y1, x2, y2, frame)
+    cursor = connection.cursor()
+    
+    # Construct bike stream
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Event e, VisibleAt v WHERE e.event_type in ('motorbike', 'bicycle') AND e.event_id = v.event_id AND v.filename = 'traffic-%s.mp4'", [idx])
+    for row in cursor:
+        start_time, end_time, x1, x2, y1, y2, frame_id = row
+        motorbike_box = (x1, y1, x2, y2)
+        if isInsideIntersection(motorbike_box):
+            motorbike_stream.append(frame_id)
+    
+    connection.commit()
+    cursor.close()
+    return motorbike_stream
+
+
+def construct_input_streams_motorbike_crossing_neg(connection, idx):
+    # Query: Motorbike crossing in the intersection. 
+    # Heuristic: object detection for bike, and bounding box overlaps a specific region. 
+    
+    count = 0
+    motorbike_stream = []
+    
+    # motorbike_stream: (start_time, end_time, x1, y1, x2, y2, frame)
+    cursor = connection.cursor()
+
+    # Construct bike stream
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Event e, VisibleAt v WHERE e.event_type in ('motorbike', 'bicycle') AND e.event_id = v.event_id AND v.filename = 'traffic-%s.mp4' ORDER BY v.frame_id", [idx])
+    current_frame_id = 0
+    results = cursor.fetchall()
+    for row in results:
+        if row[6] >= current_frame_id:
+            if row[6] > current_frame_id:
+                # Start a new frame
+                for i in range(current_frame_id, row[6], 10):
+                    motorbike_stream.append(i)
+                current_frame_id = row[6]
+            start_time, end_time, x1, x2, y1, y2, frame_id = row
+            motorbike_box = (x1, y1, x2, y2)
+            if isInsideIntersection(motorbike_box):
+                # Current frame contains crossing bike, skip it. 
+                current_frame_id += 10
+        # Else, the examined frame already contains crossing bike; skip it
+    
+    cursor.execute("SELECT MAX(v.frame_id) FROM VisibleAt v WHERE v.filename = 'traffic-%s.mp4'", [idx])
+    row = cursor.fetchone()
+    motorbike_stream += [*range(current_frame_id, row[0], 10)]
+    motorbike_stream = sample(motorbike_stream, 8)
+    
+    connection.commit()
+    cursor.close()
+    return motorbike_stream
