@@ -13,6 +13,7 @@
 
 ## Connecting to MySQL
 mysql -h database-1.cld3cb8o2zkf.us-east-1.rds.amazonaws.com -P 3306 -u admin -p
+pass: 123456abcABC
 # Use database
 use complex_event;
 # Drop tables
