@@ -17,6 +17,11 @@ class ToTensor(transforms.ToTensor):
     def randomize_parameters(self):
         pass
 
+class Lambda(transforms.Lambda):
+
+    def randomize_parameters(self):
+        pass
+
 
 class Normalize(transforms.Normalize):
 

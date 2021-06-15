@@ -1,1 +1,1 @@
-python generate_video_jpgs.py ../data/R3D ../data/visualroad_videos
+python generate_video_jpgs.py --size 540 ../data/motorbike_crossing ../data/motorbike_crossing_jpgs

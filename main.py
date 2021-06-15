@@ -12,7 +12,8 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.backends import cudnn
 import torchvision
-
+from torchvision import transforms
+from torchvision.utils import save_image
 from opts import parse_opts
 from model import (generate_model, load_pretrained_model, make_data_parallel,
                    get_fine_tuning_parameters)
@@ -21,7 +22,7 @@ from spatial_transforms import (Compose, Normalize, Resize, CenterCrop,
                                 CornerCrop, MultiScaleCornerCrop,
                                 RandomResizedCrop, RandomHorizontalFlip,
                                 ToTensor, ScaleValue, ColorJitter,
-                                PickFirstChannels)
+                                PickFirstChannels, Lambda)
 from temporal_transforms import (LoopPadding, TemporalRandomCrop,
                                  TemporalCenterCrop, TemporalEvenCrop,
                                  SlidingWindow, TemporalSubsampling)
@@ -32,6 +33,12 @@ from training import train_epoch
 from validation import val_epoch
 import inference
 
+inv_transforms = transforms.Compose([
+    transforms.Normalize(mean = [ 0., 0., 0. ],
+                            std = [ 1/0.229, 1/0.224, 1/0.225 ]),
+    transforms.Normalize(mean = [ -0.485, -0.456, -0.406 ],
+                            std = [ 1., 1., 1. ])
+])
 
 def json_serial(obj):
     if isinstance(obj, Path):
@@ -124,6 +131,8 @@ def get_normalize_method(mean, std, no_mean_norm, no_std_norm):
         else:
             return Normalize(mean, std)
 
+def crop(image):
+    return transforms.functional.crop(image, 350, 0, 190, 820)
 
 def get_train_utils(opt, model_parameters):
     assert opt.train_crop in ['random', 'corner', 'center']
@@ -140,6 +149,9 @@ def get_train_utils(opt, model_parameters):
             scales.append(scales[-1] * scale_step)
         spatial_transform.append(MultiScaleCornerCrop(opt.sample_size, scales))
     elif opt.train_crop == 'center':
+        # spatial_transform.append(Lambda(crop))
+        # spatial_transform.append(Resize((128, 128)))
+        # spatial_transform.append(CenterCrop(opt.sample_size))
         spatial_transform.append(Resize(opt.sample_size))
         spatial_transform.append(CenterCrop(opt.sample_size))
     normalize = get_normalize_method(opt.mean, opt.std, opt.no_mean_norm,
@@ -169,6 +181,15 @@ def get_train_utils(opt, model_parameters):
     train_data = get_training_data(opt.video_path,
                                    opt.dataset, opt.input_type, opt.file_type,
                                    spatial_transform, temporal_transform)
+    # print("visualizing training data...")
+    # clip_test, _ = train_data[0]
+    # print("clip shape:", clip_test.shape)
+    # clip_test = clip_test.permute(1, 0, 2, 3)
+
+    # for j in range(clip_test.size()[0]):
+    #     save_image(inv_transforms(clip_test.cpu()[j]), "ROI-" + str(j) + ".jpg")
+    # exit(0)
+
     if opt.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(
             train_data)
@@ -227,6 +248,13 @@ def get_val_utils(opt):
         CenterCrop(opt.sample_size),
         ToTensor()
     ]
+    # spatial_transform = [
+    #     Lambda(crop),
+    #     Resize((128, 128)),
+    #     CenterCrop(opt.sample_size),
+    #     ToTensor()
+    # ]
+
     if opt.input_type == 'flow':
         spatial_transform.append(PickFirstChannels(n=2))
     spatial_transform.extend([ScaleValue(opt.value_scale), normalize])
@@ -351,11 +379,11 @@ def main_worker(index, opt):
     if opt.resume_path is not None:
         model = resume_model(opt.resume_path, opt.arch, model)
     
-    model.fc = nn.Sequential(
-            nn.Linear(2048, 512), 
-            nn.Linear(512, 128), 
-            nn.Linear(128, 2)
-        )
+    # model.fc = nn.Sequential(
+    #         nn.Linear(2048, 128), 
+    #         # nn.Linear(512, 128), 
+    #         nn.Linear(128, 2)
+    #     )
 
     model = make_data_parallel(model, opt.distributed, opt.device)
 
