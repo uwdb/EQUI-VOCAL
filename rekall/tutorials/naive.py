@@ -95,20 +95,23 @@ def load_person_attribute_model():
     return model 
 
 
-def visualize_results_motorbike_crossing(out_stream, idx):
+def visualize_results(out_stream, idx, event_name):
     video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-{0}.mp4".format(idx))
     num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = video.get(cv2.CAP_PROP_FPS)
     
+    directory = "{}/val/neg/".format(event_name)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        
     # Visualize bboxes
-    for i, motorbike_frame_id in enumerate(out_stream):
+    for i, frame_id in enumerate(out_stream):
 
-        video.set(cv2.CAP_PROP_POS_FRAMES, motorbike_frame_id)
+        video.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
     
-        ret, motorbike_frame = video.read()
+        ret, frame = video.read()
 
-        # cv2.rectangle(car_frame, (int(car_x1), int(car_y1)), (int(car_x2), int(car_y2)), (0, 255, 0), 3)
-        cv2.imwrite("motorbike_crossing/val/neg/traffic{0}-{1}.jpg".format(idx, i), motorbike_frame)
+        cv2.imwrite("{0}/traffic{1}-{2}.jpg".format(directory, idx, i), frame)
 
 
 def visualize_results_car_turning_right(out_stream, idx):
@@ -454,6 +457,15 @@ def motorbike_crossing(connection, idx):
     print("start visualizing")
     visualize_results_motorbike_crossing(motorbike_stream, idx)
 
+def avg_cars(connection, idx):
+    print("start preprocessing")
+    # First time 
+    # preprocess_faster_rcnn()
+    input_stream = construct_input_streams_avg_cars(connection, idx)
+    # input_stream = construct_input_streams_motorbike_crossing_neg(connection, idx)
+    print("start visualizing")
+    visualize_results(input_stream, idx, "avg_cars")
+
 def person_edge_corner(connection):
     print("start preprocessing")
     # First time 
@@ -472,7 +484,7 @@ if __name__ == '__main__':
     # preprocess_faster_rcnn()
     # watch_out_person_cross_road_when_car_turning(connection)
     for i in range(16, 21):
-        motorbike_crossing(connection, i)
+        avg_cars(connection, i)
     # person_edge_corner(connection)
     # same_car_reappears(connection)
 

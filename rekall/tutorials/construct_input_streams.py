@@ -1,7 +1,10 @@
 import os, cv2
 from tqdm import tqdm
 import mysql.connector
+import random 
 from random import sample
+
+random.seed(10)
 
 def frame_from_video(video):
     while video.isOpened():
@@ -258,3 +261,34 @@ def construct_input_streams_motorbike_crossing_neg(connection, idx):
     connection.commit()
     cursor.close()
     return motorbike_stream
+
+
+def construct_input_streams_avg_cars(connection, idx):
+    # Query: Average number of cars in window of videos
+    
+    count = 0
+    input_stream = []
+    
+    # input_stream: (start_time, end_time, x1, y1, x2, y2, frame)
+    cursor = connection.cursor()
+
+    # Construct input stream
+    cursor.execute("""
+        SELECT v.frame_id 
+        FROM VisibleAt v 
+        LEFT JOIN Event e 
+        ON e.event_id = v.event_id 
+        WHERE e.event_type = 'car' AND v.filename = 'traffic-%s.mp4' 
+        GROUP BY v.frame_id
+        HAVING COUNT(*) <= 4
+        ORDER BY v.frame_id
+        """, [idx])
+    for row in cursor:
+        input_stream.append(row[0])
+    
+    if len(input_stream) > 50:
+        input_stream = sample(input_stream, 50)
+    
+    connection.commit()
+    cursor.close()
+    return input_stream

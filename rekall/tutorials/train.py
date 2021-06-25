@@ -20,9 +20,26 @@ def crop(image):
 
 # Data augmentation and normalization for training
 # Just normalization for validation
+# data_transforms = {
+#     'train': transforms.Compose([
+#         transforms.Lambda(crop),
+#         transforms.Resize((256,256)),
+#         transforms.CenterCrop(224),
+#         transforms.RandomHorizontalFlip(),
+#         transforms.ToTensor(),
+#         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+#     ]),
+#     'val': transforms.Compose([
+#         transforms.Lambda(crop),
+#         transforms.Resize((256,256)),
+#         transforms.CenterCrop(224),
+#         transforms.ToTensor(),
+#         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+#     ]),
+# }
+
 data_transforms = {
     'train': transforms.Compose([
-        transforms.Lambda(crop),
         transforms.Resize((256,256)),
         transforms.CenterCrop(224),
         transforms.RandomHorizontalFlip(),
@@ -30,28 +47,12 @@ data_transforms = {
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
-        transforms.Lambda(crop),
         transforms.Resize((256,256)),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
 }
-
-# data_transforms = {
-#     'train': transforms.Compose([
-#         transforms.RandomResizedCrop(224),
-#         transforms.RandomHorizontalFlip(),
-#         transforms.ToTensor(),
-#         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-#     ]),
-#     'val': transforms.Compose([
-#         transforms.Resize(256),
-#         transforms.CenterCrop(224),
-#         transforms.ToTensor(),
-#         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-#     ]),
-# }
 
 inv_transforms = transforms.Compose([
         transforms.Normalize(mean = [ 0., 0., 0. ],
@@ -60,7 +61,7 @@ inv_transforms = transforms.Compose([
                              std = [ 1., 1., 1. ])
     ])
 
-data_dir = '/home/ubuntu/CSE544-project/rekall/tutorials/motorbike_crossing'
+data_dir = '/home/ubuntu/CSE544-project/rekall/tutorials/avg_cars'
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
                   for x in ['train', 'val']}
@@ -211,7 +212,7 @@ exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=25)
 
 # Save the model (state_dict) for inference
-torch.save(model_ft.state_dict(), "/home/ubuntu/CSE544-project/rekall/tutorials/motorbike_crossing/state_dict_model.pt")
+torch.save(model_ft.state_dict(), "/home/ubuntu/CSE544-project/rekall/tutorials/avg_cars/state_dict_model.pt")
 
 # model_ft.load_state_dict(torch.load('/home/ubuntu/CSE544-project/rekall/tutorials/person_edge_corner/state_dict_model.pt'))
 
@@ -228,7 +229,7 @@ with torch.no_grad():
         _, preds = torch.max(outputs, 1)
 
         for j in range(inputs.size()[0]):
-            save_image(inv_transforms(inputs.cpu().data[j]), "/home/ubuntu/CSE544-project/rekall/tutorials/motorbike_crossing/pred/" + str(images_so_far) +"_pred-" + str(preds[j].item()) + "-true-" + str(labels.data[j].item()) + ".jpg")
+            save_image(inv_transforms(inputs.cpu().data[j]), "/home/ubuntu/CSE544-project/rekall/tutorials/avg_cars/pred/" + str(images_so_far) +"_pred-" + str(preds[j].item()) + "-true-" + str(labels.data[j].item()) + ".jpg")
             images_so_far += 1
 
 ######################################
