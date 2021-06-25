@@ -134,6 +134,10 @@ def get_normalize_method(mean, std, no_mean_norm, no_std_norm):
 def crop(image):
     return transforms.functional.crop(image, 350, 0, 190, 820)
 
+def crop2(image):
+    return transforms.functional.crop(image, 290, 0, 250, 850)
+
+
 def get_train_utils(opt, model_parameters):
     assert opt.train_crop in ['random', 'corner', 'center']
     spatial_transform = []
@@ -149,14 +153,14 @@ def get_train_utils(opt, model_parameters):
             scales.append(scales[-1] * scale_step)
         spatial_transform.append(MultiScaleCornerCrop(opt.sample_size, scales))
     elif opt.train_crop == 'center':
-        # spatial_transform.append(Lambda(crop))
+        # spatial_transform.append(Lambda(crop2))
         # spatial_transform.append(Resize((128, 128)))
         # spatial_transform.append(CenterCrop(opt.sample_size))
         spatial_transform.append(Resize(opt.sample_size))
         spatial_transform.append(CenterCrop(opt.sample_size))
     normalize = get_normalize_method(opt.mean, opt.std, opt.no_mean_norm,
                                      opt.no_std_norm)
-    opt.no_hflip = True
+    opt.no_hflip = False
     if not opt.no_hflip:
         spatial_transform.append(RandomHorizontalFlip())
     if opt.colorjitter:
@@ -249,7 +253,7 @@ def get_val_utils(opt):
         ToTensor()
     ]
     # spatial_transform = [
-    #     Lambda(crop),
+    #     Lambda(crop2),
     #     Resize((128, 128)),
     #     CenterCrop(opt.sample_size),
     #     ToTensor()
