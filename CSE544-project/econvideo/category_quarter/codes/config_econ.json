@@ -1,0 +1,14 @@
+{
+    "price_csv": "results/intermediate_results/data_per_category/",
+    "bin_range_csv": "results/intermediate_results/bin_per_category/",
+    "lstm": {
+        "checkpoint": "results/checkpoints/",
+        "learning_rate": 5e-4,
+        "num_epochs": 25,
+        "batch_size": 128,
+        "hidden_dim": 128,
+        "embedding_dim": 128,
+        "num_classes": 10
+    },
+    "error_analysis": 1
+}

@@ -1,0 +1,17 @@
+{
+    "data_path": "/z/analytics/ImageNet/data/",
+    "info_json": "/z/analytics/ImageNet/info.json",
+    "plot_path": "/z/analytics/ImageNet/plots/",
+    "checkpoint_path": "/z/analytics/ImageNet/checkpoints/",
+    "arch": "resnet50",
+    "pretrained": 1,
+    "test": 0,
+    "num_classes": 2,
+    "image_dim": 224,
+    "epoch": 40,
+    "start_epoch": 0,
+    "batch_size": 128,
+    "lr": 1e-3,
+    "momentum": 0,
+    "weight_decay": 0
+}
