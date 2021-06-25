@@ -1,0 +1,5 @@
+DROP TABLE UnderlyingEvents;
+DROP TABLE VisibleAt;
+DROP TABLE Person;
+DROP TABLE Car;
+DROP TABLE Event;
