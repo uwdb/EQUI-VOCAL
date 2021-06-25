@@ -184,18 +184,52 @@ def construct_neg_samples(idx, dataset, connection):
                 out.write(frame)
             out.release()
 
+def avg_cars(idx, dataset, connection):
+    video_clip_count = 0
+    input_stream = construct_input_streams_avg_cars(connection, idx)
+    
+    video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-{0}.mp4".format(idx))
+    # Get video configurations
+    num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = video.get(cv2.CAP_PROP_FPS)
+    frame_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    for i, car_frame_id in enumerate(input_stream):
+        filename = "avg_cars/{0}/pos/traffic{1}-{2}.jpg".format(dataset, idx, i)
+        if os.path.exists(filename):
+            start_frame = car_frame_id - 15
+            end_frame = car_frame_id + 15
+    
+            # Writing video clips
+            output_dir = 'video_clips_avg_cars/{0}/pos'.format(dataset)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            
+            # Define the codec and create VideoWriter object. The output is stored in 'outpy.avi' file.
+            out = cv2.VideoWriter(os.path.join(output_dir, 'traffic' + str(idx) + '_' + str(video_clip_count) + '_' + str(start_frame) + '_' + str(end_frame) + '.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width,frame_height))
+
+            video_clip_count += 1
+            
+            for frame_count in range(end_frame - start_frame + 1):
+                ret, frame = video.read()
+                out.write(frame)
+            out.release()
+
 
 if __name__ == '__main__':
     connection = mysql.connector.connect(user='admin', password='123456abcABC',
                               host='database-1.cld3cb8o2zkf.us-east-1.rds.amazonaws.com',
                               database='complex_event')
 
-    # for idx in range(1, 16):
-    #     construct_pos_samples(idx, "train", connection)
+    for idx in range(1, 16):
+        avg_cars(idx, "train", connection)
     # for idx in range(16, 21):
     #     construct_pos_samples(idx, "val", connection)
-    for idx in range(1, 16):
-        construct_neg_samples(idx, "train", connection)
+    # for idx in range(1, 16):
+    #     construct_neg_samples(idx, "train", connection)
     # for idx in range(16, 21):
     #     construct_neg_samples(idx, "val", connection)
 
