@@ -1,0 +1,1 @@
+python generate_video_jpgs.py --size 540 ../data/static_traffic_R3D ../data/static_traffic_R3D_jpgs
