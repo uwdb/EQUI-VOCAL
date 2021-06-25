@@ -1,9 +1,0 @@
-numpy
-opencv-python
-pandas
-torch
-scikit-learn
-streamlit
-torchvision
-seaborn
-scikit-image
