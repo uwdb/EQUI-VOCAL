@@ -24,10 +24,6 @@ from detectron2.data import MetadataCatalog, DatasetCatalog
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
 
-# color recognition module - import
-sys.path.append('/home/ubuntu/CSE544-project/vehicle_counting_tensorflow')
-from utils.color_recognition_module import color_recognition_api
-
 import mysql.connector
 
 from construct_input_streams import *
