@@ -129,20 +129,10 @@ class Executor:
     @staticmethod
     def preprocess_faster_rcnn():
         img_id = 0
-        # display_video_list = ["car-pov-2k-000-shortened", "car-pov-2k-001-shortened", "traffic-4k-000", "traffic-4k-000-ds2k", "traffic-4k-002"]
-        display_video_list = ["traffic-1"]
-        # for i in range(2, 21):
-        #     display_video_list.append("traffic-" + str(i))
-            
-        # display_video_list = ["cabc30fc-e7726578"]
-        # display_video_list = ["cabc30fc-e7726578", "cabc30fc-eb673c5a", "cabc30fc-fd79926f", "cabc9045-1b8282ba", "cabc9045-5a50690f"]
-        # display_video_list = ["VIRAT_S_000201_00_000018_000380"] # 6 min video
-        # display_video_list = ["VIRAT_S_000200_00_000100_000171"] # 1 min video
-        # input_video_dir = "/home/ubuntu/CSE544-project/data/"
-        input_video_dir = "/home/ubuntu/CSE544-project/data/visual_road/"
-        # input_video_dir = "/home/ubuntu/CSE544-project/data/bdd100k/videos/test/"
-        # bbox_file_dir = "/home/ubuntu/CSE544-project/rekall/data/bbox_files/"
-        # bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files_original"
+
+        video_fn_list = ["traffic-{}".format(i) for i in range(1, 21)]
+
+        input_video_dir = "/home/ubuntu/complex_event_video/data/visual_road"
 
         with open("ms_coco_classnames.txt") as f:
             coco_names = f.read().splitlines() 
@@ -163,7 +153,7 @@ class Executor:
         for file in os.listdir(input_video_dir):
             if os.path.splitext(file)[1] != '.mp4' and os.path.splitext(file)[1] != '.mov':
                 continue
-            if os.path.splitext(file)[0] not in display_video_list:
+            if os.path.splitext(file)[0] not in video_fn_list:
                 continue
 
             video = cv2.VideoCapture(os.path.join(input_video_dir, file))
@@ -212,38 +202,11 @@ class Executor:
                             
                             # Recognize person attribute 
                             if coco_names[pred_class.item()] == "person":
-                                # cropped_frame = frame[int(pred_box[1].item()):int(pred_box[3].item()), int(pred_box[0].item()):int(pred_box[2].item())]
-                                # src = load_image(cropped_frame)
-                                
-                                # out = attribute_model.forward(src)
-
-                                # pred = torch.gt(out, torch.ones_like(out)/2 )  # threshold=0.5
-                                # pred = pred.squeeze(dim=0)
-                                
-                                # # Populate Person table 
-                                # cursor.execute("INSERT INTO Person VALUES (%s, %s, %s)", [event_id, pred[12].item(), pred[14].item()])
                                 cursor.execute("INSERT INTO Person VALUES (%s, %s, %s)", [event_id, 0, 0])
 
                             elif coco_names[pred_class.item()] in ["car"]:
-                                # image_pil = Image.fromarray(np.uint8(frame)).convert('RGB')
-                                # image_temp = np.array(image_pil)
-                                
-                                # top, bottom, right, left = pred_box[1].item(), pred_box[3].item(), pred_box[2].item(), pred_box[0].item()
-
-                                # detected_vehicle_image = image_temp[int(top):int(bottom), int(left):int(right)]
-                                
-                                # # predicted_direction, predicted_speed, is_vehicle_detected, update_csv = speed_prediction.predict_speed(top, bottom, right, left, current_frame_number, detected_vehicle_image, ROI_POSITION)
-                                
-                                # predicted_size = (bottom - top) * (right - left)
-
-                                # predicted_color = color_recognition_api.color_recognition(detected_vehicle_image)
-
                                 # Populate Car table 
                                 cursor.execute("INSERT INTO Car VALUES (%s, %s, %s)", [event_id, 'a', -1])
-
-                                # cv2.imwrite("test_results/test" + str(img_id) + "-" + predicted_color + ".jpg", detected_vehicle_image)
-                                # print(img_id)
-                                # img_id += 1
                             
                         # Commit and close connection 
                         connection.commit()
@@ -291,13 +254,6 @@ class Executor:
 
 
 if __name__ == '__main__':
-    # preprocess_faster_rcnn()
-    # watch_out_person_cross_road_when_car_turning(connection)
-    # for i in range(1, 16):
-        # avg_cars(connection, i)
-        # car_turning(connection, i)
-    # person_edge_corner(connection)
-    # same_car_reappears(connection)
     logging.basicConfig(level=logging.INFO)
     train_video_fn_list = ["traffic-{}.mp4".format(i) for i in range(1, 3)]
     val_video_fn_list = ["traffic-{}.mp4".format(i) for i in range(16, 18)]
