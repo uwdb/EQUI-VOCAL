@@ -1,276 +1,307 @@
-from rekall import Interval, IntervalSet, IntervalSetMapping, Bounds3D
-from rekall.predicates import *
-from helpers import *
-import time 
+# Some basic setup:
+# Setup detectron2 logger
+import torch, torchvision
+import detectron2
+from detectron2.utils.logger import setup_logger
+setup_logger()
 
-def query3():
-    bboxes = get_maskrcnn_bboxes()
+# import some common libraries
+import numpy as np
+import os, json, cv2, random, time, csv
+from tqdm import tqdm
+import pickle
+from PIL import Image
+from torchvision import transforms as T
+import sys
+import logging 
 
-    object_classes = {}
-    for k in bboxes:
-        for interval in bboxes[k].get_intervals():
-            if interval['payload']['class'] not in object_classes:
-                object_classes[interval['payload']['class']] = 1
+# import some common detectron2 utilities
+from detectron2 import model_zoo
+from detectron2.engine import DefaultPredictor
+from detectron2.config import get_cfg
+from detectron2.data import MetadataCatalog, DatasetCatalog
+
+from detectron2.modeling import build_model
+from detectron2.checkpoint import DetectionCheckpointer
+
+import mysql.connector
+
+from construct_input_streams import *
+from pattern_matching import *
+
+from visualizer import Visualizer
+
+
+
+def load_image(im):
+    transforms = T.Compose([
+        T.Resize(size=(288, 144)),
+        T.ToTensor(),
+        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+
+    im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+    src = Image.fromarray(im)
+    src = transforms(src)
+    src = src.unsqueeze(dim=0)
+    # (1, channel, width, height)
+    return src
+
+
+def draw_bounding_box_on_image():
+    frame_id = 9630
+    video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-4k-002.mp4")
+    num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = video.get(cv2.CAP_PROP_FPS)
+    
+    video.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+    
+    ret, frame = video.read()
+
+    cursor = connection.cursor()
+    cursor.execute("SELECT e.start_time, e.end_time, e.event_type, v.x1, v.x2, v.y1, v.y2 FROM Event e, VisibleAt v WHERE e.event_id = v.event_id AND v.filename = 'traffic-4k-002.mp4' AND v.frame_id = %s", [frame_id])
+
+    for row in cursor:
+        start_time, end_time, event_type, x1, x2, y1, y2 = row
+        cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 3)
+    
+    cv2.imwrite("test.jpg", frame)
+
+    cursor.close()
+
+
+def watch_out_person_cross_road_when_car_turning(connection):
+    print("start preprocessing")
+    # First time 
+    # preprocess_faster_rcnn()
+    person_stream, car_stream = construct_input_streams_watch_out_person_cross_road_when_car_turn_left(connection)
+    print("start pattern matching")
+    out_stream = pattern_matching_before_within_5s(person_stream, car_stream)
+    print("start visualizing")
+    visualize_results_watch_out_person_cross_road_when_car_turning(out_stream)
+
+def car_turning(connection, idx):
+    event_name = "car_turning"
+    print("start preprocessing")
+    # First time 
+    # preprocess_faster_rcnn()
+    car_stream = construct_input_streams_car_turning(connection, idx)
+    print("start visualizing")
+    vis = Visualizer(event_name)
+    vis.visualize_results(car_stream, idx, event_name)
+    # visualize_results_car_turning_right(car_stream, idx)
+
+def motorbike_crossing(connection, idx):
+    print("start preprocessing")
+    # First time 
+    # preprocess_faster_rcnn()
+    # motorbike_stream = construct_input_streams_motorbike_crossing(connection, idx)
+    motorbike_stream = construct_input_streams_motorbike_crossing_neg(connection, idx)
+    print("start visualizing")
+    visualize_results_motorbike_crossing(motorbike_stream, idx)
+
+class Executor:
+    def __init__(self, event_name, train_video_fn_list, val_video_fn_list):
+        self.connection = mysql.connector.connect(
+            user='admin', 
+            password='123456abcABC', 
+            host='database-1.cld3cb8o2zkf.us-east-1.rds.amazonaws.com', database='complex_event'
+        )
+        self.event_name = event_name
+        self.train_video_fn_list = train_video_fn_list
+        self.val_video_fn_list = val_video_fn_list
+
+    @staticmethod
+    def frame_from_video(video):
+        while video.isOpened():
+            success, frame = video.read()
+            if success:
+                yield frame
             else:
-                object_classes[interval['payload']['class']] += 1
-    print(object_classes)
+                break
+    
+    @staticmethod
+    def frame_id_to_time_interval(frame_id, fps):
+        start_time = frame_id / fps
+        end_time = (frame_id + 1) / fps
+        return start_time, end_time
 
-    # Run query 1: object followed by another object.
-    tik = time.time()
-    bboxes = get_maskrcnn_bboxes()
+    @staticmethod
+    def preprocess_faster_rcnn():
+        img_id = 0
+        # display_video_list = ["car-pov-2k-000-shortened", "car-pov-2k-001-shortened", "traffic-4k-000", "traffic-4k-000-ds2k", "traffic-4k-002"]
+        display_video_list = ["traffic-1"]
+        # for i in range(2, 21):
+        #     display_video_list.append("traffic-" + str(i))
+            
+        # display_video_list = ["cabc30fc-e7726578"]
+        # display_video_list = ["cabc30fc-e7726578", "cabc30fc-eb673c5a", "cabc30fc-fd79926f", "cabc9045-1b8282ba", "cabc9045-5a50690f"]
+        # display_video_list = ["VIRAT_S_000201_00_000018_000380"] # 6 min video
+        # display_video_list = ["VIRAT_S_000200_00_000100_000171"] # 1 min video
+        # input_video_dir = "/home/ubuntu/CSE544-project/data/"
+        input_video_dir = "/home/ubuntu/CSE544-project/data/visual_road/"
+        # input_video_dir = "/home/ubuntu/CSE544-project/data/bdd100k/videos/test/"
+        # bbox_file_dir = "/home/ubuntu/CSE544-project/rekall/data/bbox_files/"
+        # bbox_file_dir = "/home/ubuntu/CSE544-project/data/bdd100k/bbox_files_original"
 
-    car = bboxes.filter(lambda interval: interval['payload']['class'] == 'car')
-    truck = bboxes.filter(lambda interval: interval['payload']['class'] == 'truck')
+        with open("ms_coco_classnames.txt") as f:
+            coco_names = f.read().splitlines() 
 
-    car_trackings = car.coalesce(
-        ('t1', 't2'),
-        bounds_merge_op = Bounds3D.span,
-        predicate = iou_at_least(0.5),
-        epsilon = 0
-    )
+        cfg = get_cfg()
+        # add project-specific config (e.g., TensorMask) here if you're not running a model in detectron2's core library
+        cfg.merge_from_file(model_zoo.get_config_file("COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"))
+        cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.6  # set threshold for this model
+        # Find a model from detectron2's model zoo. You can use the https://dl.fbaipublicfiles... url as well
+        cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml")
+        
+        # predictor = DefaultPredictor(cfg)
+        model = build_model(cfg) # returns a torch.nn.Module
+        DetectionCheckpointer(model).load('model_final_280758.pkl') # must load weights this way, can't use cfg.MODEL.WEIGHTS = "..."
+        model.train(False) # inference mode
 
-    car_trackings_filtered = car_trackings.filter_size(
-        min_size = 1
-    )
 
-    truck_trackings = truck.coalesce(
-        ('t1', 't2'),
-        bounds_merge_op = Bounds3D.span,
-        predicate = iou_at_least(0.5),
-        epsilon = 0
-    )
+        for file in os.listdir(input_video_dir):
+            if os.path.splitext(file)[1] != '.mp4' and os.path.splitext(file)[1] != '.mov':
+                continue
+            if os.path.splitext(file)[0] not in display_video_list:
+                continue
 
-    truck_trackings_filtered = truck_trackings.filter_size(
-        min_size = 1
-    )
+            video = cv2.VideoCapture(os.path.join(input_video_dir, file))
+            num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = video.get(cv2.CAP_PROP_FPS)
+            
+            frame_id = 0
+            inputs = []
 
-    truck_before_car = truck_trackings_filtered.join(
-        car_trackings_filtered,
-        predicate = Bounds3D.T(before(min_dist=0, max_dist=10)),
-        merge_op = lambda interval1, interval2: Interval(
-            interval1['bounds'].span(interval2['bounds'])
-        ),
-        window = 10.0,
-        progress_bar = True
-    )
-    tok = time.time()
+            if not video.isOpened():
+                print("Error opening video stream or file: ", file)
+            else:
+                frame_gen = self.frame_from_video(video)
+                for frame in tqdm(frame_gen, total=num_frames):
+                    if frame_id % 10 != 0:
+                        frame_id += 1
+                        continue
+                    img_transposed = np.transpose(frame, (2, 0, 1)) # From (H, W, C) to (C, H, W)
+                    img_tensor = torch.from_numpy(img_transposed)
+                    inputs.append({"image":img_tensor}) # inputs is ready
+                    if len(inputs) < 8:
+                        frame_id += 1
+                        continue
+                    outputs = model(inputs)
+                    inputs = []
+                    for idx, output in enumerate(outputs):
+                        # outputs = predictor(frame)
+                        instances = output["instances"]
+                        pred_boxes = instances.pred_boxes
+                        scores = instances.scores
+                        # pred_class is idx, not string; need coco_names[pred_class.item()] to access class name 
+                        pred_classes = instances.pred_classes
 
-    print("query time: ", tok - tik)
+                        start_time, end_time = self.frame_id_to_time_interval(frame_id - (7 - idx) * 10, fps)
 
-    # Print query results
-    res = []
-    for k in truck_before_car:
-        intervals = truck_before_car[k].get_intervals()
-        for interval in intervals:
-            res.append((k, interval['t1'], interval['t2']))
+                        for pred_box, score, pred_class in zip(pred_boxes, scores, pred_classes):
+                            cursor = connection.cursor()
+                            # Store object detection results 
 
-    print(res)
-    print(len(res))
+                            # Populate Event table
+                            cursor.execute("INSERT INTO Event (event_type, start_time, end_time) VALUES (%s, %s, %s)", [coco_names[pred_class.item()], start_time, end_time])
+                            event_id = cursor.lastrowid
+                            
+                            # Populate VisibleAt table 
+                            cursor.execute("INSERT INTO VisibleAt VALUES (%s, %s, %s, %s, %s, %s, %s)", [file, frame_id - (7 - idx) * 10, event_id, pred_box[0].item(), pred_box[2].item(), pred_box[1].item(), pred_box[3].item()])
+                            
+                            # Recognize person attribute 
+                            if coco_names[pred_class.item()] == "person":
+                                # cropped_frame = frame[int(pred_box[1].item()):int(pred_box[3].item()), int(pred_box[0].item()):int(pred_box[2].item())]
+                                # src = load_image(cropped_frame)
+                                
+                                # out = attribute_model.forward(src)
 
-def query2(optimized=False):
-    bboxes = get_maskrcnn_bboxes()
+                                # pred = torch.gt(out, torch.ones_like(out)/2 )  # threshold=0.5
+                                # pred = pred.squeeze(dim=0)
+                                
+                                # # Populate Person table 
+                                # cursor.execute("INSERT INTO Person VALUES (%s, %s, %s)", [event_id, pred[12].item(), pred[14].item()])
+                                cursor.execute("INSERT INTO Person VALUES (%s, %s, %s)", [event_id, 0, 0])
 
-    # res = []
-    # for k in bboxes:
-    #     intervals = bboxes[k].get_intervals()
-    #     for interval in intervals:
-    #         res.append((k, interval['t1'], interval['t2']))
+                            elif coco_names[pred_class.item()] in ["car"]:
+                                # image_pil = Image.fromarray(np.uint8(frame)).convert('RGB')
+                                # image_temp = np.array(image_pil)
+                                
+                                # top, bottom, right, left = pred_box[1].item(), pred_box[3].item(), pred_box[2].item(), pred_box[0].item()
 
-    tik = time.time()
-    bboxes = get_maskrcnn_bboxes()
+                                # detected_vehicle_image = image_temp[int(top):int(bottom), int(left):int(right)]
+                                
+                                # # predicted_direction, predicted_speed, is_vehicle_detected, update_csv = speed_prediction.predict_speed(top, bottom, right, left, current_frame_number, detected_vehicle_image, ROI_POSITION)
+                                
+                                # predicted_size = (bottom - top) * (right - left)
 
-    car = bboxes.filter(lambda interval: interval['payload']['class'] == 'car')
+                                # predicted_color = color_recognition_api.color_recognition(detected_vehicle_image)
 
-    counts_per_frame = car.group_by(
-        key=lambda obj: (obj["t1"], obj["t2"]), 
-        merge=lambda key, intervalset: Interval(
-            Bounds3D(key[0], key[1], 0.3, 0.7, 0.3, 0.7), 
-            payload={ 'count': intervalset.size() }
-        ) 
-    )
+                                # Populate Car table 
+                                cursor.execute("INSERT INTO Car VALUES (%s, %s, %s)", [event_id, 'a', -1])
 
-    count_gt_20 = counts_per_frame \
-        .filter(lambda intrvl: intrvl['payload']['count'] > 6) \
-        .coalesce(
-            ('t1', 't2'),
-            bounds_merge_op = Bounds3D.span,
-            predicate = iou_at_least(0.1),
-            epsilon = 0
-        ) \
-        .filter_size(min_size = 1)
+                                # cv2.imwrite("test_results/test" + str(img_id) + "-" + predicted_color + ".jpg", detected_vehicle_image)
+                                # print(img_id)
+                                # img_id += 1
+                            
+                        # Commit and close connection 
+                        connection.commit()
+                        cursor.close()
 
-    # Construct base ism:
-    if optimized:
-        count_lt_5 = counts_per_frame \
-        .filter(lambda intrvl: intrvl['payload']['count'] < 5) \
-        .coalesce(
-            ('t1', 't2'),
-            bounds_merge_op = Bounds3D.span,
-            predicate = iou_at_least(0.1),
-            epsilon = 0
-        ) \
-        .filter_size(min_size = 0.5)
-    else:
-        video_lengths = {
-            key: bboxes[key].get_intervals()[-1]['t2']
-            for key in bboxes
-        }
+                    frame_id += 1 
+    
+    def execute(self):
+        logging.info("Target event: {}".format(self.event_name))
+        vis = Visualizer(self.event_name)
+        # Construct sample dataset: training data
+        for video_fn in self.train_video_fn_list:
+            logging.info("Executing video file: {}".format(video_fn))
+            # positive training data 
+            car_stream = self.execute_pos(video_fn)
+            logging.info("Retrieved {} positive training outputs".format(len(car_stream)))
+            vis.visualize_results(car_stream, video_fn, self.event_name, "train", "pos")
 
-        base_ism = IntervalSetMapping({
-            key: IntervalSet([
-                Interval(Bounds3D(
-                    t1 = 0,
-                    t2 = video_lengths[key],
-                    x1 = 0.3,
-                    x2 = 0.7,
-                    y1 = 0.3,
-                    y2 = 0.7
-                ), payload={ 'count': 0 })
-            ])
-            for key in bboxes
-        })
+            # negative training data 
+            car_stream = self.execute_neg(video_fn)
+            logging.info("Retrieved {} negative training outputs".format(len(car_stream)))
+            vis.visualize_results(car_stream, video_fn, self.event_name, "train", "neg")
 
-        count_ge_5 = counts_per_frame \
-            .filter(lambda intrvl: intrvl['payload']['count'] >= 5) \
-            .coalesce(
-                ('t1', 't2'),
-                bounds_merge_op = Bounds3D.span,
-                predicate = iou_at_least(0.9),
-                epsilon = 0
-            )
+        # Construct sample dataset: validation data
+        for video_fn in self.val_video_fn_list:
+            logging.info("Executing video file: {}".format(video_fn))
+            # positive validation data 
+            car_stream = self.execute_pos(video_fn)
+            logging.info("Retrieved {} positive validation outputs".format(len(car_stream)))
+            vis.visualize_results(car_stream, video_fn, self.event_name, "val", "pos")
 
-        count_lt_5 = base_ism.minus(count_ge_5).filter_size(min_size = 0.5)
+            # negative validation data 
+            car_stream = self.execute_neg(video_fn)
+            logging.info("Retrieved {} negative validation outputs".format(len(car_stream)))
+            vis.visualize_results(car_stream, video_fn, self.event_name, "val", "neg")
 
-    ls5_gt20 = count_lt_5.join(
-        count_gt_20,
-        predicate = Bounds3D.T(before(min_dist=0, max_dist=10)),
-        merge_op = lambda interval1, interval2: Interval(
-            interval1['bounds'].span(interval2['bounds'])
-        ),
-        window = 10.0,
-        progress_bar = True
-    )
+    def execute_pos(self, video_fn):
+        return construct_input_streams_car_turning(self.connection, video_fn)
 
-    ls5_gt20_ls5 = ls5_gt20.join(
-        count_lt_5,
-        predicate = Bounds3D.T(before(min_dist=0, max_dist=10)),
-        merge_op = lambda interval1, interval2: Interval(
-            interval1['bounds'].span(interval2['bounds'])
-        ),
-        window = 10.0,
-        progress_bar = True
-    ).filter_size(max_size = 10)
+    def execute_neg(self, video_fn):
+        return construct_input_streams_car_turning_neg(self.connection, video_fn)
 
-    tok = time.time()
+    def close_connection(self):
+        self.connection.close()
 
-    print("query time: ", tok - tik)
-
-    # Print query results
-    res = []
-    for k in ls5_gt20_ls5:
-        intervals = ls5_gt20_ls5[k].get_intervals()
-        for interval in intervals:
-            res.append((k, interval['t1'], interval['t2']))
-
-    print(res)
-    print(len(res))
 
 if __name__ == '__main__':
-    query3()
-    # Query 2 w/o optimization
-    # query2()
-    # Query 2 w/ optimization
-    # query2(True)
+    # preprocess_faster_rcnn()
+    # watch_out_person_cross_road_when_car_turning(connection)
+    # for i in range(1, 16):
+        # avg_cars(connection, i)
+        # car_turning(connection, i)
+    # person_edge_corner(connection)
+    # same_car_reappears(connection)
+    logging.basicConfig(level=logging.INFO)
+    train_video_fn_list = ["traffic-{}.mp4".format(i) for i in range(1, 3)]
+    val_video_fn_list = ["traffic-{}.mp4".format(i) for i in range(16, 18)]
 
-# Stats
-"""
-fps 30, 5 videos: 
-tik = time.time()
-bboxes = get_maskrcnn_bboxes()
-
-car = bboxes.filter(lambda interval: interval['payload']['class'] == 'car')
-truck = bboxes.filter(lambda interval: interval['payload']['class'] == 'truck')
-
-car_trackings = car.coalesce(
-    ('t1', 't2'),
-    bounds_merge_op = Bounds3D.span,
-    predicate = iou_at_least(0.5),
-    epsilon = 0
-)
-
-car_trackings_filtered = car_trackings.filter_size(
-    min_size = 1
-)
-
-truck_trackings = truck.coalesce(
-    ('t1', 't2'),
-    bounds_merge_op = Bounds3D.span,
-    predicate = iou_at_least(0.5),
-    epsilon = 0
-)
-
-truck_trackings_filtered = truck_trackings.filter_size(
-    min_size = 1
-)
-
-truck_before_car = truck_trackings_filtered.join(
-    car_trackings_filtered,
-    predicate = Bounds3D.T(before(min_dist=0, max_dist=10)),
-    merge_op = lambda interval1, interval2: Interval(
-        interval1['bounds'].span(interval2['bounds'])
-    ),
-    window = 10.0,
-    progress_bar = True
-)
-tok = time.time()
-
-print("query time: ", tok - tik)
-
-
-query time:  12.021287202835083
-[(0, 36.45453311166528, 40.123333333333335), (1, 0.0, 4.266843853820598), (1, 0.0, 5.233550664451827), (1, 0.0, 5.866910299003322), (1, 0.0, 6.766947674418605), (1, 0.0, 7.166964285714286), (1, 0.0, 8.600357142857144), (1, 0.0, 9.433725083056478), (1, 0.0, 9.967080564784053), (1, 0.0, 11.600481727574751), (1, 0.0, 12.600523255813954), (1, 0.0, 12.633857973421927), (1, 1.3667234219269104, 5.233550664451827), (1, 1.3667234219269104, 5.866910299003322), (1, 1.3667234219269104, 6.766947674418605), (1, 1.3667234219269104, 7.166964285714286), (1, 1.3667234219269104, 8.600357142857144), (1, 1.3667234219269104, 9.433725083056478), (1, 1.3667234219269104, 9.967080564784053), (1, 1.3667234219269104, 11.600481727574751), (1, 1.3667234219269104, 12.600523255813954), (1, 1.3667234219269104, 12.633857973421927), (1, 1.3667234219269104, 12.700527408637875), (1, 10.333762458471762, 12.700527408637875), (1, 10.333762458471762, 14.467267441860466), (1, 10.333762458471762, 15.167296511627908), (1, 10.333762458471762, 16.000664451827245), (1, 10.333762458471762, 16.500685215946845), (1, 10.333762458471762, 17.500726744186046), (1, 10.333762458471762, 18.067416943521597), (1, 10.333762458471762, 18.634107142857143), (1, 10.333762458471762, 19.96749584717608), (1, 10.333762458471762, 20.500851328903654), (1, 10.333762458471762, 20.934202657807308), (1, 10.333762458471762, 21.000872093023258), (1, 10.333762458471762, 21.800905315614617), (1, 10.333762458471762, 22.434264950166114), (1, 10.333762458471762, 22.767612126245847), (1, 10.333762458471762, 25.134377076411962), (1, 16.96737126245847, 19.96749584717608), (1, 16.96737126245847, 20.500851328903654), (1, 16.96737126245847, 20.934202657807308), (1, 16.96737126245847, 21.000872093023258), (1, 16.96737126245847, 21.800905315614617), (1, 16.96737126245847, 22.434264950166114), (1, 16.96737126245847, 22.767612126245847), (1, 16.96737126245847, 23.734318936877077), (1, 16.96737126245847, 23.767653654485052), (1, 16.96737126245847, 24.134335548172757), (1, 16.96737126245847, 24.701025747508307), (1, 16.96737126245847, 25.134377076411962), (1, 16.96737126245847, 25.367720099667775), (1, 16.96737126245847, 26.801112956810634), (1, 16.96737126245847, 27.534476744186048), (1, 16.96737126245847, 27.63448089700997), (1, 16.96737126245847, 27.73448504983389), (1, 16.96737126245847, 27.86782392026578), (1, 16.96737126245847, 28.667857142857144), (1, 16.96737126245847, 29.667898671096346), (1, 16.96737126245847, 30.334593023255817), (1, 17.967412790697676, 20.934202657807308), (1, 17.967412790697676, 21.800905315614617), (1, 17.967412790697676, 22.434264950166114), (1, 17.967412790697676, 22.767612126245847), (1, 17.967412790697676, 23.734318936877077), (1, 17.967412790697676, 23.767653654485052), (1, 17.967412790697676, 24.134335548172757), (1, 17.967412790697676, 24.701025747508307), (1, 17.967412790697676, 25.134377076411962), (1, 17.967412790697676, 25.367720099667775), (1, 17.967412790697676, 26.801112956810634), (1, 17.967412790697676, 27.534476744186048), (1, 17.967412790697676, 27.63448089700997), (1, 17.967412790697676, 27.73448504983389), (1, 17.967412790697676, 27.86782392026578), (1, 17.967412790697676, 28.667857142857144), (1, 17.967412790697676, 29.667898671096346), (1, 17.967412790697676, 29.867906976744187), (1, 17.967412790697676, 30.334593023255817), (1, 24.93436877076412, 27.73448504983389), (1, 24.93436877076412, 27.86782392026578), (1, 24.93436877076412, 29.667898671096346), (1, 24.93436877076412, 29.867906976744187), (1, 24.93436877076412, 31.334634551495018), (1, 24.93436877076412, 31.66798172757475), (1, 24.93436877076412, 32.501349667774086), (1, 24.93436877076412, 35.334800664451826), (1, 24.93436877076412, 35.96816029900332), (1, 24.93436877076412, 36.168168604651164), (1, 24.93436877076412, 36.334842192691035), (1, 24.93436877076412, 36.93486710963455), (1, 24.93436877076412, 36.968201827242524), (1, 24.93436877076412, 40.135000000000005), (1, 24.93436877076412, 40.135000000000005), (2, 7.565094208922139, 11.131019673039622), (2, 7.565094208922139, 12.130811859240787), (2, 7.565094208922139, 13.230583264062068), (2, 7.565094208922139, 13.4305417013023), (2, 7.565094208922139, 13.730479357162649), (2, 7.565094208922139, 15.363473261291217), (2, 7.565094208922139, 15.396799667497922), (2, 7.565094208922139, 15.69673732335827), (2, 7.565094208922139, 16.529897478525907), (2, 7.565094208922139, 17.896280133000833), (2, 7.565094208922139, 17.896280133000833), (2, 7.565094208922139, 17.929606539207537), (2, 7.565094208922139, 18.962725131615407), (2, 7.565094208922139, 20.062496536436687), (2, 7.565094208922139, 23.195178719867), (2, 27.327653089498476, 33.02646855084511), (2, 27.327653089498476, 34.392851205320035), (2, 27.327653089498476, 35.89253948462178), (2, 27.327653089498476, 38.4586727625381), (2, 27.327653089498476, 38.558651981158214), (2, 27.327653089498476, 38.991895261845386), (2, 27.327653089498476, 39.02522166805209), (2, 27.327653089498476, 39.79172901080632), (2, 27.327653089498476, 40.09166666666667), (4, 0.03324793388429752, 4.189239669421488), (4, 0.03324793388429752, 4.787702479338843), (4, 0.03324793388429752, 5.5191570247933885), (4, 0.03324793388429752, 5.618900826446281), (4, 0.03324793388429752, 6.948818181818182), (4, 0.03324793388429752, 7.24804958677686), (4, 0.03324793388429752, 7.281297520661157), (4, 0.03324793388429752, 8.112495867768596), (4, 0.03324793388429752, 8.611214876033058), (4, 0.03324793388429752, 9.242925619834711), (4, 0.03324793388429752, 9.808140495867768), (4, 0.03324793388429752, 10.539595041322315), (4, 0.03324793388429752, 11.769768595041322), (4, 2.2608595041322315, 5.5191570247933885), (4, 2.2608595041322315, 5.618900826446281), (4, 2.2608595041322315, 6.948818181818182), (4, 2.2608595041322315, 7.24804958677686), (4, 2.2608595041322315, 7.281297520661157), (4, 2.2608595041322315, 8.112495867768596), (4, 2.2608595041322315, 8.611214876033058), (4, 2.2608595041322315, 9.242925619834711), (4, 2.2608595041322315, 9.808140495867768), (4, 2.2608595041322315, 10.539595041322315), (4, 2.2608595041322315, 11.769768595041322), (4, 2.2608595041322315, 15.393793388429753)]
-143
-
-fps 15, 5 videos: 
-query time:  6.325680494308472
-[(0, 36.48788584095317, 40.156686062621226), (1, 0.0, 3.066794019933555), (1, 0.0, 4.066835548172758), (1, 0.0, 4.466852159468439), (1, 0.0, 6.33359634551495), (1, 0.0, 6.466935215946844), (1, 0.0, 6.933621262458472), (1, 0.0, 8.333679401993356), (1, 0.0, 9.067043189368771), (1, 0.0, 9.800406976744187), (1, 0.0, 10.13375415282392), (1, 0.0, 11.400473421926911), (1, 0.0, 11.667151162790699), (1, 0.0, 12.133837209302326), (1, 0.0, 12.533853820598008), (1, 1.4000581395348837, 4.066835548172758), (1, 1.4000581395348837, 4.466852159468439), (1, 1.4000581395348837, 6.33359634551495), (1, 1.4000581395348837, 6.466935215946844), (1, 1.4000581395348837, 6.933621262458472), (1, 1.4000581395348837, 8.333679401993356), (1, 1.4000581395348837, 9.067043189368771), (1, 1.4000581395348837, 9.800406976744187), (1, 1.4000581395348837, 10.13375415282392), (1, 1.4000581395348837, 11.400473421926911), (1, 1.4000581395348837, 11.667151162790699), (1, 1.4000581395348837, 12.133837209302326), (1, 1.4000581395348837, 12.533853820598008), (1, 1.4000581395348837, 12.867200996677742), (1, 9.067043189368771, 11.400473421926911), (1, 9.067043189368771, 11.667151162790699), (1, 9.067043189368771, 12.533853820598008), (1, 9.067043189368771, 12.867200996677742), (1, 9.067043189368771, 13.53389534883721), (1, 9.067043189368771, 14.733945182724254), (1, 9.067043189368771, 14.933953488372094), (1, 9.067043189368771, 15.067292358803988), (1, 9.067043189368771, 16.134003322259137), (1, 9.067043189368771, 16.534019933554816), (1, 9.067043189368771, 17.200714285714287), (1, 9.067043189368771, 17.667400332225913), (1, 9.067043189368771, 18.334094684385384), (1, 9.067043189368771, 20.934202657807308), (1, 9.067043189368771, 21.067541528239204), (1, 9.067043189368771, 21.400888704318938), (1, 10.267093023255814, 12.867200996677742), (1, 10.267093023255814, 13.53389534883721), (1, 10.267093023255814, 14.733945182724254), (1, 10.267093023255814, 14.933953488372094), (1, 10.267093023255814, 15.067292358803988), (1, 10.267093023255814, 16.134003322259137), (1, 10.267093023255814, 16.534019933554816), (1, 10.267093023255814, 17.200714285714287), (1, 10.267093023255814, 17.667400332225913), (1, 10.267093023255814, 18.334094684385384), (1, 10.267093023255814, 20.934202657807308), (1, 10.267093023255814, 21.067541528239204), (1, 10.267093023255814, 21.400888704318938), (1, 10.267093023255814, 22.46759966777409), (1, 10.267093023255814, 25.134377076411962), (1, 13.33388704318937, 16.134003322259137), (1, 13.33388704318937, 16.134003322259137), (1, 13.33388704318937, 16.534019933554816), (1, 13.33388704318937, 16.534019933554816), (1, 13.33388704318937, 17.200714285714287), (1, 13.33388704318937, 17.200714285714287), (1, 13.33388704318937, 17.667400332225913), (1, 13.33388704318937, 17.667400332225913), (1, 13.33388704318937, 18.334094684385384), (1, 13.33388704318937, 18.334094684385384), (1, 13.33388704318937, 20.934202657807308), (1, 13.33388704318937, 20.934202657807308), (1, 13.33388704318937, 21.067541528239204), (1, 13.33388704318937, 21.067541528239204), (1, 13.33388704318937, 21.400888704318938), (1, 13.33388704318937, 21.400888704318938), (1, 13.33388704318937, 22.46759966777409), (1, 13.33388704318937, 22.46759966777409), (1, 13.33388704318937, 23.734318936877077), (1, 13.33388704318937, 23.734318936877077), (1, 13.33388704318937, 23.800988372093023), (1, 13.33388704318937, 23.800988372093023), (1, 13.33388704318937, 24.93436877076412), (1, 13.33388704318937, 24.93436877076412), (1, 13.33388704318937, 25.134377076411962), (1, 13.33388704318937, 25.134377076411962), (1, 13.33388704318937, 25.40105481727575), (1, 13.33388704318937, 25.40105481727575), (1, 13.33388704318937, 27.66781561461794), (1, 13.33388704318937, 27.66781561461794), (1, 13.33388704318937, 28.467848837209303), (1, 13.33388704318937, 28.467848837209303), (1, 17.000705980066446, 20.934202657807308), (1, 17.000705980066446, 21.067541528239204), (1, 17.000705980066446, 21.400888704318938), (1, 17.000705980066446, 22.46759966777409), (1, 17.000705980066446, 23.734318936877077), (1, 17.000705980066446, 23.800988372093023), (1, 17.000705980066446, 24.93436877076412), (1, 17.000705980066446, 25.134377076411962), (1, 17.000705980066446, 25.40105481727575), (1, 17.000705980066446, 26.801112956810634), (1, 17.000705980066446, 27.534476744186048), (1, 17.000705980066446, 27.66781561461794), (1, 17.000705980066446, 27.73448504983389), (1, 17.000705980066446, 27.801154485049835), (1, 17.000705980066446, 27.86782392026578), (1, 17.000705980066446, 28.467848837209303), (1, 17.000705980066446, 28.867865448504986), (1, 17.000705980066446, 29.401220930232558), (1, 18.000747508305647, 20.934202657807308), (1, 18.000747508305647, 21.067541528239204), (1, 18.000747508305647, 21.400888704318938), (1, 18.000747508305647, 22.46759966777409), (1, 18.000747508305647, 23.734318936877077), (1, 18.000747508305647, 23.800988372093023), (1, 18.000747508305647, 24.93436877076412), (1, 18.000747508305647, 25.134377076411962), (1, 18.000747508305647, 25.40105481727575), (1, 18.000747508305647, 26.801112956810634), (1, 18.000747508305647, 27.534476744186048), (1, 18.000747508305647, 27.66781561461794), (1, 18.000747508305647, 27.73448504983389), (1, 18.000747508305647, 27.801154485049835), (1, 18.000747508305647, 27.86782392026578), (1, 18.000747508305647, 28.467848837209303), (1, 18.000747508305647, 28.867865448504986), (1, 18.000747508305647, 29.401220930232558), (1, 18.000747508305647, 29.667898671096346), (1, 18.000747508305647, 29.867906976744187), (1, 18.000747508305647, 30.334593023255817), (1, 18.000747508305647, 31.001287375415284), (1, 22.46759966777409, 24.93436877076412), (1, 22.46759966777409, 25.40105481727575), (1, 22.46759966777409, 26.801112956810634), (1, 22.46759966777409, 27.534476744186048), (1, 22.46759966777409, 27.73448504983389), (1, 22.46759966777409, 27.801154485049835), (1, 22.46759966777409, 27.86782392026578), (1, 22.46759966777409, 28.467848837209303), (1, 22.46759966777409, 28.867865448504986), (1, 22.46759966777409, 29.401220930232558), (1, 22.46759966777409, 29.667898671096346), (1, 22.46759966777409, 29.867906976744187), (1, 22.46759966777409, 30.334593023255817), (1, 22.46759966777409, 31.001287375415284), (1, 22.46759966777409, 31.734651162790698), (1, 22.46759966777409, 32.468014950166115), (1, 22.46759966777409, 35.334800664451826), (1, 22.46759966777409, 36.001495016611294), (1, 22.46759966777409, 37.0015365448505), (1, 22.46759966777409, 40.135000000000005), (1, 24.93436877076412, 27.86782392026578), (1, 24.93436877076412, 28.867865448504986), (1, 24.93436877076412, 29.401220930232558), (1, 24.93436877076412, 29.667898671096346), (1, 24.93436877076412, 29.867906976744187), (1, 24.93436877076412, 30.334593023255817), (1, 24.93436877076412, 31.001287375415284), (1, 24.93436877076412, 31.734651162790698), (1, 24.93436877076412, 32.468014950166115), (1, 24.93436877076412, 35.334800664451826), (1, 24.93436877076412, 35.53480897009967), (1, 24.93436877076412, 36.001495016611294), (1, 24.93436877076412, 36.46818106312293), (1, 24.93436877076412, 36.93486710963455), (1, 24.93436877076412, 37.0015365448505), (1, 24.93436877076412, 40.135000000000005), (1, 24.93436877076412, 40.135000000000005), (1, 36.001495016611294, 40.135000000000005), (1, 36.001495016611294, 40.135000000000005), (1, 36.001495016611294, 40.135000000000005), (2, 7.598420615128845, 10.597797173732335), (2, 7.598420615128845, 12.33077029648102), (2, 7.598420615128845, 12.397423108894431), (2, 7.598420615128845, 13.663826544749238), (2, 7.598420615128845, 13.730479357162649), (2, 7.598420615128845, 15.063535605430868), (2, 7.598420615128845, 15.396799667497922), (2, 7.598420615128845, 15.730063729564977), (2, 7.598420615128845, 17.862953726794125), (2, 7.598420615128845, 17.99625935162095), (2, 7.598420615128845, 18.12956497644777), (2, 7.598420615128845, 19.46262122471599), (2, 7.598420615128845, 20.662371848157385), (2, 7.598420615128845, 23.195178719867), (2, 27.127694652258242, 31.593433083956775), (2, 27.127694652258242, 33.12644776946522), (2, 27.127694652258242, 34.72611526738709), (2, 27.127694652258242, 36.25912995289554), (2, 27.127694652258242, 38.4586727625381), (2, 27.127694652258242, 38.79193682460515), (2, 27.127694652258242, 38.991895261845386), (2, 27.127694652258242, 39.058548074258795), (2, 27.127694652258242, 40.12499307287337), (2, 27.127694652258242, 40.12499307287337), (4, 0.06649586776859504, 2.5933388429752067), (4, 0.06649586776859504, 4.189239669421488), (4, 0.06649586776859504, 4.787702479338843), (4, 0.06649586776859504, 5.5191570247933885), (4, 0.06649586776859504, 6.982066115702479), (4, 0.06649586776859504, 7.181553719008265), (4, 0.06649586776859504, 7.3145454545454545), (4, 0.06649586776859504, 8.112495867768596), (4, 0.06649586776859504, 8.311983471074381), (4, 0.06649586776859504, 8.777454545454546), (4, 0.06649586776859504, 9.176429752066115), (4, 0.06649586776859504, 9.841388429752067), (4, 0.06649586776859504, 10.572842975206612), (4, 0.06649586776859504, 10.971818181818183), (4, 0.06649586776859504, 11.769768595041322)]
-211
-
-skip 1 frame for every 5 frames, 5 videos:
-query time:  9.797258615493774
-[(0, 36.4795476586312, 40.14834788029925), (1, 0.0, 3.5001453488372096), (1, 0.0, 3.5001453488372096), (1, 0.0, 4.833534053156146), (1, 0.0, 4.9585392441860465), (1, 0.0, 5.333554817275748), (1, 0.0, 6.33359634551495), (1, 0.0, 6.33359634551495), (1, 0.0, 7.166964285714286), (1, 0.0, 8.333679401993356), (1, 0.0, 9.458726121262458), (1, 0.0, 10.000415282392026), (1, 0.0, 10.500436046511629), (1, 0.0, 11.625482765780731), (1, 0.0, 12.333845514950166), (1, 0.0, 12.500519102990033), (1, 1.3750571013289037, 4.833534053156146), (1, 1.3750571013289037, 4.9585392441860465), (1, 1.3750571013289037, 5.333554817275748), (1, 1.3750571013289037, 6.33359634551495), (1, 1.3750571013289037, 6.33359634551495), (1, 1.3750571013289037, 7.166964285714286), (1, 1.3750571013289037, 8.333679401993356), (1, 1.3750571013289037, 9.458726121262458), (1, 1.3750571013289037, 10.000415282392026), (1, 1.3750571013289037, 10.500436046511629), (1, 1.3750571013289037, 11.625482765780731), (1, 1.3750571013289037, 12.333845514950166), (1, 1.3750571013289037, 12.500519102990033), (1, 1.3750571013289037, 12.708861088039868), (1, 1.3750571013289037, 13.500560631229236), (1, 10.292094061461794, 12.708861088039868), (1, 10.292094061461794, 13.500560631229236), (1, 10.292094061461794, 14.50060215946844), (1, 10.292094061461794, 15.167296511627908), (1, 10.292094061461794, 15.667317275747509), (1, 10.292094061461794, 16.500685215946845), (1, 10.292094061461794, 17.500726744186046), (1, 10.292094061461794, 17.667400332225913), (1, 10.292094061461794, 18.334094684385384), (1, 10.292094061461794, 20.500851328903654), (1, 10.292094061461794, 20.95920369601329), (1, 10.292094061461794, 21.625898048172758), (1, 10.292094061461794, 22.459265988372096), (1, 10.292094061461794, 22.79261316445183), (1, 17.000705980066446, 20.500851328903654), (1, 17.000705980066446, 20.95920369601329), (1, 17.000705980066446, 21.625898048172758), (1, 17.000705980066446, 22.459265988372096), (1, 17.000705980066446, 22.79261316445183), (1, 17.000705980066446, 23.500975913621264), (1, 17.000705980066446, 23.750986295681063), (1, 17.000705980066446, 24.167670265780732), (1, 17.000705980066446, 24.7093594269103), (1, 17.000705980066446, 25.167711794019933), (1, 17.000705980066446, 25.376053779069768), (1, 17.000705980066446, 26.417763704318936), (1, 17.000705980066446, 26.834447674418605), (1, 17.000705980066446, 27.54281042358804), (1, 17.000705980066446, 27.709484011627907), (1, 17.000705980066446, 27.751152408637875), (1, 17.000705980066446, 27.876157599667774), (1, 17.000705980066446, 28.001162790697677), (1, 17.000705980066446, 29.50122508305648), (1, 17.000705980066446, 29.834572259136213), (1, 18.000747508305647, 20.95920369601329), (1, 18.000747508305647, 21.625898048172758), (1, 18.000747508305647, 22.459265988372096), (1, 18.000747508305647, 22.79261316445183), (1, 18.000747508305647, 23.500975913621264), (1, 18.000747508305647, 23.750986295681063), (1, 18.000747508305647, 24.167670265780732), (1, 18.000747508305647, 24.7093594269103), (1, 18.000747508305647, 25.167711794019933), (1, 18.000747508305647, 25.376053779069768), (1, 18.000747508305647, 26.417763704318936), (1, 18.000747508305647, 26.834447674418605), (1, 18.000747508305647, 27.54281042358804), (1, 18.000747508305647, 27.709484011627907), (1, 18.000747508305647, 27.751152408637875), (1, 18.000747508305647, 27.876157599667774), (1, 18.000747508305647, 28.001162790697677), (1, 18.000747508305647, 29.50122508305648), (1, 18.000747508305647, 29.834572259136213), (1, 18.000747508305647, 29.834572259136213), (1, 24.959369808970102, 27.876157599667774), (1, 24.959369808970102, 29.50122508305648), (1, 24.959369808970102, 29.834572259136213), (1, 24.959369808970102, 30.91795058139535), (1, 24.959369808970102, 31.29296615448505), (1, 24.959369808970102, 31.79298691860465), (1, 24.959369808970102, 32.501349667774086), (1, 24.959369808970102, 35.334800664451826), (1, 24.959369808970102, 36.001495016611294), (1, 24.959369808970102, 36.2515053986711), (1, 24.959369808970102, 36.376510589701), (1, 24.959369808970102, 36.95986814784053), (1, 24.959369808970102, 37.0015365448505), (1, 24.959369808970102, 40.168334717607976), (1, 24.959369808970102, 40.168334717607976), (2, 7.581757412025492, 10.539475962870602), (2, 7.581757412025492, 10.872740024937656), (2, 7.581757412025492, 12.372428304239401), (2, 7.581757412025492, 12.414086311997783), (2, 7.581757412025492, 12.99729842061513), (2, 7.581757412025492, 13.788800568024383), (2, 7.581757412025492, 14.83025076198393), (2, 7.581757412025492, 15.496778886118038), (2, 7.581757412025492, 15.621752909393184), (2, 7.581757412025492, 17.871285328345802), (2, 7.581757412025492, 17.871285328345802), (2, 7.581757412025492, 18.03791735937933), (2, 7.581757412025492, 19.037709545580494), (2, 7.581757412025492, 20.07915973954004), (2, 7.581757412025492, 23.203510321418676), (2, 27.119363050706568, 32.74319409808811), (2, 27.119363050706568, 33.034800152396784), (2, 27.119363050706568, 34.28454038514824), (2, 27.119363050706568, 35.784228664449984), (2, 27.119363050706568, 38.283709129952896), (2, 27.119363050706568, 38.57531518426157), (2, 27.119363050706568, 38.825263230811856), (2, 27.119363050706568, 39.03355326960377), (2, 27.119363050706568, 39.07521127736215), (2, 27.119363050706568, 40.1166614713217), (4, 0.0415599173553719, 4.197551652892562), (4, 0.0415599173553719, 4.820950413223141), (4, 0.0415599173553719, 5.6521487603305784), (4, 0.0415599173553719, 5.6521487603305784), (4, 0.0415599173553719, 6.982066115702479), (4, 0.0415599173553719, 7.189865702479339), (4, 0.0415599173553719, 7.3145454545454545), (4, 0.0415599173553719, 8.145743801652893), (4, 0.0415599173553719, 8.228863636363636), (4, 0.0415599173553719, 9.226301652892563), (4, 0.0415599173553719, 9.267861570247934), (4, 0.0415599173553719, 10.556219008264463), (4, 0.0415599173553719, 10.680898760330578), (4, 0.0415599173553719, 11.80301652892562), (4, 0.0415599173553719, 11.80301652892562), (4, 2.2857954545454544, 5.6521487603305784), (4, 2.2857954545454544, 5.6521487603305784), (4, 2.2857954545454544, 6.982066115702479), (4, 2.2857954545454544, 7.189865702479339), (4, 2.2857954545454544, 7.3145454545454545), (4, 2.2857954545454544, 8.145743801652893), (4, 2.2857954545454544, 8.228863636363636), (4, 2.2857954545454544, 9.226301652892563), (4, 2.2857954545454544, 9.267861570247934), (4, 2.2857954545454544, 10.556219008264463), (4, 2.2857954545454544, 10.680898760330578), (4, 2.2857954545454544, 11.80301652892562), (4, 2.2857954545454544, 11.80301652892562), (4, 2.2857954545454544, 15.418729338842976)]
-154
-
-skip 1 frame for every 10 frames, 5 videos:
-query time:  11.083552360534668
-[(0, 36.46565068809458, 40.13445090976263), (1, 0.0, 3.6668189368770765), (1, 0.0, 5.2594776670358065), (1, 0.0, 5.333554817275748), (1, 0.0, 6.33359634551495), (1, 0.0, 6.33359634551495), (1, 0.0, 7.185483573274271), (1, 0.0, 8.333679401993356), (1, 0.0, 9.44483665559247), (1, 0.0, 10.000415282392026), (1, 0.0, 11.630112587670729), (1, 0.0, 12.333845514950166), (1, 0.0, 12.630154115909932), (1, 1.3704272794389074, 5.2594776670358065), (1, 1.3704272794389074, 5.333554817275748), (1, 1.3704272794389074, 6.33359634551495), (1, 1.3704272794389074, 6.33359634551495), (1, 1.3704272794389074, 7.185483573274271), (1, 1.3704272794389074, 8.333679401993356), (1, 1.3704272794389074, 9.44483665559247), (1, 1.3704272794389074, 10.000415282392026), (1, 1.3704272794389074, 11.630112587670729), (1, 1.3704272794389074, 12.333845514950166), (1, 1.3704272794389074, 12.630154115909932), (1, 1.3704272794389074, 12.70423126614987), (1, 10.296723883351792, 12.70423126614987), (1, 10.296723883351792, 14.482082871908455), (1, 10.296723883351792, 15.185815799187893), (1, 10.296723883351792, 15.667317275747509), (1, 10.296723883351792, 16.51920450350683), (1, 10.296723883351792, 17.519246031746032), (1, 10.296723883351792, 17.667400332225913), (1, 10.296723883351792, 18.334094684385384), (1, 10.296723883351792, 20.51937061646364), (1, 10.296723883351792, 20.667524916943524), (1, 10.296723883351792, 20.963833517903286), (1, 10.296723883351792, 21.037910668143226), (1, 10.296723883351792, 22.445376522702105), (1, 10.296723883351792, 22.77872369878184), (1, 10.296723883351792, 25.14919250645995), (1, 17.000705980066446, 20.51937061646364), (1, 17.000705980066446, 20.667524916943524), (1, 17.000705980066446, 20.963833517903286), (1, 17.000705980066446, 21.037910668143226), (1, 17.000705980066446, 22.445376522702105), (1, 17.000705980066446, 22.77872369878184), (1, 17.000705980066446, 23.741726651901068), (1, 17.000705980066446, 23.778765227021044), (1, 17.000705980066446, 24.149150978220746), (1, 17.000705980066446, 24.704729605020304), (1, 17.000705980066446, 25.14919250645995), (1, 17.000705980066446, 25.371423957179772), (1, 17.000705980066446, 26.81592838685862), (1, 17.000705980066446, 27.556699889258027), (1, 17.000705980066446, 27.66781561461794), (1, 17.000705980066446, 27.74189276485788), (1, 17.000705980066446, 27.890047065337765), (1, 17.000705980066446, 28.001162790697677), (1, 17.000705980066446, 29.667898671096346), (1, 17.000705980066446, 30.334593023255817), (1, 18.000747508305647, 20.963833517903286), (1, 18.000747508305647, 21.037910668143226), (1, 18.000747508305647, 22.445376522702105), (1, 18.000747508305647, 22.77872369878184), (1, 18.000747508305647, 23.741726651901068), (1, 18.000747508305647, 23.778765227021044), (1, 18.000747508305647, 24.149150978220746), (1, 18.000747508305647, 24.704729605020304), (1, 18.000747508305647, 25.14919250645995), (1, 18.000747508305647, 25.371423957179772), (1, 18.000747508305647, 26.81592838685862), (1, 18.000747508305647, 27.556699889258027), (1, 18.000747508305647, 27.66781561461794), (1, 18.000747508305647, 27.74189276485788), (1, 18.000747508305647, 27.890047065337765), (1, 18.000747508305647, 28.001162790697677), (1, 18.000747508305647, 29.667898671096346), (1, 18.000747508305647, 29.890130121816167), (1, 18.000747508305647, 30.334593023255817), (1, 24.963999630860098, 27.890047065337765), (1, 24.963999630860098, 29.667898671096346), (1, 24.963999630860098, 29.890130121816167), (1, 24.963999630860098, 31.334634551495018), (1, 24.963999630860098, 31.66798172757475), (1, 24.963999630860098, 32.519868955334076), (1, 24.963999630860098, 35.07553063861204), (1, 24.963999630860098, 35.334800664451826), (1, 24.963999630860098, 36.001495016611294), (1, 24.963999630860098, 36.186687892211154), (1, 24.963999630860098, 36.371880767811), (1, 24.963999630860098, 36.96449796973053), (1, 24.963999630860098, 37.0015365448505), (1, 24.963999630860098, 40.14981543004799), (1, 24.963999630860098, 40.14981543004799), (2, 7.59101474708291, 10.886626027523784), (2, 7.59101474708291, 12.33077029648102), (2, 7.59101474708291, 12.99729842061513), (2, 7.59101474708291, 13.737885225208585), (2, 7.59101474708291, 13.737885225208585), (2, 7.59101474708291, 15.404205535543857), (2, 7.59101474708291, 15.404205535543857), (2, 7.59101474708291, 15.478264216003202), (2, 7.59101474708291, 16.55211508266371), (2, 7.59101474708291, 17.88517133093193), (2, 7.59101474708291, 17.922200671161605), (2, 7.59101474708291, 17.922200671161605), (2, 7.59101474708291, 19.033080878051784), (2, 7.59101474708291, 20.06990240448262), (2, 7.59101474708291, 23.217396324004802), (2, 27.10547704812044, 33.03017148486808), (2, 27.10547704812044, 34.400257073365964), (2, 27.10547704812044, 35.918460022782554), (2, 27.10547704812044, 38.473484498629965), (2, 27.10547704812044, 38.58457251931899), (2, 27.10547704812044, 39.02892460207506), (2, 27.10547704812044, 39.06595394230473), (2, 27.10547704812044, 39.806540746898186), (2, 27.10547704812044, 40.102775468735565), (4, 0.03694214876033058, 4.2114049586776865), (4, 0.03694214876033058, 4.802479338842976), (4, 0.03694214876033058, 5.541322314049586), (4, 0.03694214876033058, 5.6521487603305784), (4, 0.03694214876033058, 6.982066115702479), (4, 0.03694214876033058, 7.203719008264462), (4, 0.03694214876033058, 7.3145454545454545), (4, 0.03694214876033058, 8.127272727272727), (4, 0.03694214876033058, 8.238099173553719), (4, 0.03694214876033058, 8.792231404958677), (4, 0.03694214876033058, 9.161652892561984), (4, 0.03694214876033058, 9.272479338842976), (4, 0.03694214876033058, 9.900495867768594), (4, 0.03694214876033058, 10.565454545454545), (4, 0.03694214876033058, 11.784545454545455), (4, 2.290413223140496, 5.541322314049586), (4, 2.290413223140496, 5.6521487603305784), (4, 2.290413223140496, 6.982066115702479), (4, 2.290413223140496, 7.203719008264462), (4, 2.290413223140496, 7.3145454545454545), (4, 2.290413223140496, 8.127272727272727), (4, 2.290413223140496, 8.238099173553719), (4, 2.290413223140496, 8.792231404958677), (4, 2.290413223140496, 9.161652892561984), (4, 2.290413223140496, 9.272479338842976), (4, 2.290413223140496, 9.900495867768594), (4, 2.290413223140496, 10.565454545454545), (4, 2.290413223140496, 11.784545454545455), (4, 2.290413223140496, 13.668595041322313), (4, 2.290413223140496, 15.404876033057851)]
-148
-
-binary search, 5 videos:
-query time:  4.051605701446533
-[(0, 36.45453311166528, 40.123333333333335), (1, 0.0, 4.266843853820598), (1, 0.0, 5.233550664451827), (1, 0.0, 5.866910299003322), (1, 0.0, 6.766947674418605), (1, 0.0, 7.166964285714286), (1, 0.0, 8.600357142857144), (1, 0.0, 9.433725083056478), (1, 0.0, 9.967080564784053), (1, 0.0, 11.600481727574751), (1, 0.0, 12.600523255813954), (1, 0.0, 12.633857973421927), (1, 1.3667234219269104, 5.233550664451827), (1, 1.3667234219269104, 5.866910299003322), (1, 1.3667234219269104, 6.766947674418605), (1, 1.3667234219269104, 7.166964285714286), (1, 1.3667234219269104, 8.600357142857144), (1, 1.3667234219269104, 9.433725083056478), (1, 1.3667234219269104, 9.967080564784053), (1, 1.3667234219269104, 11.600481727574751), (1, 1.3667234219269104, 12.600523255813954), (1, 1.3667234219269104, 12.633857973421927), (1, 1.3667234219269104, 12.700527408637875), (1, 10.333762458471762, 12.700527408637875), (1, 10.333762458471762, 14.467267441860466), (1, 10.333762458471762, 15.167296511627908), (1, 10.333762458471762, 16.000664451827245), (1, 10.333762458471762, 16.500685215946845), (1, 10.333762458471762, 17.500726744186046), (1, 10.333762458471762, 18.067416943521597), (1, 10.333762458471762, 18.634107142857143), (1, 10.333762458471762, 19.96749584717608), (1, 10.333762458471762, 20.500851328903654), (1, 10.333762458471762, 20.934202657807308), (1, 10.333762458471762, 21.000872093023258), (1, 10.333762458471762, 21.800905315614617), (1, 10.333762458471762, 22.434264950166114), (1, 10.333762458471762, 22.767612126245847), (1, 10.333762458471762, 25.134377076411962), (1, 16.96737126245847, 19.96749584717608), (1, 16.96737126245847, 20.500851328903654), (1, 16.96737126245847, 20.934202657807308), (1, 16.96737126245847, 21.000872093023258), (1, 16.96737126245847, 21.800905315614617), (1, 16.96737126245847, 22.434264950166114), (1, 16.96737126245847, 22.767612126245847), (1, 16.96737126245847, 23.734318936877077), (1, 16.96737126245847, 23.767653654485052), (1, 16.96737126245847, 24.134335548172757), (1, 16.96737126245847, 24.701025747508307), (1, 16.96737126245847, 25.134377076411962), (1, 16.96737126245847, 25.367720099667775), (1, 16.96737126245847, 26.801112956810634), (1, 16.96737126245847, 27.534476744186048), (1, 16.96737126245847, 27.63448089700997), (1, 16.96737126245847, 27.73448504983389), (1, 16.96737126245847, 27.86782392026578), (1, 16.96737126245847, 28.667857142857144), (1, 16.96737126245847, 29.667898671096346), (1, 16.96737126245847, 30.334593023255817), (1, 17.967412790697676, 20.934202657807308), (1, 17.967412790697676, 21.800905315614617), (1, 17.967412790697676, 22.434264950166114), (1, 17.967412790697676, 22.767612126245847), (1, 17.967412790697676, 23.734318936877077), (1, 17.967412790697676, 23.767653654485052), (1, 17.967412790697676, 24.134335548172757), (1, 17.967412790697676, 24.701025747508307), (1, 17.967412790697676, 25.134377076411962), (1, 17.967412790697676, 25.367720099667775), (1, 17.967412790697676, 26.801112956810634), (1, 17.967412790697676, 27.534476744186048), (1, 17.967412790697676, 27.63448089700997), (1, 17.967412790697676, 27.73448504983389), (1, 17.967412790697676, 27.86782392026578), (1, 17.967412790697676, 28.667857142857144), (1, 17.967412790697676, 29.667898671096346), (1, 17.967412790697676, 29.867906976744187), (1, 17.967412790697676, 30.334593023255817), (1, 24.93436877076412, 27.73448504983389), (1, 24.93436877076412, 27.86782392026578), (1, 24.93436877076412, 29.667898671096346), (1, 24.93436877076412, 29.867906976744187), (1, 24.93436877076412, 31.334634551495018), (1, 24.93436877076412, 31.66798172757475), (1, 24.93436877076412, 32.501349667774086), (1, 24.93436877076412, 35.334800664451826), (1, 24.93436877076412, 35.96816029900332), (1, 24.93436877076412, 36.168168604651164), (1, 24.93436877076412, 36.334842192691035), (1, 24.93436877076412, 36.93486710963455), (1, 24.93436877076412, 36.968201827242524), (1, 24.93436877076412, 40.135000000000005), (1, 24.93436877076412, 40.135000000000005), (2, 7.565094208922139, 10.831082017179273), (2, 7.565094208922139, 12.130811859240787), (2, 7.565094208922139, 12.76401357716819), (2, 7.565094208922139, 13.4305417013023), (2, 7.565094208922139, 13.730479357162649), (2, 7.565094208922139, 15.363473261291217), (2, 7.565094208922139, 15.396799667497922), (2, 7.565094208922139, 15.463452479911332), (2, 7.565094208922139, 16.529897478525907), (2, 7.565094208922139, 17.59634247714048), (2, 7.565094208922139, 17.59634247714048), (2, 7.565094208922139, 17.59634247714048), (2, 27.327653089498476, 32.72653089498476), (2, 27.327653089498476, 33.02646855084511), (2, 27.327653089498476, 34.792768079800496), (2, 27.327653089498476, 34.85942089221391), (2, 27.327653089498476, 36.49241479634248), (2, 27.327653089498476, 38.558651981158214), (2, 27.327653089498476, 38.991895261845386), (2, 27.327653089498476, 39.02522166805209), (2, 27.327653089498476, 39.79172901080632), (2, 27.327653089498476, 40.09166666666667), (4, 0.03324793388429752, 4.189239669421488), (4, 0.03324793388429752, 4.787702479338843), (4, 0.03324793388429752, 5.5191570247933885), (4, 0.03324793388429752, 5.618900826446281), (4, 0.03324793388429752, 6.948818181818182), (4, 0.03324793388429752, 7.24804958677686), (4, 0.03324793388429752, 7.281297520661157), (4, 0.03324793388429752, 8.112495867768596), (4, 0.03324793388429752, 8.611214876033058), (4, 0.03324793388429752, 9.242925619834711), (4, 0.03324793388429752, 9.808140495867768), (4, 0.03324793388429752, 10.539595041322315), (4, 0.03324793388429752, 11.769768595041322), (4, 2.2608595041322315, 5.5191570247933885), (4, 2.2608595041322315, 5.618900826446281), (4, 2.2608595041322315, 6.948818181818182), (4, 2.2608595041322315, 7.24804958677686), (4, 2.2608595041322315, 7.281297520661157), (4, 2.2608595041322315, 8.112495867768596), (4, 2.2608595041322315, 8.611214876033058), (4, 2.2608595041322315, 9.242925619834711), (4, 2.2608595041322315, 9.808140495867768), (4, 2.2608595041322315, 10.539595041322315), (4, 2.2608595041322315, 11.769768595041322)]
-140
-
-binary search + rare last, 5 videos:
-query time:  12.25659728050232
-[(0, 36.45453311166528, 40.123333333333335), (1, 0.0, 4.266843853820598), (1, 0.0, 5.233550664451827), (1, 0.0, 5.866910299003322), (1, 0.0, 6.766947674418605), (1, 0.0, 7.166964285714286), (1, 0.0, 8.600357142857144), (1, 0.0, 9.433725083056478), (1, 0.0, 9.967080564784053), (1, 0.0, 11.600481727574751), (1, 0.0, 12.600523255813954), (1, 0.0, 12.633857973421927), (1, 1.3667234219269104, 5.233550664451827), (1, 1.3667234219269104, 5.866910299003322), (1, 1.3667234219269104, 6.766947674418605), (1, 1.3667234219269104, 7.166964285714286), (1, 1.3667234219269104, 8.600357142857144), (1, 1.3667234219269104, 9.433725083056478), (1, 1.3667234219269104, 9.967080564784053), (1, 1.3667234219269104, 11.600481727574751), (1, 1.3667234219269104, 12.600523255813954), (1, 1.3667234219269104, 12.633857973421927), (1, 1.3667234219269104, 12.700527408637875), (1, 10.333762458471762, 12.700527408637875), (1, 10.333762458471762, 14.467267441860466), (1, 10.333762458471762, 15.167296511627908), (1, 10.333762458471762, 16.000664451827245), (1, 10.333762458471762, 16.500685215946845), (1, 10.333762458471762, 17.500726744186046), (1, 10.333762458471762, 18.067416943521597), (1, 10.333762458471762, 18.634107142857143), (1, 10.333762458471762, 19.96749584717608), (1, 10.333762458471762, 20.500851328903654), (1, 10.333762458471762, 20.934202657807308), (1, 10.333762458471762, 21.000872093023258), (1, 10.333762458471762, 21.800905315614617), (1, 10.333762458471762, 22.434264950166114), (1, 10.333762458471762, 22.767612126245847), (1, 10.333762458471762, 25.134377076411962), (1, 16.96737126245847, 19.96749584717608), (1, 16.96737126245847, 20.500851328903654), (1, 16.96737126245847, 20.934202657807308), (1, 16.96737126245847, 21.000872093023258), (1, 16.96737126245847, 21.800905315614617), (1, 16.96737126245847, 22.434264950166114), (1, 16.96737126245847, 22.767612126245847), (1, 16.96737126245847, 23.734318936877077), (1, 16.96737126245847, 23.767653654485052), (1, 16.96737126245847, 24.134335548172757), (1, 16.96737126245847, 24.701025747508307), (1, 16.96737126245847, 25.134377076411962), (1, 16.96737126245847, 25.367720099667775), (1, 16.96737126245847, 26.801112956810634), (1, 16.96737126245847, 27.534476744186048), (1, 16.96737126245847, 27.63448089700997), (1, 16.96737126245847, 27.73448504983389), (1, 16.96737126245847, 27.86782392026578), (1, 16.96737126245847, 28.667857142857144), (1, 16.96737126245847, 29.667898671096346), (1, 16.96737126245847, 30.334593023255817), (1, 17.967412790697676, 20.934202657807308), (1, 17.967412790697676, 21.800905315614617), (1, 17.967412790697676, 22.434264950166114), (1, 17.967412790697676, 22.767612126245847), (1, 17.967412790697676, 23.734318936877077), (1, 17.967412790697676, 23.767653654485052), (1, 17.967412790697676, 24.134335548172757), (1, 17.967412790697676, 24.701025747508307), (1, 17.967412790697676, 25.134377076411962), (1, 17.967412790697676, 25.367720099667775), (1, 17.967412790697676, 26.801112956810634), (1, 17.967412790697676, 27.534476744186048), (1, 17.967412790697676, 27.63448089700997), (1, 17.967412790697676, 27.73448504983389), (1, 17.967412790697676, 27.86782392026578), (1, 17.967412790697676, 28.667857142857144), (1, 17.967412790697676, 29.667898671096346), (1, 17.967412790697676, 29.867906976744187), (1, 17.967412790697676, 30.334593023255817), (1, 24.93436877076412, 27.73448504983389), (1, 24.93436877076412, 27.86782392026578), (1, 24.93436877076412, 29.667898671096346), (1, 24.93436877076412, 29.867906976744187), (1, 24.93436877076412, 31.334634551495018), (1, 24.93436877076412, 31.66798172757475), (1, 24.93436877076412, 32.501349667774086), (1, 24.93436877076412, 35.334800664451826), (1, 24.93436877076412, 35.96816029900332), (1, 24.93436877076412, 36.168168604651164), (1, 24.93436877076412, 36.334842192691035), (1, 24.93436877076412, 36.93486710963455), (1, 24.93436877076412, 36.968201827242524), (1, 24.93436877076412, 40.135000000000005), (1, 24.93436877076412, 40.135000000000005), (2, 7.565094208922139, 11.131019673039622), (2, 7.565094208922139, 12.130811859240787), (2, 7.565094208922139, 13.230583264062068), (2, 7.565094208922139, 13.4305417013023), (2, 7.565094208922139, 13.730479357162649), (2, 7.565094208922139, 15.363473261291217), (2, 7.565094208922139, 15.396799667497922), (2, 7.565094208922139, 15.69673732335827), (2, 7.565094208922139, 16.529897478525907), (2, 7.565094208922139, 17.896280133000833), (2, 7.565094208922139, 17.896280133000833), (2, 7.565094208922139, 17.929606539207537), (2, 7.565094208922139, 18.962725131615407), (2, 7.565094208922139, 20.062496536436687), (2, 7.565094208922139, 23.195178719867), (2, 27.327653089498476, 33.02646855084511), (2, 27.327653089498476, 34.392851205320035), (2, 27.327653089498476, 35.89253948462178), (2, 27.327653089498476, 38.4586727625381), (2, 27.327653089498476, 38.558651981158214), (2, 27.327653089498476, 38.991895261845386), (2, 27.327653089498476, 39.02522166805209), (2, 27.327653089498476, 39.79172901080632), (2, 27.327653089498476, 40.09166666666667), (4, 0.03324793388429752, 4.189239669421488), (4, 0.03324793388429752, 4.787702479338843), (4, 0.03324793388429752, 5.5191570247933885), (4, 0.03324793388429752, 5.618900826446281), (4, 0.03324793388429752, 6.948818181818182), (4, 0.03324793388429752, 7.24804958677686), (4, 0.03324793388429752, 7.281297520661157), (4, 0.03324793388429752, 8.112495867768596), (4, 0.03324793388429752, 8.611214876033058), (4, 0.03324793388429752, 9.242925619834711), (4, 0.03324793388429752, 9.808140495867768), (4, 0.03324793388429752, 10.539595041322315), (4, 0.03324793388429752, 11.769768595041322), (4, 2.2608595041322315, 5.5191570247933885), (4, 2.2608595041322315, 5.618900826446281), (4, 2.2608595041322315, 6.948818181818182), (4, 2.2608595041322315, 7.24804958677686), (4, 2.2608595041322315, 7.281297520661157), (4, 2.2608595041322315, 8.112495867768596), (4, 2.2608595041322315, 8.611214876033058), (4, 2.2608595041322315, 9.242925619834711), (4, 2.2608595041322315, 9.808140495867768), (4, 2.2608595041322315, 10.539595041322315), (4, 2.2608595041322315, 11.769768595041322), (4, 2.2608595041322315, 15.393793388429753)]
-143
-"""
-
-
-"""
-Query 2:
-query time:  2.8341503143310547
-[(2, 1.7329731227486838, 11.66424217234691), (2, 5.43220421169299, 11.66424217234691), (2, 7.065198115821557, 11.66424217234691)]
-3
-
-Query 2, binary search + rare first:
-query time:  2.1459429264068604
-[(2, 1.7329731227486838, 11.66424217234691), (2, 5.43220421169299, 11.66424217234691), (2, 7.065198115821557, 11.66424217234691)]
-3
-
-Query 2, binary search + rare last:
-query time:  0.6089482307434082
-[(2, 1.7329731227486838, 11.66424217234691), (2, 5.43220421169299, 11.66424217234691), (2, 7.065198115821557, 11.66424217234691)]
-3
-"""
+    executor = Executor("car_turning", train_video_fn_list, val_video_fn_list)
+    executor.execute()
+    executor.close_connection()
