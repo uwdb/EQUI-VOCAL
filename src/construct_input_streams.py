@@ -104,7 +104,7 @@ def construct_input_streams_same_car_reappears(connection):
     return car_stream
 
 
-def construct_input_streams_car_turning_right(connection, idx):
+def construct_input_streams_car_turning(connection, video_fn):
     # Query: Car turning right. 
     # Heuristic: object detection for car, and bounding box overlaps a specific region. 
     
@@ -117,7 +117,7 @@ def construct_input_streams_car_turning_right(connection, idx):
     cursor = connection.cursor()
     
     # Construct car stream: some car turning in the intersection
-    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-%s.mp4'", [idx])
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = %s", [video_fn])
     for row in cursor:
         start_time, end_time, x1, x2, y1, y2, frame_id = row
         car_box = (x1, y1, x2, y2)
@@ -129,7 +129,7 @@ def construct_input_streams_car_turning_right(connection, idx):
     return car_stream
 
 
-def construct_input_streams_car_turning_right_neg(connection, idx):
+def construct_input_streams_car_turning_neg(connection, video_fn):
     # Query: Car turning right. 
     # Heuristic: object detection for car, and bounding box overlaps a specific region. 
     
@@ -142,7 +142,7 @@ def construct_input_streams_car_turning_right_neg(connection, idx):
     cursor = connection.cursor()
 
     # Construct car stream: no car turning in the intersection
-    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = 'traffic-%s.mp4' ORDER BY v.frame_id", [idx])
+    cursor.execute("SELECT e.start_time, e.end_time, v.x1, v.x2, v.y1, v.y2, v.frame_id FROM Car c, Event e, VisibleAt v WHERE e.event_id = c.event_id AND e.event_id = v.event_id AND v.filename = %s ORDER BY v.frame_id", [video_fn])
     current_frame_id = 0
     results = cursor.fetchall()
     for row in results:
