@@ -5,7 +5,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
 import numpy as np
-import torchvision
 from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
 import time
@@ -13,13 +12,12 @@ import os
 import copy
 from torchvision.utils import save_image
 
-# plt.ion()   # interactive mode
-
 def crop(image):
     return transforms.functional.crop(image, 350, 0, 190, 820)
 
-# Data augmentation and normalization for training
-# Just normalization for validation
+# Data augmentation and normalization for training data; only normalization for validation data
+
+# version 1: Augmentation with region cropping
 # data_transforms = {
 #     'train': transforms.Compose([
 #         transforms.Lambda(crop),
@@ -38,6 +36,7 @@ def crop(image):
 #     ]),
 # }
 
+# version 2: Augmentation without region cropping
 data_transforms = {
     'train': transforms.Compose([
         transforms.Resize((256,256)),
@@ -61,7 +60,8 @@ inv_transforms = transforms.Compose([
                              std = [ 1., 1., 1. ])
     ])
 
-data_dir = '/home/ubuntu/CSE544-project/rekall/tutorials/avg_cars'
+data_dir = '/home/ubuntu/complex_event_video/data/car_turning'
+
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
                   for x in ['train', 'val']}
@@ -87,9 +87,9 @@ def imshow(inp, title=None):
         plt.title(title)
     # plt.pause(0.001)  # pause a bit so that plots are updated
 
-########################
-# Visualize a few images
-########################
+"""
+Visualize a few images
+"""
 # # Get a batch of training data
 # inputs, classes = next(iter(dataloaders['train']))
 
@@ -99,9 +99,9 @@ def imshow(inp, title=None):
 # imshow(out, title=[class_names[x] for x in classes])
 
 
-########################
-# Training the model
-########################
+"""
+Training the model
+"""
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     since = time.time()
 
@@ -161,7 +161,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
             precision = running_tp / (running_tp + running_fp + epsilon)
             recall = running_tp / (running_tp + running_fn + epsilon)
-            
+
             f1 = 2 * (precision*recall) / (precision + recall + epsilon)
 
             epoch_loss = running_loss / dataset_sizes[phase]
@@ -187,13 +187,12 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     return model
 
 
-######################################
-# Finetuning the convNet 
-######################################
+"""
+Finetuning the convNet
+"""
 model_ft = models.resnet18(pretrained=True)
+# Reset the final fully connected layer
 num_ftrs = model_ft.fc.in_features
-# Here the size of each output sample is set to 2.
-# Alternatively, it can be generalized to nn.Linear(num_ftrs, len(class_names)).
 model_ft.fc = nn.Linear(num_ftrs, 2)
 # model_ft.fc = nn.Sequential(
 #     nn.Dropout(0.5),
@@ -212,52 +211,27 @@ exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=25)
 
 # Save the model (state_dict) for inference
-torch.save(model_ft.state_dict(), "/home/ubuntu/CSE544-project/rekall/tutorials/avg_cars/state_dict_model.pt")
+torch.save(model_ft.state_dict(), os.path.join(data_dir, "state_dict_model.pt"))
 
-# model_ft.load_state_dict(torch.load('/home/ubuntu/CSE544-project/rekall/tutorials/person_edge_corner/state_dict_model.pt'))
+"""
+Visualize prediction results
+Results will be saved to a subdirectory "/pred" of the event directory.
+Each image file is named as:
+{image_index}_pred-{predicted label}-true-{true label}.jpg
+"""
+directory = os.path.join(data_dir, "pred")
+if not os.path.exists(directory):
+    os.makedirs(directory)
 
-#########
-# write results
-#########
-model_ft.eval() 
+model_ft.eval()
 images_so_far = 0
 with torch.no_grad():
     for i, (inputs, labels) in enumerate(dataloaders['val']):
         inputs = inputs.to(device)
-    
+
         outputs = model_ft(inputs)
         _, preds = torch.max(outputs, 1)
 
         for j in range(inputs.size()[0]):
-            save_image(inv_transforms(inputs.cpu().data[j]), "/home/ubuntu/CSE544-project/rekall/tutorials/avg_cars/pred/" + str(images_so_far) +"_pred-" + str(preds[j].item()) + "-true-" + str(labels.data[j].item()) + ".jpg")
+            save_image(inv_transforms(inputs.cpu().data[j]), os.path.join(directory, "{0}_pred-{1}-true-{2}.jpg".format(images_so_far, preds[j].item(), labels.data[j].item())))
             images_so_far += 1
-
-######################################
-# ConvNet as fixed feature extractor
-######################################
-# model_conv = torchvision.models.resnet18(pretrained=True)
-# for param in model_conv.parameters():
-#     param.requires_grad = False
-
-# # Parameters of newly constructed modules have requires_grad=True by default
-# num_ftrs = model_conv.fc.in_features
-# model_conv.fc = nn.Linear(num_ftrs, 2)
-# # model_conv.fc = nn.Sequential(
-# #     nn.Dropout(0.3),
-# #     nn.Linear(num_ftrs, int(num_ftrs/2)),
-# #     nn.Dropout(0.3),
-# #     nn.Linear(int(num_ftrs/2), 2)
-# # )
-
-# model_conv = model_conv.to(device)
-
-# criterion = nn.CrossEntropyLoss()
-
-# # Observe that only parameters of final layer are being optimized as
-# # opposed to before.
-# optimizer_conv = optim.SGD(model_conv.fc.parameters(), lr=0.001, momentum=0.9)
-
-# # Decay LR by a factor of 0.1 every 7 epochs
-# exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)
-
-# model_conv = train_model(model_conv, criterion, optimizer_conv, exp_lr_scheduler, num_epochs=25)
