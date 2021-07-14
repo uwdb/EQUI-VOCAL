@@ -1,25 +1,20 @@
 # Some basic setup:
 # Setup detectron2 logger
-import torch, torchvision
-import detectron2
+import torch
 from detectron2.utils.logger import setup_logger
 setup_logger()
 
 # import some common libraries
 import numpy as np
-import os, json, cv2, random, time, csv
+import os, cv2
 from tqdm import tqdm
-import pickle
 from PIL import Image
 from torchvision import transforms as T
-import sys
 import logging 
 
 # import some common detectron2 utilities
 from detectron2 import model_zoo
-from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
-from detectron2.data import MetadataCatalog, DatasetCatalog
 
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
@@ -48,57 +43,57 @@ def load_image(im):
     return src
 
 
-def draw_bounding_box_on_image():
-    frame_id = 9630
-    video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-4k-002.mp4")
-    num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = video.get(cv2.CAP_PROP_FPS)
+# def draw_bounding_box_on_image():
+#     frame_id = 9630
+#     video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-4k-002.mp4")
+#     num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+#     fps = video.get(cv2.CAP_PROP_FPS)
     
-    video.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+#     video.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
     
-    ret, frame = video.read()
+#     ret, frame = video.read()
 
-    cursor = connection.cursor()
-    cursor.execute("SELECT e.start_time, e.end_time, e.event_type, v.x1, v.x2, v.y1, v.y2 FROM Event e, VisibleAt v WHERE e.event_id = v.event_id AND v.filename = 'traffic-4k-002.mp4' AND v.frame_id = %s", [frame_id])
+#     cursor = connection.cursor()
+#     cursor.execute("SELECT e.start_time, e.end_time, e.event_type, v.x1, v.x2, v.y1, v.y2 FROM Event e, VisibleAt v WHERE e.event_id = v.event_id AND v.filename = 'traffic-4k-002.mp4' AND v.frame_id = %s", [frame_id])
 
-    for row in cursor:
-        start_time, end_time, event_type, x1, x2, y1, y2 = row
-        cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 3)
+#     for row in cursor:
+#         start_time, end_time, event_type, x1, x2, y1, y2 = row
+#         cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 3)
     
-    cv2.imwrite("test.jpg", frame)
+#     cv2.imwrite("test.jpg", frame)
 
-    cursor.close()
+#     cursor.close()
 
 
-def watch_out_person_cross_road_when_car_turning(connection):
-    print("start preprocessing")
-    # First time 
-    # preprocess_faster_rcnn()
-    person_stream, car_stream = construct_input_streams_watch_out_person_cross_road_when_car_turn_left(connection)
-    print("start pattern matching")
-    out_stream = pattern_matching_before_within_5s(person_stream, car_stream)
-    print("start visualizing")
-    visualize_results_watch_out_person_cross_road_when_car_turning(out_stream)
+# def watch_out_person_cross_road_when_car_turning(connection):
+#     print("start preprocessing")
+#     # First time 
+#     # preprocess_faster_rcnn()
+#     person_stream, car_stream = construct_input_streams_watch_out_person_cross_road_when_car_turn_left(connection)
+#     print("start pattern matching")
+#     out_stream = pattern_matching_before_within_5s(person_stream, car_stream)
+#     print("start visualizing")
+#     visualize_results_watch_out_person_cross_road_when_car_turning(out_stream)
 
-def car_turning(connection, idx):
-    event_name = "car_turning"
-    print("start preprocessing")
-    # First time 
-    # preprocess_faster_rcnn()
-    car_stream = construct_input_streams_car_turning(connection, idx)
-    print("start visualizing")
-    vis = Visualizer(event_name)
-    vis.visualize_results(car_stream, idx, event_name)
-    # visualize_results_car_turning_right(car_stream, idx)
+# def car_turning(connection, idx):
+#     event_name = "car_turning"
+#     print("start preprocessing")
+#     # First time 
+#     # preprocess_faster_rcnn()
+#     car_stream = construct_input_streams_car_turning(connection, idx)
+#     print("start visualizing")
+#     vis = Visualizer(event_name)
+#     vis.visualize_results(car_stream, idx, event_name)
+#     # visualize_results_car_turning_right(car_stream, idx)
 
-def motorbike_crossing(connection, idx):
-    print("start preprocessing")
-    # First time 
-    # preprocess_faster_rcnn()
-    # motorbike_stream = construct_input_streams_motorbike_crossing(connection, idx)
-    motorbike_stream = construct_input_streams_motorbike_crossing_neg(connection, idx)
-    print("start visualizing")
-    visualize_results_motorbike_crossing(motorbike_stream, idx)
+# def motorbike_crossing(connection, idx):
+#     print("start preprocessing")
+#     # First time 
+#     # preprocess_faster_rcnn()
+#     # motorbike_stream = construct_input_streams_motorbike_crossing(connection, idx)
+#     motorbike_stream = construct_input_streams_motorbike_crossing_neg(connection, idx)
+#     print("start visualizing")
+#     visualize_results_motorbike_crossing(motorbike_stream, idx)
 
 class Executor:
     def __init__(self, event_name, train_video_fn_list, val_video_fn_list):
@@ -126,8 +121,8 @@ class Executor:
         end_time = (frame_id + 1) / fps
         return start_time, end_time
 
-    @staticmethod
-    def preprocess_faster_rcnn():
+
+    def preprocess_faster_rcnn(self):
         img_id = 0
 
         video_fn_list = ["traffic-{}".format(i) for i in range(1, 21)]
@@ -166,7 +161,7 @@ class Executor:
             if not video.isOpened():
                 print("Error opening video stream or file: ", file)
             else:
-                frame_gen = self.frame_from_video(video)
+                frame_gen = frame_from_video(video)
                 for frame in tqdm(frame_gen, total=num_frames):
                     if frame_id % 10 != 0:
                         frame_id += 1
@@ -190,7 +185,7 @@ class Executor:
                         start_time, end_time = self.frame_id_to_time_interval(frame_id - (7 - idx) * 10, fps)
 
                         for pred_box, score, pred_class in zip(pred_boxes, scores, pred_classes):
-                            cursor = connection.cursor()
+                            cursor = self.connection.cursor()
                             # Store object detection results 
 
                             # Populate Event table
@@ -209,7 +204,7 @@ class Executor:
                                 cursor.execute("INSERT INTO Car VALUES (%s, %s, %s)", [event_id, 'a', -1])
                             
                         # Commit and close connection 
-                        connection.commit()
+                        self.connection.commit()
                         cursor.close()
 
                     frame_id += 1 
