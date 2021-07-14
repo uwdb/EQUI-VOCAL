@@ -10,7 +10,7 @@ import os, cv2
 from tqdm import tqdm
 from PIL import Image
 from torchvision import transforms as T
-import logging 
+import logging
 
 # import some common detectron2 utilities
 from detectron2 import model_zoo
@@ -48,9 +48,9 @@ def load_image(im):
 #     video = cv2.VideoCapture("/home/ubuntu/CSE544-project/data/visual_road/traffic-4k-002.mp4")
 #     num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
 #     fps = video.get(cv2.CAP_PROP_FPS)
-    
+
 #     video.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
-    
+
 #     ret, frame = video.read()
 
 #     cursor = connection.cursor()
@@ -59,7 +59,7 @@ def load_image(im):
 #     for row in cursor:
 #         start_time, end_time, event_type, x1, x2, y1, y2 = row
 #         cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 3)
-    
+
 #     cv2.imwrite("test.jpg", frame)
 
 #     cursor.close()
@@ -67,7 +67,7 @@ def load_image(im):
 
 # def watch_out_person_cross_road_when_car_turning(connection):
 #     print("start preprocessing")
-#     # First time 
+#     # First time
 #     # preprocess_faster_rcnn()
 #     person_stream, car_stream = construct_input_streams_watch_out_person_cross_road_when_car_turn_left(connection)
 #     print("start pattern matching")
@@ -78,7 +78,7 @@ def load_image(im):
 # def car_turning(connection, idx):
 #     event_name = "car_turning"
 #     print("start preprocessing")
-#     # First time 
+#     # First time
 #     # preprocess_faster_rcnn()
 #     car_stream = construct_input_streams_car_turning(connection, idx)
 #     print("start visualizing")
@@ -88,7 +88,7 @@ def load_image(im):
 
 # def motorbike_crossing(connection, idx):
 #     print("start preprocessing")
-#     # First time 
+#     # First time
 #     # preprocess_faster_rcnn()
 #     # motorbike_stream = construct_input_streams_motorbike_crossing(connection, idx)
 #     motorbike_stream = construct_input_streams_motorbike_crossing_neg(connection, idx)
@@ -98,8 +98,8 @@ def load_image(im):
 class Executor:
     def __init__(self, event_name, train_video_fn_list, val_video_fn_list):
         self.connection = mysql.connector.connect(
-            user='admin', 
-            password='123456abcABC', 
+            user='admin',
+            password='123456abcABC',
             host='database-1.cld3cb8o2zkf.us-east-1.rds.amazonaws.com', database='complex_event'
         )
         self.event_name = event_name
@@ -114,7 +114,7 @@ class Executor:
                 yield frame
             else:
                 break
-    
+
     @staticmethod
     def frame_id_to_time_interval(frame_id, fps):
         start_time = frame_id / fps
@@ -130,7 +130,7 @@ class Executor:
         input_video_dir = "/home/ubuntu/complex_event_video/data/visual_road"
 
         with open("ms_coco_classnames.txt") as f:
-            coco_names = f.read().splitlines() 
+            coco_names = f.read().splitlines()
 
         cfg = get_cfg()
         # add project-specific config (e.g., TensorMask) here if you're not running a model in detectron2's core library
@@ -138,7 +138,7 @@ class Executor:
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.6  # set threshold for this model
         # Find a model from detectron2's model zoo. You can use the https://dl.fbaipublicfiles... url as well
         cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml")
-        
+
         # predictor = DefaultPredictor(cfg)
         model = build_model(cfg) # returns a torch.nn.Module
         DetectionCheckpointer(model).load('model_final_280758.pkl') # must load weights this way, can't use cfg.MODEL.WEIGHTS = "..."
@@ -154,7 +154,7 @@ class Executor:
             video = cv2.VideoCapture(os.path.join(input_video_dir, file))
             num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = video.get(cv2.CAP_PROP_FPS)
-            
+
             frame_id = 0
             inputs = []
 
@@ -179,70 +179,64 @@ class Executor:
                         instances = output["instances"]
                         pred_boxes = instances.pred_boxes
                         scores = instances.scores
-                        # pred_class is idx, not string; need coco_names[pred_class.item()] to access class name 
+                        # pred_class is idx, not string; need coco_names[pred_class.item()] to access class name
                         pred_classes = instances.pred_classes
 
                         start_time, end_time = self.frame_id_to_time_interval(frame_id - (7 - idx) * 10, fps)
 
                         for pred_box, score, pred_class in zip(pred_boxes, scores, pred_classes):
                             cursor = self.connection.cursor()
-                            # Store object detection results 
+                            # Store object detection results
 
                             # Populate Event table
                             cursor.execute("INSERT INTO Event (event_type, start_time, end_time) VALUES (%s, %s, %s)", [coco_names[pred_class.item()], start_time, end_time])
                             event_id = cursor.lastrowid
-                            
-                            # Populate VisibleAt table 
+
+                            # Populate VisibleAt table
                             cursor.execute("INSERT INTO VisibleAt VALUES (%s, %s, %s, %s, %s, %s, %s)", [file, frame_id - (7 - idx) * 10, event_id, pred_box[0].item(), pred_box[2].item(), pred_box[1].item(), pred_box[3].item()])
-                            
-                            # Recognize person attribute 
+
+                            # Recognize person attribute
                             if coco_names[pred_class.item()] == "person":
                                 cursor.execute("INSERT INTO Person VALUES (%s, %s, %s)", [event_id, 0, 0])
 
                             elif coco_names[pred_class.item()] in ["car"]:
-                                # Populate Car table 
+                                # Populate Car table
                                 cursor.execute("INSERT INTO Car VALUES (%s, %s, %s)", [event_id, 'a', -1])
-                            
-                        # Commit and close connection 
+
+                        # Commit and close connection
                         self.connection.commit()
                         cursor.close()
 
-                    frame_id += 1 
-    
-    def execute(self):
+                    frame_id += 1
+
+    def execute(self, construct_stream_pos, construct_stream_neg):
         logging.info("Target event: {}".format(self.event_name))
         vis = Visualizer(self.event_name)
         # Construct sample dataset: training data
         for video_fn in self.train_video_fn_list:
             logging.info("Executing video file: {}".format(video_fn))
-            # positive training data 
-            car_stream = self.execute_pos(video_fn)
+            # positive training data
+            car_stream = construct_stream_pos(self.connection, video_fn)
             logging.info("Retrieved {} positive training outputs".format(len(car_stream)))
             vis.visualize_results(car_stream, video_fn, "train", "pos")
 
-            # negative training data 
-            car_stream = self.execute_neg(video_fn)
+            # negative training data
+            car_stream = construct_stream_neg(self.connection, video_fn)
             logging.info("Retrieved {} negative training outputs".format(len(car_stream)))
             vis.visualize_results(car_stream, video_fn, "train", "neg")
 
         # Construct sample dataset: validation data
         for video_fn in self.val_video_fn_list:
             logging.info("Executing video file: {}".format(video_fn))
-            # positive validation data 
-            car_stream = self.execute_pos(video_fn)
+            # positive validation data
+            car_stream = construct_stream_pos(self.connection, video_fn)
             logging.info("Retrieved {} positive validation outputs".format(len(car_stream)))
             vis.visualize_results(car_stream, video_fn, "val", "pos")
 
-            # negative validation data 
-            car_stream = self.execute_neg(video_fn)
+            # negative validation data
+            car_stream = construct_stream_neg(self.connection, video_fn)
             logging.info("Retrieved {} negative validation outputs".format(len(car_stream)))
             vis.visualize_results(car_stream, video_fn, "val", "neg")
-
-    def execute_pos(self, video_fn):
-        return construct_input_streams_car_turning(self.connection, video_fn)
-
-    def execute_neg(self, video_fn):
-        return construct_input_streams_car_turning_neg(self.connection, video_fn)
 
     def close_connection(self):
         self.connection.close()
@@ -254,5 +248,5 @@ if __name__ == '__main__':
     val_video_fn_list = ["traffic-{}.mp4".format(i) for i in range(16, 18)]
 
     executor = Executor("car_turning", train_video_fn_list, val_video_fn_list)
-    executor.execute()
+    executor.execute(construct_input_streams_car_turning, construct_input_streams_car_turning_neg)
     executor.close_connection()
