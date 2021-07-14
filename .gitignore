@@ -1,8 +1,7 @@
 *.mp4
 rekall/data/*
 detectron2/demo/*.mp4
-data/bdd100k/bbox_files*
-data/bdd100k/videos/
+data/
 *.csv
 *.txt
 *.zip
