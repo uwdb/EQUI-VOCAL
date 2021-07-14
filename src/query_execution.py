@@ -218,12 +218,12 @@ class Executor:
             # positive training data 
             car_stream = self.execute_pos(video_fn)
             logging.info("Retrieved {} positive training outputs".format(len(car_stream)))
-            vis.visualize_results(car_stream, video_fn, self.event_name, "train", "pos")
+            vis.visualize_results(car_stream, video_fn, "train", "pos")
 
             # negative training data 
             car_stream = self.execute_neg(video_fn)
             logging.info("Retrieved {} negative training outputs".format(len(car_stream)))
-            vis.visualize_results(car_stream, video_fn, self.event_name, "train", "neg")
+            vis.visualize_results(car_stream, video_fn, "train", "neg")
 
         # Construct sample dataset: validation data
         for video_fn in self.val_video_fn_list:
@@ -231,12 +231,12 @@ class Executor:
             # positive validation data 
             car_stream = self.execute_pos(video_fn)
             logging.info("Retrieved {} positive validation outputs".format(len(car_stream)))
-            vis.visualize_results(car_stream, video_fn, self.event_name, "val", "pos")
+            vis.visualize_results(car_stream, video_fn, "val", "pos")
 
             # negative validation data 
             car_stream = self.execute_neg(video_fn)
             logging.info("Retrieved {} negative validation outputs".format(len(car_stream)))
-            vis.visualize_results(car_stream, video_fn, self.event_name, "val", "neg")
+            vis.visualize_results(car_stream, video_fn, "val", "neg")
 
     def execute_pos(self, video_fn):
         return construct_input_streams_car_turning(self.connection, video_fn)
