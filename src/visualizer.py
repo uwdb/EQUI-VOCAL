@@ -1,4 +1,4 @@
-import os, json, cv2, random, time, csv
+import os, cv2, csv
 
 class Visualizer:
     def __init__(self, event_name, input_video_dir="/home/ubuntu/complex_event_video/data/visual_road/"):
@@ -7,7 +7,7 @@ class Visualizer:
         self.out_csv_fn = event_name + ".csv"
         self.output_dir = "/home/ubuntu/complex_event_video/data/" + event_name
 
-    def write_csv(self):
+    def write_csv(self, out_stream):
         # Write start_time, end_time to csv file
         with open(self.out_csv_fn, 'w') as f:
             writer = csv.writer(f)
@@ -19,7 +19,7 @@ class Visualizer:
                 
     def visualize_results(self, out_stream, input_video_fn, event_name, train_or_val, pos_or_neg, write_csv=False):
         if write_csv:
-            write_csv()
+            self.write_csv(out_stream)
         video = cv2.VideoCapture(os.path.join(self.input_video_dir, input_video_fn))
         num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = video.get(cv2.CAP_PROP_FPS)
