@@ -209,19 +209,19 @@ class Executor:
 
                     frame_id += 1
 
-    def execute(self, construct_stream_pos, construct_stream_neg):
+    def execute(self, construct_input_stream):
         logging.info("Target event: {}".format(self.event_name))
         vis = Visualizer(self.event_name)
         # Construct sample dataset: training data
         for video_fn in self.train_video_fn_list:
             logging.info("Executing video file: {}".format(video_fn))
             # positive training data
-            car_stream = construct_stream_pos(self.connection, video_fn)
+            car_stream = construct_input_stream(self.connection, video_fn, "pos")
             logging.info("Retrieved {} positive training outputs".format(len(car_stream)))
             vis.visualize_results(car_stream, video_fn, "train", "pos")
 
             # negative training data
-            car_stream = construct_stream_neg(self.connection, video_fn)
+            car_stream = construct_input_stream(self.connection, video_fn, "neg", 25)
             logging.info("Retrieved {} negative training outputs".format(len(car_stream)))
             vis.visualize_results(car_stream, video_fn, "train", "neg")
 
@@ -229,12 +229,12 @@ class Executor:
         for video_fn in self.val_video_fn_list:
             logging.info("Executing video file: {}".format(video_fn))
             # positive validation data
-            car_stream = construct_stream_pos(self.connection, video_fn)
+            car_stream = construct_input_stream(self.connection, video_fn, "pos")
             logging.info("Retrieved {} positive validation outputs".format(len(car_stream)))
             vis.visualize_results(car_stream, video_fn, "val", "pos")
 
             # negative validation data
-            car_stream = construct_stream_neg(self.connection, video_fn)
+            car_stream = construct_input_stream(self.connection, video_fn, "neg", 25)
             logging.info("Retrieved {} negative validation outputs".format(len(car_stream)))
             vis.visualize_results(car_stream, video_fn, "val", "neg")
 
@@ -248,5 +248,5 @@ if __name__ == '__main__':
     val_video_fn_list = ["traffic-{}.mp4".format(i) for i in range(16, 18)]
 
     executor = Executor("car_turning", train_video_fn_list, val_video_fn_list)
-    executor.execute(construct_input_streams_car_turning, construct_input_streams_car_turning_neg)
+    executor.execute(construct_input_stream_car_turning)
     executor.close_connection()
