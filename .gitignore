@@ -11,3 +11,4 @@ rekall/tutorials/*/
 person_attribute/checkpoints/*
 *.pkl
 __pycache__/
+*egg*
