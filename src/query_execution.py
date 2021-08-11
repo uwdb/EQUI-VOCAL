@@ -26,7 +26,7 @@ from pattern_matching import *
 
 from visualizer import Visualizer
 
-
+from utils.utils import frame_from_video
 
 def load_image(im):
     transforms = T.Compose([
