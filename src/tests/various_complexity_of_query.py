@@ -6,6 +6,7 @@ Different query specifications with various complexity are tried:
 2. Only car
 3. Only pedestrian
 4. Car + pedestrian
+5. Objects with spatial configurations
 6. Scene graph: edges are created based on bbox information
 7. negation in scene graph
 8. Temporal scene graph: refer to the paper
@@ -13,14 +14,12 @@ Different query specifications with various complexity are tried:
 
 from shutil import copyfile
 import json
-import pickle
 import torch
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import os, csv
 from tqdm import tqdm
 from sklearn import tree, metrics
-from sklearn.svm import SVC
 import numpy as np
 import graphviz
 
