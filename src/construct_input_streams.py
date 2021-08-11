@@ -1,40 +1,15 @@
 import random
 from random import sample
 import json
+from utils.utils import isInsideIntersection, isOverlapping, frame_from_video
 
 random.seed(10)
-
-def frame_from_video(video):
-    while video.isOpened():
-        success, frame = video.read()
-        if success:
-            yield frame
-        else:
-            break
-
-
-def isOverlapping(box1, box2):
-    # box: x1, y1, x2, y2
-    x1min, y1min, x1max, y1max = box1
-    x2min, y2min, x2max, y2max = box2
-    return x1min < x2max and x2min < x1max and y1min < y2max and y2min < y1max
-
-
-def isInsideIntersection(box):
-    # box: x1, y1, x2, y2
-    xmin, ymin, xmax, ymax = box
-    centroid_x = (xmin + xmax) / 2
-    centroid_y = (ymin + ymax) / 2
-
-    x0, y0, x1, y1, x2, y2 = 0, 480, 450, 394, 782, 492
-
-    return centroid_y > (y0 - y1) * centroid_x / (x0 - x1) + (x0 * y1 - x1 * y0) / (x0 - x1) and centroid_y > (y1 - y2) * centroid_x / (x1 - x2) + (x1 * y2 - x2 * y1) / (x1 - x2)
-
 
 def construct_input_stream_car_turning(connection, video_fn, pos_or_neg, n_samples=None):
     def has_car_at_intersection(intersection, x1_list, x2_list, y1_list, y2_list):
         for x1, x2, y1, y2 in zip(x1_list, x2_list, y1_list, y2_list):
-            if isOverlapping(intersection, (x1, y1, x2, y2)):
+            # if isOverlapping(intersection, (x1, y1, x2, y2)):
+            if isInsideIntersection((x1, y1, x2, y2)):
                 return True
         return False
 
