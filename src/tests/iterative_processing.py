@@ -63,6 +63,10 @@ class IterativeProcessing:
         self.car_centroid_mean = [0, 0, 0, 0, 0]  # (centroid_x_mean, centroid_y_mean, h_mean, w_mean, num_cars)
         self.person_centroid_mean = [0, 0, 0, 0, 0]  # (centroid_x_mean, centroid_y_mean, h_mean, w_mean, num_persons)
         self.resort_frames_unseen = False
+
+        self.x_train = np.empty((0, self.spatial_feature_dim), dtype=np.float64)
+        self.y_train = np.empty(0, dtype=np.int)
+
         self.clf = tree.DecisionTreeClassifier(
             # criterion="entropy",
             max_depth=None,
@@ -84,8 +88,8 @@ class IterativeProcessing:
         raise ValueError("Input frame_idx is invalid")
 
     def get_frames_stats(self):
-        print("The user has seen {0} frames and found {1} positive frames so far.".format(len(self.positive_frames_seen) + len(self.negative_frames_seen), len(self.positive_frames_seen)))
-        # print("positive frames: ", self.positive_frames_seen)
+        print("Unseen frames: {0}, negative frames seen: {1}, positive frames seen: {2}.".format(len(self.frames_unseen), len(self.negative_frames_seen), len(self.positive_frames_seen)))
+        # print("The user has seen {0} frames and found {1} positive frames so far.".format(len(self.positive_frames_seen) + len(self.negative_frames_seen), len(self.positive_frames_seen)))
 
     def update_objects_centroid_mean(self, positive_frames):
         for frame_idx in positive_frames:
@@ -124,6 +128,9 @@ class IterativeProcessing:
             for f in positive_frames:
                 self.frames_unseen.remove(f)
                 self.positive_frames_seen.append(f)
+                # construct positive data
+                self.x_train = np.vstack((self.x_train, self.construct_spatial_feature_for_one_frame(frame_idx)))
+                self.y_train = np.append(self.y_train, 1)
                 self.plot_data_y.append(len(self.negative_frames_seen) + len(self.positive_frames_seen))
             self.update_objects_centroid_mean(positive_frames)
             self.resort_frames_unseen = True
@@ -131,11 +138,13 @@ class IterativeProcessing:
         else:
             self.frames_unseen.remove(frame_idx)
             self.negative_frames_seen.append(frame_idx)
+            # construct negative data
+            self.x_train = np.vstack((self.x_train, self.construct_spatial_feature_for_one_frame(frame_idx)))
+            self.y_train = np.append(self.y_train, 0)
 
     def get_next_batch(self):
         # Sort unseen frames based on the distance between the mean centroid and the car (person) closest to the mean centroid in each frame.
         if self.resort_frames_unseen:
-
             distances = []
             for frame_idx in self.frames_unseen:
                 person_normalized_distance = float('inf')
@@ -148,10 +157,13 @@ class IterativeProcessing:
                         car_normalized_distance = min(self.get_dist(self.car_centroid_mean[:2], [(x1 + x2) / 2, (y1 + y2) / 2]) / (self.car_centroid_mean[2] * self.car_centroid_mean[3]), car_normalized_distance)
                 distances.append(person_normalized_distance + car_normalized_distance)
             self.frames_unseen = [frame for (_, frame) in sorted(zip(distances, self.frames_unseen))]
+            self.resort_frames_unseen = False
         # Iterate through "sorted_frames_unseen", and find the first BATCH_SIZE frames that evaluate positive by the decision tree classifier.
         batched_frames = []
         self.fit_decision_tree()
+        count = 0
         for frame_idx in self.frames_unseen:
+            count += 1
             # Construct test data
             spatial_feature = self.construct_spatial_feature_for_one_frame(frame_idx)
             pred_label = self.clf.predict([spatial_feature])[0]
@@ -159,24 +171,8 @@ class IterativeProcessing:
                 batched_frames.append(frame_idx)
                 if len(batched_frames) >= BATCH_SIZE:
                     break
+        print(count)
         return batched_frames
-
-    def construct_data(self):
-        # First len(self.positive_frames_seen) rows are positive training data
-        # Next len(self.negative_frames_seen) rows are negative training data
-        x_train = np.zeros((len(self.positive_frames_seen) + len(self.negative_frames_seen), self.spatial_feature_dim), dtype=np.float64)
-        y_train = np.zeros(len(self.positive_frames_seen) + len(self.negative_frames_seen), dtype=np.int)
-
-        # construct positive data
-        for i, frame_idx in enumerate(self.positive_frames_seen):
-            x_train[i] = self.construct_spatial_feature_for_one_frame(frame_idx)
-            y_train[i] = 1
-
-        # construct negative data
-        for i, frame_idx in enumerate(self.negative_frames_seen):
-            x_train[i + len(self.positive_frames_seen)] = self.construct_spatial_feature_for_one_frame(frame_idx)
-            y_train[i + len(self.positive_frames_seen)] = 0
-        return x_train, y_train
 
     def construct_spatial_feature_for_one_frame(self, frame_idx):
         target_car = (0, 0, 0, 0, float('inf'))  # (x1, y1, x2, y2, distance to centroid mean)
@@ -196,8 +192,7 @@ class IterativeProcessing:
         return np.array([centroid_x, centroid_y, width, height, wh_ratio])
 
     def fit_decision_tree(self):
-        x_train, y_train = self.construct_data()
-        self.clf = self.clf.fit(x_train, y_train)
+        self.clf = self.clf.fit(self.x_train, self.y_train)
 
     @staticmethod
     def get_dist(p1, p2):
