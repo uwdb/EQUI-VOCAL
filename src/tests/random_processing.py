@@ -1,3 +1,4 @@
+import json
 import random
 from matplotlib import pyplot as plt
 
@@ -12,28 +13,37 @@ class RandomProcessing(IterativeProcessing):
 
     def random_sampling(self):
         while len(self.positive_frames_seen) < 912:
-            frame_idx = random.choice(self.frames_unseen)
-            self.simulate_user_annotation(frame_idx)
+            frame_id = np.random.choice(self.frames_unseen.nonzero()[0])
+            self.simulate_user_annotation(frame_id)
 
+class RandomProcessingWithROI(IterativeProcessing):
+    def __init__(self) -> None:
+        super().__init__()
 
-def plot_data(plot_data_y_list):
-    np.savetxt('random_processing.csv', plot_data_y_list, fmt='%d', delimiter=',')
-    y_upper = np.max(plot_data_y_list, axis=0)
-    y_lower = np.min(plot_data_y_list, axis=0)
-    y_mean = np.mean(plot_data_y_list, axis=0)
-    x_values = range(plot_data_y_list.shape[1])
-    plt.fill_between(x_values, y_lower, y_upper, alpha=0.2)
-    plt.plot(x_values, y_mean)
-    plt.savefig("random_processing_plot")
+    def random_sampling(self):
+        while len(self.positive_frames_seen) < 912:
+            arr = self.frames_unseen * self.candidates
+            frame_id = np.random.choice(arr.nonzero()[0])
+            self.simulate_user_annotation(frame_id)
 
+def plot_data(plot_data_y_list, method):
+    with open("{}.json".format(method), 'w') as f:
+        f.write(json.dumps([arr.tolist() for arr in plot_data_y_list]))
+    fig, ax = plt.subplots(1)
+    for plot_data_y in plot_data_y_list:
+        x_values = range(plot_data_y.size)
+        ax.plot(x_values, plot_data_y, color='tab:blue')
+    ax.set_ylabel('number of positive instances the user finds')
+    ax.set_xlabel('number of frames that user has seen')
+    ax.grid()
+    plt.savefig("{}_plot".format(method))
 
 if __name__ == '__main__':
-    plot_data_y_list = np.empty((0, 913))
+    plot_data_y_list = []
     for _ in range(20):
-        ip = RandomProcessing()
+        # ip = RandomProcessing()
+        ip = RandomProcessingWithROI()
         ip.random_sampling()
-        if ip.get_plot_data_y().shape[0] < 913:
-            print("Warning: failed to find all positive frames. Ignore this iteration.")
-        else:
-            plot_data_y_list = np.vstack((plot_data_y_list, ip.get_plot_data_y()))
-    plot_data(plot_data_y_list)
+        plot_data_y_list.append(ip.get_plot_data_y())
+    # plot_data(plot_data_y_list, "random_processing")
+    plot_data(plot_data_y_list, "random_processing_with_roi")
