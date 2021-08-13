@@ -28,6 +28,7 @@ import numpy as np
 import graphviz
 import random
 import more_itertools as mit
+import matplotlib.pyplot as plt
 
 from utils.utils import isInsideIntersection, isOverlapping
 from utils import tools
@@ -35,7 +36,6 @@ from utils import tools
 # When BATCH_SIZE > 1, simulate_user_annotation() will break
 BATCH_SIZE = 1
 EPSILON = 1e-7
-
 
 class IterativeProcessing:
     def __init__(self):
@@ -56,22 +56,20 @@ class IterativeProcessing:
                 self.pos_frames += list(range(start_frame, end_frame+1))
 
         self.frames_unseen = list(range(len(self.maskrcnn_bboxes)))
-        # all_frames_seen = negative_frames_seen + positive_frames_found
         self.negative_frames_seen = []
         self.positive_frames_seen = []
-        self.plot_data_y = [0]
+        self.plot_data_y = np.array([0])
         self.car_centroid_mean = [0, 0, 0, 0, 0]  # (centroid_x_mean, centroid_y_mean, h_mean, w_mean, num_cars)
         self.person_centroid_mean = [0, 0, 0, 0, 0]  # (centroid_x_mean, centroid_y_mean, h_mean, w_mean, num_persons)
         self.resort_frames_unseen = False
-
         self.x_train = np.empty((0, self.spatial_feature_dim), dtype=np.float64)
         self.y_train = np.empty(0, dtype=np.int)
 
         self.clf = tree.DecisionTreeClassifier(
             # criterion="entropy",
             max_depth=None,
-            min_samples_split=2,
-            # class_weight="balanced"
+            min_samples_split=32,
+            class_weight="balanced"
             )
 
     def get_all_frames_of_instance(self, frame_idx):
@@ -90,6 +88,12 @@ class IterativeProcessing:
     def get_frames_stats(self):
         print("Unseen frames: {0}, negative frames seen: {1}, positive frames seen: {2}.".format(len(self.frames_unseen), len(self.negative_frames_seen), len(self.positive_frames_seen)))
         # print("The user has seen {0} frames and found {1} positive frames so far.".format(len(self.positive_frames_seen) + len(self.negative_frames_seen), len(self.positive_frames_seen)))
+
+    def get_num_positive_frames_seen(self):
+        return len(self.positive_frames_seen)
+
+    def get_plot_data_y(self):
+        return self.plot_data_y
 
     def update_objects_centroid_mean(self, positive_frames):
         for frame_idx in positive_frames:
@@ -129,9 +133,9 @@ class IterativeProcessing:
                 self.frames_unseen.remove(f)
                 self.positive_frames_seen.append(f)
                 # construct positive data
-                self.x_train = np.vstack((self.x_train, self.construct_spatial_feature_for_one_frame(frame_idx)))
+                self.x_train = np.vstack((self.x_train, self.construct_spatial_feature_for_one_frame(f)))
                 self.y_train = np.append(self.y_train, 1)
-                self.plot_data_y.append(len(self.negative_frames_seen) + len(self.positive_frames_seen))
+                self.plot_data_y = np.append(self.plot_data_y, len(self.negative_frames_seen) + len(self.positive_frames_seen))
             self.update_objects_centroid_mean(positive_frames)
             self.resort_frames_unseen = True
             self.get_frames_stats()
@@ -142,9 +146,11 @@ class IterativeProcessing:
             self.x_train = np.vstack((self.x_train, self.construct_spatial_feature_for_one_frame(frame_idx)))
             self.y_train = np.append(self.y_train, 0)
 
+    # @tools.tik_tok
     def get_next_batch(self):
         # Sort unseen frames based on the distance between the mean centroid and the car (person) closest to the mean centroid in each frame.
         if self.resort_frames_unseen:
+            print("Resorting...")
             distances = []
             for frame_idx in self.frames_unseen:
                 person_normalized_distance = float('inf')
@@ -161,9 +167,7 @@ class IterativeProcessing:
         # Iterate through "sorted_frames_unseen", and find the first BATCH_SIZE frames that evaluate positive by the decision tree classifier.
         batched_frames = []
         self.fit_decision_tree()
-        count = 0
         for frame_idx in self.frames_unseen:
-            count += 1
             # Construct test data
             spatial_feature = self.construct_spatial_feature_for_one_frame(frame_idx)
             pred_label = self.clf.predict([spatial_feature])[0]
@@ -171,7 +175,6 @@ class IterativeProcessing:
                 batched_frames.append(frame_idx)
                 if len(batched_frames) >= BATCH_SIZE:
                     break
-        print(count)
         return batched_frames
 
     def construct_spatial_feature_for_one_frame(self, frame_idx):
@@ -198,19 +201,32 @@ class IterativeProcessing:
     def get_dist(p1, p2):
         return math.sqrt(((p1[0] - p2[0]) ** 2) + ((p1[1] - p2[1]) ** 2))
 
+def plot_data(plot_data_y_list):
+    np.savetxt('iterative_processing.csv', plot_data_y_list, fmt='%d', delimiter=',')
+    y_upper = np.max(plot_data_y_list, axis=0)
+    y_lower = np.min(plot_data_y_list, axis=0)
+    y_mean = np.mean(plot_data_y_list, axis=0)
+    x_values = range(plot_data_y_list.shape[1])
+    plt.fill_between(x_values, y_lower, y_upper, alpha=0.2)
+    plt.plot(x_values, y_mean)
+    plt.savefig("iterative_processing_plot")
 
 if __name__ == '__main__':
-    ip = IterativeProcessing()
-    # Cold start
-    print("Cold start:")
-    ip.random_sampling()
-    print("Cold start done.")
-    # Iterative processing
-    batched_frames = list(range(BATCH_SIZE))  # Construct a pseudo list of length BATCH_SIZE to pass the While condition.
-    simulation_count = 1
-    while len(batched_frames) >= BATCH_SIZE:
-        batched_frames = ip.get_next_batch()
-        for frame_idx in batched_frames:
-            print("User annotating:", simulation_count, " frame idx:", frame_idx)
-            simulation_count += 1
-            ip.simulate_user_annotation(frame_idx)
+    plot_data_y_list = np.empty((0, 822))
+    for _ in range(20):
+        ip = IterativeProcessing()
+        # Cold start
+        print("Cold start:")
+        ip.random_sampling()
+        print("Cold start done.")
+        # Iterative processing
+        batched_frames = list(range(BATCH_SIZE))  # Construct a pseudo list of length BATCH_SIZE to pass the While condition.
+        while len(batched_frames) >= BATCH_SIZE and ip.get_num_positive_frames_seen() < 821:
+            batched_frames = ip.get_next_batch()
+            for frame_idx in batched_frames:
+                ip.simulate_user_annotation(frame_idx)
+        if ip.get_plot_data_y().shape[0] < 822:
+            print("Warning: failed to find 90% positive frames. Ignore this iteration.")
+        else:
+            plot_data_y_list = np.vstack((plot_data_y_list, ip.get_plot_data_y()[:822]))
+    plot_data(plot_data_y_list)
