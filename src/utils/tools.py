@@ -15,6 +15,6 @@ def tik_tok(func):
             return func(*args, **kwargs)
         finally:
             end_ = time()
-            print("time: {:.03f}s".format(end_ - start))
+            print("{} took time: {:.03f}s".format(func.__name__, end_ - start))
 
     return _time_it
