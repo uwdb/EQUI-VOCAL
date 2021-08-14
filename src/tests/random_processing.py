@@ -34,16 +34,17 @@ def plot_data(plot_data_y_list, method):
         x_values = range(plot_data_y.size)
         ax.plot(x_values, plot_data_y, color='tab:blue')
     ax.set_ylabel('number of positive instances the user finds')
-    ax.set_xlabel('number of frames that user has seen')
+    # ax.set_xlabel('number of frames that user has seen')
+    ax.set_xlabel('number of negative frames that user has seen')
     ax.grid()
-    plt.savefig("{}_plot".format(method))
+    plt.savefig("{}".format(method))
 
 if __name__ == '__main__':
     plot_data_y_list = []
     for _ in range(20):
-        # ip = RandomProcessing()
-        ip = RandomProcessingWithROI()
+        ip = RandomProcessing()
+        # ip = RandomProcessingWithROI()
         ip.random_sampling()
         plot_data_y_list.append(ip.get_plot_data_y())
-    # plot_data(plot_data_y_list, "random_processing")
-    plot_data(plot_data_y_list, "random_processing_with_roi")
+    plot_data(plot_data_y_list, "random_only_neg")
+    # plot_data(plot_data_y_list, "random_roi_only_neg")

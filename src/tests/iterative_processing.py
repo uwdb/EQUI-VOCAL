@@ -65,7 +65,7 @@ class IterativeProcessing:
             if i in self.pos_frames:
                 self.Y[i] = 1
         self.plot_data_y = np.array([0])
-
+        self.plot_data_y_only_neg_frames = np.array([0])
         self.clf = tree.DecisionTreeClassifier(
             # criterion="entropy",
             max_depth=None,
@@ -102,7 +102,8 @@ class IterativeProcessing:
         return len(self.positive_frames_seen)
 
     def get_plot_data_y(self):
-        return self.plot_data_y
+        # return self.plot_data_y
+        return self.plot_data_y_only_neg_frames
 
     def random_sampling(self):
         while not (self.positive_frames_seen and self.negative_frames_seen) and self.frames_unseen.nonzero()[0].size:
@@ -120,11 +121,13 @@ class IterativeProcessing:
                 self.frames_unseen[f] = False
                 self.positive_frames_seen.append(f)
                 self.plot_data_y = np.append(self.plot_data_y, num_instances_found)
+            self.plot_data_y_only_neg_frames[-1] += 1
             self.get_frames_stats()
         else:
             self.frames_unseen[frame_id] = False
             self.negative_frames_seen.append(frame_id)
             self.plot_data_y = np.append(self.plot_data_y, self.plot_data_y[-1])
+            self.plot_data_y_only_neg_frames = np.append(self.plot_data_y_only_neg_frames, self.plot_data_y_only_neg_frames[-1])
 
     # @tools.tik_tok
     def get_next_batch(self):
@@ -167,18 +170,18 @@ class IterativeProcessing:
     def get_dist(p1, p2):
         return math.sqrt(((p1[0] - p2[0]) ** 2) + ((p1[1] - p2[1]) ** 2))
 
-def plot_data(plot_data_y_list):
-    # np.savetxt('iterative_processing.csv', plot_data_y_list, fmt='%d', delimiter=',')
-    with open("iterative_processing.json", 'w') as f:
+def plot_data(plot_data_y_list, method):
+    with open("{}.json".format(method), 'w') as f:
         f.write(json.dumps([arr.tolist() for arr in plot_data_y_list]))
     fig, ax = plt.subplots(1)
     for plot_data_y in plot_data_y_list:
         x_values = range(plot_data_y.size)
         ax.plot(x_values, plot_data_y, color='tab:blue')
     ax.set_ylabel('number of positive instances the user finds')
-    ax.set_xlabel('number of frames that user has seen')
+    # ax.set_xlabel('number of frames that user has seen')
+    ax.set_xlabel('number of negative frames that user has seen')
     ax.grid()
-    plt.savefig("iterative_processing_plot")
+    plt.savefig(method)
 
 if __name__ == '__main__':
     plot_data_y_list = []
@@ -196,4 +199,4 @@ if __name__ == '__main__':
             for frame_id in batched_frames:
                 ip.simulate_user_annotation(frame_id)
         plot_data_y_list.append(ip.get_plot_data_y())
-    plot_data(plot_data_y_list)
+    plot_data(plot_data_y_list, "iterative_only_neg")
