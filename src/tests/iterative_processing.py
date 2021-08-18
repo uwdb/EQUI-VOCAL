@@ -74,6 +74,10 @@ class IterativeProcessing:
             )
         self.get_candidates()
 
+    @staticmethod
+    def get_dist(p1, p2):
+        return math.sqrt(((p1[0] - p2[0]) ** 2) + ((p1[1] - p2[1]) ** 2))
+
     def get_candidates(self):
         for frame_id in range(len(self.maskrcnn_bboxes)):
             is_candidate, bbox = self.frame_has_objects_of_interest(frame_id)
@@ -111,8 +115,7 @@ class IterativeProcessing:
             self.simulate_user_annotation(frame_id)
 
     def simulate_user_annotation(self, frame_id):
-        """
-        Given an input frame, simulate the process where the user annotates the frame. If the frame is labelled as positive, add it to the positive_frames_seen list (and all other consecutive frames that are positive), otherwise add it to the negative_frames_seen list. Remove the frame from frames_unseen list after completion.
+        """Given an input frame, simulate the process where the user annotates the frame. If the frame is labelled as positive, add it to the positive_frames_seen list (and all other consecutive frames that are positive), otherwise add it to the negative_frames_seen list. Remove the frame from frames_unseen list after completion.
         """
         if frame_id in self.pos_frames:
             positive_frames = self.get_all_frames_of_instance(frame_id)
@@ -131,8 +134,8 @@ class IterativeProcessing:
 
     # @tools.tik_tok
     def get_next_batch(self):
-        # Iterate through "frames_unseen", and find the first BATCH_SIZE most confident frames that evaluate positive by the decision tree classifier.
-
+        """Iterate through "frames_unseen", and find the first BATCH_SIZE most confident frames that evaluate positive by the decision tree classifier.
+        """
         self.fit_decision_tree()
         preds = self.clf.predict_proba(self.spatial_features)
         frames = self.candidates * self.frames_unseen
@@ -166,9 +169,6 @@ class IterativeProcessing:
     def fit_decision_tree(self):
         self.clf = self.clf.fit(self.spatial_features[~self.frames_unseen], self.Y[~self.frames_unseen])
 
-    @staticmethod
-    def get_dist(p1, p2):
-        return math.sqrt(((p1[0] - p2[0]) ** 2) + ((p1[1] - p2[1]) ** 2))
 
 def plot_data(plot_data_y_list, method):
     with open("{}.json".format(method), 'w') as f:
