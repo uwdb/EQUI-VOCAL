@@ -24,18 +24,24 @@ import os
 import csv
 from tqdm import tqdm
 from sklearn import tree, metrics
+from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 import graphviz
 import random
 import more_itertools as mit
 import matplotlib.pyplot as plt
-
+import sys
 from utils.utils import isInsideIntersection, isOverlapping
 from utils import tools
+
+np.set_printoptions(threshold=sys.maxsize)
 
 # When BATCH_SIZE > 1, simulate_user_annotation() will break
 BATCH_SIZE = 1
 EPSILON = 1e-7
+
+# Average duration of the target event (60.8 frames per event)
+AVG_DURATION = 61
 
 class IterativeProcessing:
     def __init__(self):
@@ -48,16 +54,20 @@ class IterativeProcessing:
 
         # Read labels
         self.pos_frames = []
+        self.pos_frames_per_instance = {}
         with open("/home/ubuntu/complex_event_video/data/annotation.csv", "r") as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)
-            for row in csvreader:
+            for i, row in enumerate(csvreader):
                 start_frame, end_frame = int(row[0]), int(row[1])
                 self.pos_frames += list(range(start_frame, end_frame+1))
+                self.pos_frames_per_instance[i] = (start_frame, end_frame+1)
 
+        self.num_positive_instances_found = 0
         self.frames_unseen = np.full(len(self.maskrcnn_bboxes), True, dtype=np.bool)
         self.negative_frames_seen = []
         self.positive_frames_seen = []
+        self.p = np.ones(len(self.maskrcnn_bboxes))
         self.candidates = np.full(len(self.maskrcnn_bboxes), False, dtype=np.bool)
         self.spatial_features = np.zeros((len(self.maskrcnn_bboxes), self.spatial_feature_dim), dtype=np.float64)
         self.Y = np.zeros(len(self.maskrcnn_bboxes), dtype=np.int)
@@ -65,13 +75,19 @@ class IterativeProcessing:
             if i in self.pos_frames:
                 self.Y[i] = 1
         self.plot_data_y = np.array([0])
-        self.plot_data_y_only_neg_frames = np.array([0])
-        self.clf = tree.DecisionTreeClassifier(
+        # self.clf = tree.DecisionTreeClassifier(
+        #     criterion="entropy",
+        #     max_depth=10,
+        #     min_samples_split=32,
+        #     class_weight="balanced"
+        #     )
+        self.clf = RandomForestClassifier(
             # criterion="entropy",
-            max_depth=None,
-            min_samples_split=32,
+            # max_depth=10,
+            n_estimators=10,
+            # min_samples_split=32,
             class_weight="balanced"
-            )
+        )
         self.get_candidates()
 
     @staticmethod
@@ -85,13 +101,36 @@ class IterativeProcessing:
                 self.candidates[frame_id] = True
                 self.spatial_features[frame_id] = self.construct_spatial_feature(bbox)
 
+    def get_num_positive_instances_found(self):
+        return self.num_positive_instances_found
+
+    def update_random_choice_p(self):
+        """Given positive frames seen, compute the probabilities associated with each frame for random choice.
+        Frames that are close to a positive frame that have been seen are more likely to be positive as well, thus should have a smaller probability of returning to user for annotations.
+        Heuristic: For each observed positive frame, the probability function is 0 at that observed frame, grows ``linearly'' as the distance from the observed frame increases, and becomes constantly 1 after AVG_DURATION distance on each side.
+        TODO: considering cases when two observed positive frames are close enough that their probability functions overlap.
+        Return: Numpy_Array[proba]
+        """
+        scale = 2
+        func = lambda x : (x ** 2) / (int(AVG_DURATION * scale) ** 2)
+        p = np.ones(len(self.maskrcnn_bboxes))
+        for frame_id in self.positive_frames_seen:
+           # Right half of the probability function
+            for i in range(int(AVG_DURATION * scale) + 1):
+                if frame_id + i < len(self.maskrcnn_bboxes):
+                    p[frame_id + i] = min(func(i), p[frame_id + i])
+            # Left half of the probability function
+            for i in range(int(AVG_DURATION * scale) + 1):
+                if frame_id - i >= 0:
+                    p[frame_id - i] = min(func(i), p[frame_id - i])
+        self.p = p
+
     def get_all_frames_of_instance(self, frame_id):
-        '''
-        Input: one frame of the target instance
+        """Input: one frame of the target instance
         Output: all frames of the target instance
         ------
         Return: List[frame_id]
-        '''
+        """
         for group in mit.consecutive_groups(self.pos_frames):
             consecutive_frames_list = list(group)
             if frame_id in consecutive_frames_list:
@@ -106,42 +145,46 @@ class IterativeProcessing:
         return len(self.positive_frames_seen)
 
     def get_plot_data_y(self):
-        # return self.plot_data_y
-        return self.plot_data_y_only_neg_frames
+        return self.plot_data_y
 
     def random_sampling(self):
         while not (self.positive_frames_seen and self.negative_frames_seen) and self.frames_unseen.nonzero()[0].size:
-            frame_id = np.random.choice(self.frames_unseen.nonzero()[0])
+            normalized_p = self.p[self.frames_unseen] / self.p[self.frames_unseen].sum()
+            frame_id = np.random.choice(self.frames_unseen.nonzero()[0], p=normalized_p)
             self.simulate_user_annotation(frame_id)
 
     def simulate_user_annotation(self, frame_id):
         """Given an input frame, simulate the process where the user annotates the frame. If the frame is labelled as positive, add it to the positive_frames_seen list (and all other consecutive frames that are positive), otherwise add it to the negative_frames_seen list. Remove the frame from frames_unseen list after completion.
         """
+        self.frames_unseen[frame_id] = False
         if frame_id in self.pos_frames:
-            positive_frames = self.get_all_frames_of_instance(frame_id)
-            num_instances_found = self.plot_data_y[-1] + 1
-            for f in positive_frames:
-                self.frames_unseen[f] = False
-                self.positive_frames_seen.append(f)
-                self.plot_data_y = np.append(self.plot_data_y, num_instances_found)
-            self.plot_data_y_only_neg_frames[-1] += 1
+            for key, (start_frame, end_frame) in self.pos_frames_per_instance.items():
+                if start_frame <= frame_id and frame_id < end_frame:
+                    self.num_positive_instances_found += 1
+                    print("num_positive_instances_found:", self.num_positive_instances_found)
+                    del self.pos_frames_per_instance[key]
+                    break
+            self.positive_frames_seen.append(frame_id)
+            self.update_random_choice_p()
+            self.plot_data_y = np.append(self.plot_data_y, self.num_positive_instances_found)
             self.get_frames_stats()
         else:
-            self.frames_unseen[frame_id] = False
             self.negative_frames_seen.append(frame_id)
-            self.plot_data_y = np.append(self.plot_data_y, self.plot_data_y[-1])
-            self.plot_data_y_only_neg_frames = np.append(self.plot_data_y_only_neg_frames, self.plot_data_y_only_neg_frames[-1])
+            self.plot_data_y = np.append(self.plot_data_y, self.num_positive_instances_found)
 
     # @tools.tik_tok
     def get_next_batch(self):
         """Iterate through "frames_unseen", and find the first BATCH_SIZE most confident frames that evaluate positive by the decision tree classifier.
         """
         self.fit_decision_tree()
-        preds = self.clf.predict_proba(self.spatial_features)
+        preds = self.clf.predict_proba(self.spatial_features)[:, 1]
+        # print("Get next batch before:", np.argsort(-preds)[:5], preds[np.argsort(-preds)][:5])
+        preds = preds * self.p
         frames = self.candidates * self.frames_unseen
-        scores = preds[frames][:, 1]
+        scores = preds[frames]
         frames = frames.nonzero()[0]
         ind = np.argsort(-scores)
+        # print("Get next batch:", frames[ind][:5], scores[ind][:5])
         return frames[ind][:BATCH_SIZE]
 
     def frame_has_objects_of_interest(self, frame_id):
@@ -178,14 +221,13 @@ def plot_data(plot_data_y_list, method):
         x_values = range(plot_data_y.size)
         ax.plot(x_values, plot_data_y, color='tab:blue')
     ax.set_ylabel('number of positive instances the user finds')
-    # ax.set_xlabel('number of frames that user has seen')
-    ax.set_xlabel('number of negative frames that user has seen')
+    ax.set_xlabel('number of frames that user has seen')
     ax.grid()
     plt.savefig(method)
 
 if __name__ == '__main__':
     plot_data_y_list = []
-    for _ in range(20):
+    for _ in range(100):
         ip = IterativeProcessing()
         # Cold start
         print("Cold start:")
@@ -194,9 +236,9 @@ if __name__ == '__main__':
         # Iterative processing
         batched_frames = np.empty(BATCH_SIZE)  # Construct a pseudo list of length BATCH_SIZE to pass the While condition.
         # while len(batched_frames) >= BATCH_SIZE and ip.get_num_positive_frames_seen() < 821:
-        while ip.get_num_positive_frames_seen() < 912 and batched_frames.size >= BATCH_SIZE:
+        while ip.get_num_positive_instances_found() < 15 and batched_frames.size >= BATCH_SIZE:
             batched_frames = ip.get_next_batch()
             for frame_id in batched_frames:
                 ip.simulate_user_annotation(frame_id)
         plot_data_y_list.append(ip.get_plot_data_y())
-    plot_data(plot_data_y_list, "iterative_only_neg")
+    plot_data(plot_data_y_list, "iterative")
