@@ -195,9 +195,29 @@ class IterativeProcessing:
             if (class_name == "person" and isOverlapping(self.edge_corner_bbox, (x1, y1, x2, y2))):
                 has_pedestrian = 1
             elif (class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2))):
+                # Watch the video and identify the correct cars. Hardcode the correct car bbox to use.
+                if frame_id >= 14043 and frame_id <= 14079 and (x1 < 500 or x1 > 800):
+                    continue
+                if frame_id >= 15312 and frame_id <= 15365 and y2 < 450:
+                    continue
+                if frame_id >= 15649 and frame_id <= 15722 and x1 < 200:
+                    continue
+                if frame_id >= 16005 and frame_id <= 16044 and y2 < 430:
+                    continue
+                if frame_id >= 16045 and frame_id <= 16072 and x1 < 250:
+                    continue
+                if frame_id >= 16073 and frame_id <= 16090 and y2 < 450:
+                    continue
+                if frame_id >= 16091 and frame_id <= 16122 and x1 < 245:
+                    continue
+                if frame_id >= 16123 and frame_id <= 16153 and x1 > 500:
+                    continue
+                if frame_id >= 22375 and frame_id <= 22430 and y2 < 500:
+                    continue
                 has_car = 1
+                car_x1, car_y1, car_x2, car_y2 = x1, y1, x2, y2
             if has_car and has_pedestrian:
-                return True, (x1, y1, x2, y2)
+                return True, (car_x1, car_y1, car_x2, car_y2)
         return False, None
 
     def construct_spatial_feature(self, bbox):
@@ -209,6 +229,7 @@ class IterativeProcessing:
         wh_ratio = width / height
         return np.array([centroid_x, centroid_y, width, height, wh_ratio])
 
+    # @tools.tik_tok
     def fit_decision_tree(self):
         self.clf = self.clf.fit(self.spatial_features[~self.frames_unseen], self.Y[~self.frames_unseen])
 
@@ -241,4 +262,4 @@ if __name__ == '__main__':
             for frame_id in batched_frames:
                 ip.simulate_user_annotation(frame_id)
         plot_data_y_list.append(ip.get_plot_data_y())
-    plot_data(plot_data_y_list, "iterative")
+    plot_data(plot_data_y_list, "iterative_test")
