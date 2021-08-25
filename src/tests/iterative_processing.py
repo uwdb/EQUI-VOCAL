@@ -233,6 +233,10 @@ class IterativeProcessing:
     def fit_decision_tree(self):
         self.clf = self.clf.fit(self.spatial_features[~self.frames_unseen], self.Y[~self.frames_unseen])
 
+    @staticmethod
+    def save_data(plot_data_y_list, method):
+        with open("{}.json".format(method), 'w') as f:
+            f.write(json.dumps([arr.tolist() for arr in plot_data_y_list]))
 
 class IterativeProcessingWithoutHeuristic(IterativeProcessing):
     def __init__(self) -> None:
@@ -241,6 +245,7 @@ class IterativeProcessingWithoutHeuristic(IterativeProcessing):
     def update_random_choice_p(self):
         p = np.ones(len(self.maskrcnn_bboxes))
         self.p = p
+
 
 
 if __name__ == '__main__':
@@ -259,3 +264,4 @@ if __name__ == '__main__':
             for frame_id in batched_frames:
                 ip.simulate_user_annotation(frame_id)
         plot_data_y_list.append(ip.get_plot_data_y())
+    ip.save_data(plot_data_y_list, "iterative_without_heuristic")
