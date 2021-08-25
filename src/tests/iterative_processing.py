@@ -234,32 +234,28 @@ class IterativeProcessing:
         self.clf = self.clf.fit(self.spatial_features[~self.frames_unseen], self.Y[~self.frames_unseen])
 
 
-def plot_data(plot_data_y_list, method):
-    with open("{}.json".format(method), 'w') as f:
-        f.write(json.dumps([arr.tolist() for arr in plot_data_y_list]))
-    fig, ax = plt.subplots(1)
-    for plot_data_y in plot_data_y_list:
-        x_values = range(plot_data_y.size)
-        ax.plot(x_values, plot_data_y, color='tab:blue')
-    ax.set_ylabel('number of positive instances the user finds')
-    ax.set_xlabel('number of frames that user has seen')
-    ax.grid()
-    plt.savefig(method)
+class IterativeProcessingWithoutHeuristic(IterativeProcessing):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def update_random_choice_p(self):
+        p = np.ones(len(self.maskrcnn_bboxes))
+        self.p = p
+
 
 if __name__ == '__main__':
     plot_data_y_list = []
     for _ in range(100):
-        ip = IterativeProcessing()
+        # ip = IterativeProcessing()
+        ip = IterativeProcessingWithoutHeuristic()
         # Cold start
         print("Cold start:")
         ip.random_sampling()
         print("Cold start done.")
         # Iterative processing
         batched_frames = np.empty(BATCH_SIZE)  # Construct a pseudo list of length BATCH_SIZE to pass the While condition.
-        # while len(batched_frames) >= BATCH_SIZE and ip.get_num_positive_frames_seen() < 821:
         while ip.get_num_positive_instances_found() < 15 and batched_frames.size >= BATCH_SIZE:
             batched_frames = ip.get_next_batch()
             for frame_id in batched_frames:
                 ip.simulate_user_annotation(frame_id)
         plot_data_y_list.append(ip.get_plot_data_y())
-    plot_data(plot_data_y_list, "iterative_test")
