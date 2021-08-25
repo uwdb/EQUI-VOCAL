@@ -51,7 +51,8 @@ class RandomProcessingFilteredWithoutHeuristic(RandomProcessingFiltered):
 if __name__ == '__main__':
     plot_data_y_list = []
     for _ in range(100):
-        # ip = RandomProcessing()
-        ip = RandomProcessingFiltered()
+        ip = RandomProcessing()
+        # ip = RandomProcessingFiltered()
         ip.random_sampling()
         plot_data_y_list.append(ip.get_plot_data_y())
+    ip.save_data(plot_data_y_list, "random_without_heuristic")
