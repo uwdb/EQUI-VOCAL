@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import json
 import time
 import os
 import subprocess
@@ -14,10 +15,44 @@ import argparse
 import yaml
 import logging
 from common import *
+import queue
+import carla_vehicle_annotator as cva
+
+def retrieve_data(sensor_queue, frame, timeout=10):
+    while True:
+        try:
+            data = sensor_queue.get(True,timeout)
+        except queue.Empty:
+            return None
+        if data.frame == frame:
+            return data
+
+
+def save_bbox(bboxes, vehicle_class):
+    result = []
+    for bbox, pred_class in zip(bboxes, vehicle_class):
+        x1 = int(bbox[0,0])
+        y1 = int(bbox[0,1])
+        x2 = int(bbox[1,0])
+        y2 = int(bbox[1,1])
+        if pred_class == 0:
+            class_name = "car"
+        elif pred_class == 1:
+            class_name = "truck"
+        elif pred_class == 2:
+            class_name = "motorbike"
+        elif pred_class == 3:
+            class_name = "bicycle"
+        elif pred_class == 9:
+            class_name = "person"
+
+        # List[(x1, y1, x2, y2, class_name, score)]
+        result.append([x1, y1, x2, y2, class_name, 1.0])
+    return result
 
 
 class Configuration:
-    def __init__(self, client, id, path, scale, resolution, duration, panorama_fov, vehicle_locations_default, walker_locations, traffic_camera_locations, panoramic_camera_locations):
+    def __init__(self, client, id, path, scale, resolution, duration, panorama_fov, vehicle_locations, walker_locations, traffic_camera_locations, panoramic_camera_locations):
         self.client = client
         self.id = id
         self.world = client.get_world()
@@ -27,51 +62,12 @@ class Configuration:
         self.duration = duration
         self.panorama_fov = panorama_fov or PANORAMIC_FOV
         self.all_walker_locations = self._shuffle([location for location in walker_locations])
-        # for transform in vehicle_locations:
-        #     print("init locations: (x,y,z,yaw,pitch,roll) = ({},{},{},{},{},{})".format(transform.location.x, transform.location.y,transform.location.z, transform.rotation.yaw, transform.rotation.pitch,transform.rotation.roll))
-        # self.remaining_vehicle_locations = self._shuffle(list(vehicle_locations))
-        vehicle_locations = [
-            # moving west  
-            {"x": 210, "y": -250, "z": 1.2, "pitch": 0, "yaw": 180, "roll": 0},
-            {"x": 213, "y": -250, "z": 1.2, "pitch": 0, "yaw": 180, "roll": 0},
-            {"x": 216, "y": -250, "z": 1.2, "pitch": 0, "yaw": 180, "roll": 0},
-            # moving east 
-            {"x": 190, "y": -246, "z": 1.2, "pitch": 0, "yaw": 0, "roll": 0},
-            {"x": 187, "y": -246, "z": 1.2, "pitch": 0, "yaw": 0, "roll": 0},
-            {"x": 183, "y": -246, "z": 1.2, "pitch": 0, "yaw": 0, "roll": 0},
-            # moving south
-            {"x": 200, "y": -257, "z": 1.2, "pitch": 0, "yaw": 90, "roll": 0},
-            {"x": 200, "y": -263, "z": 1.2, "pitch": 0, "yaw": 90, "roll": 0},
-            {"x": 200, "y": -260, "z": 1.2, "pitch": 0, "yaw": 90, "roll": 0},
-            # moving north
-            {"x": 203, "y": -243, "z": 1.2, "pitch": 0, "yaw": 270, "roll": 0},
-            {"x": 203, "y": -240, "z": 1.2, "pitch": 0, "yaw": 270, "roll": 0},
-            {"x": 203, "y": -237, "z": 1.2, "pitch": 0, "yaw": 270, "roll": 0},
-        ]
-        custom_locations = []
-        for i in range(12):
-            transform = carla.Transform(
-                carla.Location(
-                    x=vehicle_locations[i]["x"], 
-                    y=vehicle_locations[i]["y"], 
-                    z=vehicle_locations[i]["z"]
-                ), 
-                carla.Rotation(
-                    pitch=vehicle_locations[i]["pitch"], 
-                    yaw=vehicle_locations[i]["yaw"], 
-                    roll=vehicle_locations[i]["roll"]
-                )
-            )
-            custom_locations.append(transform)
-            # print("init locations: (x,y,z,yaw,pitch,roll) = ({},{},{},{},{},{})".format(transform.location.x, transform.location.y,transform.location.z, transform.rotation.yaw, transform.rotation.pitch,transform.rotation.roll))
-        # intersection_count = random.randrange(1, 5)
-        intersection_count = random.randrange(1, 13)
-        self.remaining_vehicle_locations = self._shuffle(list(vehicle_locations_default))[:(50-intersection_count)] + self._shuffle(custom_locations)[:intersection_count]
-        
+        self.remaining_vehicle_locations = self._shuffle(list(vehicle_locations))
         self.remaining_walker_locations = self.all_walker_locations
         self.remaining_traffic_camera_locations = self._shuffle(list(traffic_camera_locations))
         self.remaining_panoramic_camera_locations = self._shuffle(list(panoramic_camera_locations))
-
+        self.depth_queue = [queue.Queue() for _ in range(TRAFFIC_CAMERAS_PER_TILE)]
+        self.rgb_camera_queue = [queue.Queue() for _ in range(TRAFFIC_CAMERAS_PER_TILE)]
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -131,6 +127,7 @@ def create_listener(configuration, type, id):
         writer.clear()
 
     def listener(image):
+        configuration.rgb_camera_queue[id - configuration.id * TRAFFIC_CAMERAS_PER_TILE].put(image)
         if 0 <= count[0] <= FPS * configuration.duration:
             if 'semantic' in type:
                 image.convert(carla.ColorConverter.CityScapesPalette)
@@ -148,34 +145,55 @@ def create_listener(configuration, type, id):
 def create_camera(configuration, type, id, transform=None, fov=90, yaw=None, location=None,
                   blueprint_name='sensor.camera.rgb'):
     blueprint = configuration.world.get_blueprint_library().find(blueprint_name)
-
     blueprint.set_attribute('image_size_x', str(configuration.resolution[0]))
     blueprint.set_attribute('image_size_y', str(configuration.resolution[1]))
     blueprint.set_attribute('fov', str(fov))
 
+    attach_to_vehicle = random.choice([True, False])
+    if attach_to_vehicle:
+        transform = carla.Transform(carla.Location(x=1.5, z=2.4))
+        # Spawn ego vehicle
+        blueprints = configuration.world.get_blueprint_library().filter('vehicle.*')
+        ego_bp = random.choice(blueprints)
+        print("ego_bp", ego_bp)
+        ego_transform = configuration.next_vehicle_location()
+        print("ego_transform", ego_transform)
+        if ego_transform:
+            ego_vehicle = configuration.world.spawn_actor(ego_bp, ego_transform)
+            ego_vehicle.set_autopilot(True)
+        else:
+            ego_vehicle = None
+        # ego_vehicle = SpawnActor(ego_bp, ego_transform).then(SetAutopilot(FutureActor, True)) if ego_transform else None
+        print("ego_vehicle", ego_vehicle)
+
     if not transform:
-        # create normal RGB camera 
+        # create normal RGB camera
         transform = transform or configuration.next_traffic_camera_location()
         transform.location = location or transform.location
-        
-        transform.location.x = 199
-        transform.location.y = -239
-        transform.location.z = 5.2
-        # transform.rotation.yaw = yaw or transform.rotation.yaw
-        # transform.rotation.yaw += random.randint(-fov/2, fov/2) + random.choice([0, 180])
-        transform.rotation.yaw = -52
-        print("(x,y,z,yaw) = ({},{},{},{})".format(transform.location.x, transform.location.y,transform.location.z, transform.rotation.yaw))
+        transform.location += carla.Location(z=CAMERA_HEIGHT)
+        # transform.location.x = 199
+        # transform.location.y = -239
+        # transform.location.z = 5.2
+        transform.rotation.yaw = yaw or transform.rotation.yaw
+        transform.rotation.yaw += random.randint(-fov/2, fov/2) + random.choice([0, 180])
+        # transform.rotation.yaw = -52
+        # print("(x,y,z,yaw) = ({},{},{},{})".format(transform.location.x, transform.location.y,transform.location.z, transform.rotation.yaw))
     else:
         transform.rotation.yaw = yaw or transform.rotation.yaw
 
-    camera = configuration.world.spawn_actor(blueprint, transform)
+    # print("camera", blueprint, transform, ego_vehicle, attach_to_vehicle)
+    camera = configuration.world.spawn_actor(blueprint, transform, attach_to=ego_vehicle if attach_to_vehicle else None)
     listener = create_listener(configuration, type, id)
     camera.count = listener.count
     camera.close = listener.close
     camera.requested_transform = transform
     camera.listen(listener)
 
-    return camera
+    # Create depth camera at the same location
+    depth_bp = configuration.world.get_blueprint_library().find('sensor.camera.depth')
+    depth = configuration.world.spawn_actor(depth_bp, transform, attach_to=ego_vehicle if attach_to_vehicle else None)
+    depth.listen(configuration.depth_queue[id - configuration.id * TRAFFIC_CAMERAS_PER_TILE].put)
+    return camera, depth
 
 
 def create_semantic_camera(configuration, id, transform, prefix='traffic'):
@@ -231,10 +249,8 @@ def create_bike(configuration):
 
 def create_vehicles(configuration, count):
     vehicles = []
-    for _ in range(count-3):
+    for _ in range(count):
         vehicles.append(create_vehicle(configuration))
-    for _ in range(3):
-        vehicles.append(create_bike(configuration))
     return [actor for actor in configuration.client.apply_batch_sync([v for v in vehicles if not v is None], True) if not actor.error]
 
 
@@ -273,7 +289,7 @@ def start_walker(configuration, controller, index):
 
 
 def is_complete(id, scale, cameras, duration, start_time):
-    frame_count = max(0, min([camera.count[0] for camera in cameras]))
+    frame_count = max(0, min([camera[0].count[0] for camera in cameras]))
     total_frames = duration * FPS
     fps = max(frame_count / (time.time() - start_time + 0.00001), 0)
     logging.info('Tile %d of %d: Rendered %d frames; %d remaining (%.1f FPS)', id + 1, scale, frame_count, total_frames - frame_count, fps)
@@ -288,36 +304,27 @@ def generate_tile(client, path, id, tile, scale, resolution, duration, panorama_
     controllers = []
 
     client.load_world(tile.map)
-    # client.load_world("Town04")
+
     time.sleep(10)
 
     world = client.get_world()
 
-    traffic_lights = world.get_actors().filter('traffic.traffic_light*')
-    # traffic_lights[9], [10], [11], [12] locate in the intersection 
-    intersection_lights = [traffic_lights[9]]
-    intersection_lights.append(traffic_lights[10])
-    intersection_lights.append(traffic_lights[11])
-    intersection_lights.append(traffic_lights[12])
-    random.shuffle(intersection_lights)
-    intersection_lights[0].set_state(carla.TrafficLightState.Red)
-    intersection_lights[0].set_red_time(1000)
-    intersection_lights[1].set_state(carla.TrafficLightState.Red)
-    intersection_lights[1].set_red_time(1000)
-    intersection_lights[2].set_state(carla.TrafficLightState.Red)
-    intersection_lights[2].set_red_time(1000)
-    intersection_lights[3].set_state(carla.TrafficLightState.Red)
-    intersection_lights[3].set_red_time(1000)
-
-    # for i, tl in enumerate(world.get_actors().filter('traffic.traffic_light*')):
-    #     print("index: ", i)
-    #     print("traffic light id:", tl.id)
-    #     transform = tl.get_transform()
-    #     print("(x,y,z,yaw,pitch,roll) = ({},{},{},{},{},{})".format(transform.location.x, transform.location.y,transform.location.z, transform.rotation.yaw, transform.rotation.pitch,transform.rotation.roll))
-    #     group_lights = tl.get_group_traffic_lights()
-    #     print("group lights:")
-    #     for light in group_lights:
-    #         print(light.id)
+    # # Customize traffic light states
+    # traffic_lights = world.get_actors().filter('traffic.traffic_light*')
+    # # traffic_lights[9], [10], [11], [12] locate in the intersection
+    # intersection_lights = [traffic_lights[9]]
+    # intersection_lights.append(traffic_lights[10])
+    # intersection_lights.append(traffic_lights[11])
+    # intersection_lights.append(traffic_lights[12])
+    # random.shuffle(intersection_lights)
+    # intersection_lights[0].set_state(carla.TrafficLightState.Red)
+    # intersection_lights[0].set_red_time(1000)
+    # intersection_lights[1].set_state(carla.TrafficLightState.Red)
+    # intersection_lights[1].set_red_time(1000)
+    # intersection_lights[2].set_state(carla.TrafficLightState.Red)
+    # intersection_lights[2].set_red_time(1000)
+    # intersection_lights[3].set_state(carla.TrafficLightState.Red)
+    # intersection_lights[3].set_red_time(1000)
 
     world.set_weather(tile.weather)
     settings = world.get_settings()
@@ -333,7 +340,7 @@ def generate_tile(client, path, id, tile, scale, resolution, duration, panorama_
         resolution=resolution,
         duration=duration,
         panorama_fov=panorama_fov,
-        vehicle_locations_default=world.get_map().get_spawn_points(),
+        vehicle_locations=world.get_map().get_spawn_points(),
         walker_locations=Configuration.draw_n(world.get_random_location_from_navigation, tile.walkers),
         traffic_camera_locations=world.get_map().get_spawn_points(),
         panoramic_camera_locations=Configuration.draw_n(world.get_random_location_from_navigation, tile.walkers))
@@ -342,22 +349,50 @@ def generate_tile(client, path, id, tile, scale, resolution, duration, panorama_
     try:
         walkers, controllers = create_walkers(configuration, tile.walkers)
         vehicles = create_vehicles(configuration, tile.vehicles)
-        [world.tick() for _ in range(300)]
+        # [world.tick() for _ in range(300)]
         traffic_cameras = create_traffic_cameras(configuration)
         # panoramic_cameras = create_panoramic_cameras(configuration)
 
+        bbox_json_list = [{} for _ in range(len(traffic_cameras))]
+        frame_id = 0
         while not is_complete(id, scale, traffic_cameras + panoramic_cameras, duration, start_time):
-            [world.tick() for _ in range(10)]
+            for _ in range(10):
+                nowFrame = world.tick()
+                detected_objects = [*world.get_actors().filter('vehicle.*'), *world.get_actors().filter('walker.*')]
+
+                for i in range(len(traffic_cameras)):
+                    cam, depth = traffic_cameras[i]
+                    depth_img = retrieve_data(configuration.depth_queue[i], nowFrame)
+                    rgb_img = retrieve_data(configuration.rgb_camera_queue[i], nowFrame)
+                    depth_meter = cva.extract_depth(depth_img)
+                    # Calculating visible bounding boxes
+                    filtered_out, removed = cva.auto_annotate(detected_objects, cam, depth_meter, json_path='vehicle_class_json_file.txt')
+                    # Save the results
+                    bbox_json_list[i]["frame_{}.jpg".format(frame_id)] = save_bbox(filtered_out['bbox'], filtered_out['class'])
+
+                frame_id += 1
 
     finally:
         logging.info('Destroying actors')
 
+        # Write bbox json to file
+        for i in range(len(traffic_cameras)):
+            with open(os.path.join(path, 'traffic-%03d.json' % (id * TRAFFIC_CAMERAS_PER_TILE + i)), 'w') as f:
+                f.write(json.dumps(bbox_json_list[i]))
+
         try:
-            [camera.close() for camera in traffic_cameras + panoramic_cameras]
-            [camera.stop() for camera in traffic_cameras + panoramic_cameras]
+            for camera, depth in traffic_cameras:
+                camera.close()
+                camera.stop()
+                depth.stop()
+            for camera in panoramic_cameras:
+                camera.close()
+                camera.stop()
+            # [camera.close() for camera in traffic_cameras + panoramic_cameras]
+            # [camera.stop() for camera in traffic_cameras + panoramic_cameras]
             #[controller.stop() for controller in world.get_actors([c.actor_id for c in controllers])]
 
-            client.apply_batch_sync([carla.command.DestroyActor(c) for c in traffic_cameras] +
+            client.apply_batch_sync([carla.command.DestroyActor(c) for c_tuple in traffic_cameras for c in c_tuple] +
                                     [carla.command.DestroyActor(c) for c in panoramic_cameras] +
                                     [carla.command.DestroyActor(v.actor_id) for v in vehicles] +
                                     [carla.command.DestroyActor(c.actor_id) for c in controllers] +
@@ -431,7 +466,8 @@ def generate(path, tiles, scale, resolution, duration, panorama_fov, seed=None, 
                 used_tiles[-1].vehicles = vehicles
             if not walkers is None:
                 used_tiles[-1].walkers = walkers
-            used_tiles[-1].map = "Town04"
+            # Use a specific map
+            # used_tiles[-1].map = "Town04"
             logging.info(used_tiles[-1])
             write_configuration(path, used_tiles, scale, resolution, duration, panorama_fov, seed, hostname, port, timeout)
             generate_tile(client, path, id, used_tiles[-1], scale, resolution, duration, panorama_fov)
@@ -512,4 +548,4 @@ if __name__ == '__main__':
     args.path = os.path.join("/home/ue4/visualroad", args.path)
 
     generate(args.path, tile_pool, args.scale, (args.width, args.height), args.duration, args.fov, args.seed, args.vehicles, args.pedestrians)
-    
+
