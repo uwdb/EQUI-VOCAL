@@ -1,2 +1,2 @@
-# python3 generator.py --scale 10 --seed 13579 --duration 900 --height 540 --width 960 --vehicles 100 --pedestrians 250 my-dataset > logging.txt
-python3 generator.py --scale 1 --seed 425 --duration 3 --height 540 --width 960 --vehicles 50 my-dataset > logging.txt
+python3 generator.py --scale 4 --seed 28365 --duration 600 --height 720 --width 1280 my-dataset > logging.txt
+# python3 generator.py --scale 1 --seed 425 --duration 3 --height 540 --width 960 --vehicles 50 my-dataset2 > logging.txt
