@@ -15,3 +15,5 @@ __pycache__/
 *egg*
 *.json
 *.pdf
+src/datalog/souffle/*
+*.deb

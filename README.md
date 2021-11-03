@@ -48,3 +48,6 @@ with
 wget "https://sourceforge.net/projects/boost/files/boost/1.72.0/boost_1_72_0.tar.gz"
 
 it is a temporary fix. it worked for me.
+
+# Souffle 
+- install-dir: /home/ubuntu/complex_event_video/src/datalog/souffle/install/bin/souffle
