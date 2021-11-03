@@ -1,0 +1,38 @@
+.type IntList = [next: IntList, x: number]
+.decl Obj(oid: number, fid: number, cid: number, x1: float, y1: float, x2: float, y2: float) 
+// .decl Rel(rid: number, fid: number, o_sub: number, pid: number, o_obj: number)
+.decl g1(fid: number) inline
+.decl g2(fid: number) inline
+.decl g1seq(fid1: number, fid2: number)
+.decl g2seq(fid1: number, fid2: number)
+
+.input Obj(filename="data/facts/obj.facts")
+
+// oid mappings:
+// 0: person, 1: bicycle, 2: car
+g1(fid) :- Obj(_, fid, 0, x1, y1, x2, y2), x1 < 440, x2 > 400, y1 < 360, y2 > 345.
+
+g2(fid) :- Obj(_, fid, 2, x1, y1, _, _), y1 > -0.191 * x1 + 480, y1 > 0.295 * x1 + 261, x1 < 550, x1 > 400.
+g2(fid) :- Obj(_, fid, 2, x1, _, _, y2), y2 > -0.191 * x1 + 480, y2 > 0.295 * x1 + 261, x1 < 550, x1 > 400.
+g2(fid) :- Obj(_, fid, 2, x1, y1, x2, _), y1 > -0.191 * x2 + 480, y1 > 0.295 * x2 + 261, x1 < 550, x1 > 400.
+g2(fid) :- Obj(_, fid, 2, x1, _, x2, y2), y2 > -0.191 * x2 + 480, y2 > 0.295 * x2 + 261, x1 < 550, x1 > 400.
+
+g1seq(fid, fid) :- g1(fid).
+g1seq(fid1, fid3) :- g1seq(fid1, fid2), g1(fid3), fid3 = fid2 + 1.
+
+.decl g1seq_duration(fid1: number, fid2: number)
+g1seq_duration(fid1, fid2) :- g1seq(fid1, fid2), fid2 - fid1 > 30.
+
+g2seq(fid, fid) :- g2(fid).
+g2seq(fid1, fid3) :- g2seq(fid1, fid2), g2(fid3), fid3 = fid2 + 1.
+
+.decl q(fid1: number, fid2: number, fid3: number, fid4: number) inline
+q(fid1, fid2, fid3, fid4) :- g1seq_duration(fid1, fid2), g2seq(fid3, fid4), fid4 - fid1 < 100, fid2 < fid3.
+
+.decl q_neg(fid1: number, fid2: number, fid3: number, fid4: number)
+q_neg(fid1, fid2, fid3, fid4) :- q(fid1, fid2, fid3, fid4), q(fid1p, fid2p, fid3p, fid4p), fid1p <= fid1, fid2 <= fid2p, fid3p <= fid3, fid4 <= fid4p, fid2p - fid1p + fid4p - fid3p > fid2 - fid1 + fid4 - fid3.
+
+.decl q_filtered(fid1: number, fid2: number, fid3: number, fid4: number)
+q_filtered(fid1, fid2, fid3, fid4) :- q(fid1, fid2, fid3, fid4), !q_neg(fid1, fid2, fid3, fid4).
+
+.output q_filtered(filename="data/answers/q2.2.ans")
