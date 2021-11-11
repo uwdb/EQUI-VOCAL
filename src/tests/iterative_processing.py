@@ -44,7 +44,8 @@ EPSILON = 1e-7
 AVG_DURATION = 61
 
 class IterativeProcessing:
-    def __init__(self):
+    def __init__(self, n_annotations):
+        self.n_annotations = n_annotations
         self.spatial_feature_dim = 5
         self.edge_corner_bbox = (367, 345, 540, 418)
         # Read in bbox info
@@ -90,10 +91,6 @@ class IterativeProcessing:
         )
         self.get_candidates()
 
-    @staticmethod
-    def get_dist(p1, p2):
-        return math.sqrt(((p1[0] - p2[0]) ** 2) + ((p1[1] - p2[1]) ** 2))
-
     def get_candidates(self):
         for frame_id in range(len(self.maskrcnn_bboxes)):
             is_candidate, bbox = self.frame_has_objects_of_interest(frame_id)
@@ -125,33 +122,20 @@ class IterativeProcessing:
                     p[frame_id - i] = min(func(i), p[frame_id - i])
         self.p = p
 
-    def get_all_frames_of_instance(self, frame_id):
-        """Input: one frame of the target instance
-        Output: all frames of the target instance
-        ------
-        Return: List[frame_id]
-        """
-        for group in mit.consecutive_groups(self.pos_frames):
-            consecutive_frames_list = list(group)
-            if frame_id in consecutive_frames_list:
-                return consecutive_frames_list
-        raise ValueError("Input frame_id is invalid")
-
     def get_frames_stats(self):
         print("Unseen frames: {0}, negative frames seen: {1}, positive frames seen: {2}.".format(self.frames_unseen.nonzero()[0].size, len(self.negative_frames_seen), len(self.positive_frames_seen)))
         # print("The user has seen {0} frames and found {1} positive frames so far.".format(len(self.positive_frames_seen) + len(self.negative_frames_seen), len(self.positive_frames_seen)))
-
-    def get_num_positive_frames_seen(self):
-        return len(self.positive_frames_seen)
 
     def get_plot_data_y(self):
         return self.plot_data_y
 
     def random_sampling(self):
         while not (self.positive_frames_seen and self.negative_frames_seen) and self.frames_unseen.nonzero()[0].size:
+            # TODO: normalized_p seems to be useless
             normalized_p = self.p[self.frames_unseen] / self.p[self.frames_unseen].sum()
             frame_id = np.random.choice(self.frames_unseen.nonzero()[0], p=normalized_p)
             self.simulate_user_annotation(frame_id)
+        self.fit_decision_tree()
 
     def simulate_user_annotation(self, frame_id):
         """Given an input frame, simulate the process where the user annotates the frame. If the frame is labelled as positive, add it to the positive_frames_seen list (and all other consecutive frames that are positive), otherwise add it to the negative_frames_seen list. Remove the frame from frames_unseen list after completion.
@@ -165,7 +149,6 @@ class IterativeProcessing:
                     del self.pos_frames_per_instance[key]
                     break
             self.positive_frames_seen.append(frame_id)
-            self.update_random_choice_p()
             self.plot_data_y = np.append(self.plot_data_y, self.num_positive_instances_found)
             self.get_frames_stats()
         else:
@@ -176,9 +159,11 @@ class IterativeProcessing:
     def get_next_batch(self):
         """Iterate through "frames_unseen", and find the first BATCH_SIZE most confident frames that evaluate positive by the decision tree classifier.
         """
-        self.fit_decision_tree()
+        if self.frames_unseen.nonzero()[0].size % self.n_annotations == 0:
+            self.fit_decision_tree()
         preds = self.clf.predict_proba(self.spatial_features)[:, 1]
         # print("Get next batch before:", np.argsort(-preds)[:5], preds[np.argsort(-preds)][:5])
+        self.update_random_choice_p()
         preds = preds * self.p
         frames = self.candidates * self.frames_unseen
         scores = preds[frames]
@@ -247,21 +232,22 @@ class IterativeProcessingWithoutHeuristic(IterativeProcessing):
         self.p = p
 
 
-
 if __name__ == '__main__':
-    plot_data_y_list = []
-    for _ in range(100):
-        # ip = IterativeProcessing()
-        ip = IterativeProcessingWithoutHeuristic()
-        # Cold start
-        print("Cold start:")
-        ip.random_sampling()
-        print("Cold start done.")
-        # Iterative processing
-        batched_frames = np.empty(BATCH_SIZE)  # Construct a pseudo list of length BATCH_SIZE to pass the While condition.
-        while ip.get_num_positive_instances_found() < 15 and batched_frames.size >= BATCH_SIZE:
-            batched_frames = ip.get_next_batch()
-            for frame_id in batched_frames:
-                ip.simulate_user_annotation(frame_id)
-        plot_data_y_list.append(ip.get_plot_data_y())
-    ip.save_data(plot_data_y_list, "iterative_without_heuristic")
+    n_annotations_list = [1, 2, 4, 8, 16]
+    for n_annotations in n_annotations_list:
+        plot_data_y_list = []
+        for _ in range(100):
+            ip = IterativeProcessing(n_annotations)
+            # ip = IterativeProcessingWithoutHeuristic()
+            # Cold start
+            print("Cold start:")
+            ip.random_sampling()
+            print("Cold start done.")
+            # Iterative processing
+            batched_frames = np.empty(BATCH_SIZE)  # Construct a pseudo list of length BATCH_SIZE to pass the While condition.
+            while ip.get_num_positive_instances_found() < 15 and batched_frames.size >= BATCH_SIZE:
+                batched_frames = ip.get_next_batch()
+                for frame_id in batched_frames:
+                    ip.simulate_user_annotation(frame_id)
+            plot_data_y_list.append(ip.get_plot_data_y())
+        ip.save_data(plot_data_y_list, "retraining_freq/{}".format(n_annotations))
