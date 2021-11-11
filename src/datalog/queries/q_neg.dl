@@ -1,0 +1,34 @@
+.decl g1seq_duration(fid1: number, fid2: number)
+.decl g2seq(fid1: number, fid2: number)
+
+// 24.7k
+.input g1seq_duration(filename="data/facts/g1seq_duration.facts") 
+
+.decl g1seq_sampled(fid1: number, fid2: number, ctr: number)
+g1seq_sampled(x, y, autoinc()) :- g1seq_duration(x,y). 
+
+.decl g1seq(fid1: number, fid2: number)
+g1seq(x,y) :- g1seq_sampled(x,y,o), o % 5 = 0. 
+
+// 328
+.input g2seq(filename="data/facts/g2seq.facts")
+
+.decl q_neg(fid1: number, fid2: number, fid3: number, fid4: number)
+// based on q1seq and q2seq
+q_neg(fid1,fid2,fid3,fid4) :- 
+   g1seq(fid1,fid2),
+   g2seq(fid3,fid4),
+   (fid4-fid1) < 200,
+   fid2 < fid3,
+   g1seq(fid1p,fid2p),
+   g2seq(fid3p,fid4p),
+   (fid4p-fid1p) < 200,
+   fid2p < fid3p,
+   fid1p <= fid1,
+   fid2 <= fid2p,
+   fid3p <= fid3,
+   fid4 <= fid4p,
+   (((fid2p-fid1p)+fid4p)-fid3p) > (((fid2-fid1)+fid4)-fid3).
+
+.printsize q_neg
+// .output q_neg(filename="data/answers/q_neg.ans")
