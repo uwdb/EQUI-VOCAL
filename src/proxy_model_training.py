@@ -17,5 +17,7 @@ class ProxyModelTraining:
             # min_samples_split=32,
             class_weight="balanced"
         )
-        clf = clf.fit(self.spatial_features[~(raw_frames | materialized_frames)], self.Y[~(raw_frames | materialized_frames)])
+        train_x = self.spatial_features[~(raw_frames | materialized_frames)]
+        train_y = self.Y[~(raw_frames | materialized_frames)]
+        clf = clf.fit(train_x, train_y)
         return clf

@@ -1,30 +1,24 @@
 import numpy as np
 from numpy.core.fromnumeric import argsort
-
-# Average duration of the target event (60.8 frames per event)
-AVG_DURATION = 61
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 
 class BaseFrameSelection:
-    def __init__(self, spatial_features, Y):
+    def __init__(self, spatial_features, Y, materialized_batch_size, annotated_batch_size, avg_duration, candidates):
         self.spatial_features = spatial_features
         self.Y = Y
-
+        self.materialized_batch_size = materialized_batch_size
+        self.annotated_batch_size = annotated_batch_size
+        self.avg_duration = avg_duration
+        self.candidates = candidates
     def run(self):
         pass
 
 class RandomFrameSelection(BaseFrameSelection):
-    def __init__(self, spatial_features, Y, materialized_batch_size, annotated_batch_size) -> None:
-        self.materialized_batch_size = materialized_batch_size
-        self.annotated_batch_size = annotated_batch_size
-        super().__init__(spatial_features, Y)
-
-    def run(self, clf, raw_frames, materialized_frames, positive_frames_seen, negative_frames_seen, stats_per_chunk):
+    def run(self, p, clf, raw_frames, materialized_frames, positive_frames_seen, stats_per_chunk):
         """Input: current model m_i, current materialized frames Fm_i, annotated frames Fa_i (rows from event tables)
         Output: annotated_batch_size frames for user to label, updated materialized frames Fm_i+1, raw frames Fr_i+1
         Method: materialize materialized_batch_size new frames (randomly with heuristic/exsample), and select annotated_batch_size frames with greatest confidence score for user to label
         """
-        p = self.update_random_choice_p(positive_frames_seen)
-
         # materialize materialized_batch_size new frames (randomly with heuristic)
         if raw_frames.nonzero()[0].size:
             # ExSample: choice of chunk and frame
@@ -58,44 +52,33 @@ class RandomFrameSelection(BaseFrameSelection):
             # materialized_frames[frame_id_arr] = True
 
         # select annotated_batch_size frames with greatest confidence score for user to label
+        # self.eval_metric(clf)
         preds = clf.predict_proba(self.spatial_features)[:, 1]
         # print("Get next batch before:", np.argsort(-preds)[:5], preds[np.argsort(-preds)][:5])
-        # self.update_random_choice_p()
+        frames = self.candidates * materialized_frames
+        scores_before_heuristic = preds[frames]
         preds = preds * p
-        scores = preds[materialized_frames]
-        frames = materialized_frames.nonzero()[0]
+        scores = preds[frames]
+        frames = frames.nonzero()[0]
         ind = np.argsort(-scores)
-        # print("Get next batch:", frames[ind][:5], scores[ind][:5])
+        # print("Get next batch:", frames[ind][:5], scores[ind][:5], scores_before_heuristic[ind][:5], self.Y[frames[ind][:5]])
         frame_id_arr_to_annotate = frames[ind][:self.annotated_batch_size]
         materialized_frames[frame_id_arr_to_annotate] = False
         return frame_id_arr_to_annotate, raw_frames, materialized_frames, stats_per_chunk
-
-    def update_random_choice_p(self, positive_frames_seen):
-        """Given positive frames seen, compute the probabilities associated with each frame for random choice.
-        Frames that are close to a positive frame that have been seen are more likely to be positive as well, thus should have a smaller probability of returning to user for annotations.
-        Heuristic: For each observed positive frame, the probability function is 0 at that observed frame, grows ``linearly'' as the distance from the observed frame increases, and becomes constantly 1 after AVG_DURATION distance on each side.
-        TODO: considering cases when two observed positive frames are close enough that their probability functions overlap.
-        Return: Numpy_Array[proba]
-        """
-        scale = 2
-        func = lambda x : (x ** 2) / (int(AVG_DURATION * scale) ** 2)
-        p = np.ones(len(self.Y))
-        for frame_id in positive_frames_seen:
-           # Right half of the probability function
-            for i in range(int(AVG_DURATION * scale) + 1):
-                if frame_id + i < len(self.Y):
-                    p[frame_id + i] = min(func(i), p[frame_id + i])
-            # Left half of the probability function
-            for i in range(int(AVG_DURATION * scale) + 1):
-                if frame_id - i >= 0:
-                    p[frame_id - i] = min(func(i), p[frame_id - i])
-        return p
 
     @staticmethod
     def chunks(lst, n):
         """Yield successive n-sized chunks from lst."""
         for i in range(0, len(lst), n):
             yield lst[i:i + n]
+    
+    def eval_metric(self, clf):
+        """
+        Evaluate model performance on all (filtered/candidate) data
+        """
+        y_pred = clf.predict(self.spatial_features)
+        tn, fp, fn, tp = confusion_matrix(self.Y, y_pred).ravel()
+        print("accuracy:", accuracy_score(self.Y, y_pred), "; f1_score:", f1_score(self.Y, y_pred), "; tn, fp, fn, tp:", tn, fp, fn, tp)
 
     # @staticmethod
     # def argsort(seq):

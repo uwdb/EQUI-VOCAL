@@ -30,10 +30,8 @@ np.set_printoptions(threshold=sys.maxsize)
 
 
 class BaseQueryInitialization:
-    def __init__(self, pos_frames, spatial_features, Y, candidates):
+    def __init__(self, pos_frames, candidates):
         self.pos_frames = pos_frames
-        self.spatial_features = spatial_features
-        self.Y = Y
         self.candidates = candidates
 
     def run(self):
@@ -41,20 +39,21 @@ class BaseQueryInitialization:
 
 
 class RandomInitialization(BaseQueryInitialization):
-    def run(self, raw_frames: np.ndarray, materialized_frames: np.ndarray, positive_frames_seen: List[int], negative_frames_seen: List[int], pos_frames_per_instance, num_positive_instances_found, plot_data_y_annotated, plot_data_y_materialized, stats_per_chunk) -> Tuple[np.ndarray, np.ndarray, np.ndarray, RandomForestClassifier]:
+    def run(self, materialized_frames: np.ndarray, positive_frames_seen: List[int], negative_frames_seen: List[int], pos_frames_per_instance, num_positive_instances_found, plot_data_y_annotated, plot_data_y_materialized, stats_per_chunk) -> Tuple[np.ndarray, np.ndarray, np.ndarray, RandomForestClassifier]:
         """Input: raw frames Fr
         Output: n_0 materialized frames Fm_0, updated raw frames Fr_0, initial proxy model m_0
         """
         while not (positive_frames_seen and negative_frames_seen):
-            frame_id = np.random.choice(materialized_frames.nonzero()[0])
+            arr = materialized_frames * self.candidates
+            frame_id = np.random.choice(arr.nonzero()[0])
 
             materialized_frames[frame_id] = False
             # NOTE: the user will label a frame as positive only if:
             # 1. it is positive,
             # 2. the object detector says it contains objects of interest in the region of interest.
-            chunk_idx = int(frame_id / (1.0 * raw_frames.size / len(stats_per_chunk)))
+            chunk_idx = int(frame_id / (1.0 * materialized_frames.size / len(stats_per_chunk)))
             stats_per_chunk[chunk_idx][1] += 1
-            if frame_id in self.pos_frames and self.candidates[frame_id]:
+            if frame_id in self.pos_frames:
                 for key, (start_frame, end_frame, flag) in pos_frames_per_instance.items():
                     if start_frame <= frame_id and frame_id < end_frame:
                         if flag == 0:
@@ -75,12 +74,4 @@ class RandomInitialization(BaseQueryInitialization):
                 negative_frames_seen.append(frame_id)
                 plot_data_y_annotated = np.append(plot_data_y_annotated, num_positive_instances_found)
 
-        clf = RandomForestClassifier(
-            # criterion="entropy",
-            # max_depth=10,
-            n_estimators=10,
-            # min_samples_split=32,
-            class_weight="balanced"
-        )
-        clf = clf.fit(self.spatial_features[~(raw_frames | materialized_frames)], self.Y[~(raw_frames | materialized_frames)])
-        return materialized_frames, positive_frames_seen, negative_frames_seen, clf, pos_frames_per_instance, num_positive_instances_found, plot_data_y_annotated, plot_data_y_materialized, stats_per_chunk
+        return materialized_frames, positive_frames_seen, negative_frames_seen, pos_frames_per_instance, num_positive_instances_found, plot_data_y_annotated, plot_data_y_materialized, stats_per_chunk
