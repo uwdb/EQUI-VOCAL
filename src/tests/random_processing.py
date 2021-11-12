@@ -13,6 +13,7 @@ class RandomProcessing(IterativeProcessing):
 
     def random_sampling(self):
         while self.num_positive_instances_found < 15:
+            self.update_random_choice_p()
             normalized_p = self.p[self.frames_unseen] / self.p[self.frames_unseen].sum()
             frame_id = np.random.choice(self.frames_unseen.nonzero()[0], p=normalized_p)
             self.simulate_user_annotation(frame_id)
@@ -24,6 +25,7 @@ class RandomProcessingFiltered(IterativeProcessing):
 
     def random_sampling(self):
         while self.num_positive_instances_found < 15:
+            self.update_random_choice_p()
             arr = self.frames_unseen * self.candidates
             normalized_p = self.p[arr] / self.p[arr].sum()
             frame_id = np.random.choice(arr.nonzero()[0], p=normalized_p)
@@ -51,8 +53,9 @@ class RandomProcessingFilteredWithoutHeuristic(RandomProcessingFiltered):
 if __name__ == '__main__':
     plot_data_y_list = []
     for _ in range(100):
+        # ip = RandomProcessingWithoutHeuristic()
+        # ip = RandomProcessingFilteredWithoutHeuristic()
         ip = RandomProcessing()
-        # ip = RandomProcessingFiltered()
         ip.random_sampling()
         plot_data_y_list.append(ip.get_plot_data_y())
-    ip.save_data(plot_data_y_list, "random_without_heuristic")
+    ip.save_data(plot_data_y_list, "random")

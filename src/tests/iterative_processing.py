@@ -44,7 +44,7 @@ EPSILON = 1e-7
 AVG_DURATION = 61
 
 class IterativeProcessing:
-    def __init__(self, n_annotations):
+    def __init__(self, n_annotations=1):
         self.n_annotations = n_annotations
         self.spatial_feature_dim = 5
         self.edge_corner_bbox = (367, 345, 540, 418)
@@ -239,7 +239,6 @@ if __name__ == '__main__':
         for _ in range(100):
             ip = IterativeProcessing(n_annotations)
             # ip = IterativeProcessingWithoutHeuristic()
-            # Cold start
             print("Cold start:")
             ip.random_sampling()
             print("Cold start done.")
