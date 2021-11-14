@@ -34,6 +34,30 @@ def car_and_pedestrain_at_intersection(res_per_frame, frame_id):
     return False, None
 
 def test_a(res_per_frame, frame_id):
+    predicate = lambda x1, y1, x2, y2 : 1.0 * (x2 - x1) / (y2 - y1) > 2
+    return base_test(res_per_frame, frame_id, predicate)
+
+def test_b(res_per_frame, frame_id):
+    def predicate(x1, y1, x2, y2):
+        x = (x1 + x2) / 2
+        y = (y1 + y2) / 2
+        w = x2 - x1
+        h = y2 - y1
+        r = w / h
+        return (r < 2 and x > 250)
+    return base_test(res_per_frame, frame_id, predicate)
+
+def test_c(res_per_frame, frame_id):
+    def predicate(x1, y1, x2, y2):
+        x = (x1 + x2) / 2
+        y = (y1 + y2) / 2
+        w = x2 - x1
+        h = y2 - y1
+        r = w / h
+        return (r < 2 and x > 250) or (w > 100 and h > 50)
+    return base_test(res_per_frame, frame_id, predicate)
+
+def base_test(res_per_frame, frame_id, predicate):
     edge_corner_bbox = (367, 345, 540, 418)
     has_car_and_satisfies_predicate = 0
     has_car = 0
@@ -44,7 +68,7 @@ def test_a(res_per_frame, frame_id):
         elif (class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2))):
             car_x1, car_y1, car_x2, car_y2 = x1, y1, x2, y2
             has_car = 1
-            if 1.0 * (x2 - x1) / (y2 - y1) > 2:
+            if predicate(x1, y1, x2, y2):
                 has_car_and_satisfies_predicate = 1
                 acar_x1, acar_y1, acar_x2, acar_y2 = x1, y1, x2, y2
         if has_car_and_satisfies_predicate and has_pedestrian:

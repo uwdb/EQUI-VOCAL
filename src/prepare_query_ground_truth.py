@@ -21,6 +21,45 @@ def test_a(maskrcnn_bboxes):
     - Car and pedestrain at the intersection
     - spatial configuration of car: ratio r > 2
     """
+    predicate = lambda x1, y1, x2, y2 : 1.0 * (x2 - x1) / (y2 - y1) > 2
+    return base_test(maskrcnn_bboxes, predicate)
+
+def test_b(maskrcnn_bboxes):
+    """
+    Event definition:
+    - Car and pedestrain at the intersection
+    - spatial configuration of car: r < 2 and x > 250
+    """
+    def predicate(x1, y1, x2, y2):
+        x = (x1 + x2) / 2
+        y = (y1 + y2) / 2
+        w = x2 - x1
+        h = y2 - y1
+        r = w / h
+        return (r < 2 and x > 250)
+    return base_test(maskrcnn_bboxes, predicate)
+
+def test_c(maskrcnn_bboxes):
+    """
+    Event definition:
+    - Car and pedestrain at the intersection
+    - spatial configuration of car:
+    """
+    def predicate(x1, y1, x2, y2):
+        x = (x1 + x2) / 2
+        y = (y1 + y2) / 2
+        w = x2 - x1
+        h = y2 - y1
+        r = w / h
+        return (r < 2 and x > 250) or (w > 100 and h > 50)
+    return base_test(maskrcnn_bboxes, predicate)
+
+def base_test(maskrcnn_bboxes, predicate):
+    """
+    Event definition:
+    - Car and pedestrain at the intersection
+    - Predicate: spatial configuration of car
+    """
     edge_corner_bbox = (367, 345, 540, 418)
     pos_frames = []
     pos_frames_per_instance = {}
@@ -34,13 +73,10 @@ def test_a(maskrcnn_bboxes):
             if (class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2))):
                 has_pedestrian = 1
             elif (class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2))):
-                if 1.0 * (x2 - x1) / (y2 - y1) > 2: # If ratio r > 2
+                if predicate(x1, y1, x2, y2):
                     car_x1, car_y1, car_x2, car_y2 = x1, y1, x2, y2
                     has_car = 1
             if has_car and has_pedestrian:
-                if frame_id == 203:
-                    print(car_x1, car_y1, car_x2, car_y2)
-                    exit(1)
                 pos_frames.append(frame_id)
                 break
     instance_id = 0
