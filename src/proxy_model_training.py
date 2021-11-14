@@ -15,7 +15,8 @@ class ProxyModelTraining:
             # max_depth=10,
             n_estimators=10,
             # min_samples_split=32,
-            class_weight="balanced"
+            class_weight="balanced",
+            # min_impurity_decrease=0.1
         )
         train_x = self.spatial_features[~(raw_frames | materialized_frames)]
         train_y = self.Y[~(raw_frames | materialized_frames)]
