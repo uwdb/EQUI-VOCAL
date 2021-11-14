@@ -46,7 +46,6 @@ class RandomInitialization(BaseQueryInitialization):
         while not (positive_frames_seen and negative_frames_seen):
             arr = materialized_frames * self.candidates
             frame_id = np.random.choice(arr.nonzero()[0])
-
             materialized_frames[frame_id] = False
             # NOTE: the user will label a frame as positive only if:
             # 1. it is positive,

@@ -10,6 +10,7 @@ import os
 import csv
 from tqdm import tqdm
 from sklearn import tree, metrics
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 import graphviz
@@ -23,7 +24,11 @@ from user_feedback import UserFeedback
 from proxy_model_training import ProxyModelTraining
 from query_initialization import RandomInitialization
 from prepare_query_ground_truth import *
-import filter 
+import filter
+from sklearn.metrics import RocCurveDisplay
+from sklearn.tree._tree import TREE_LEAF, TREE_UNDEFINED
+from copy import deepcopy
+
 
 annotated_batch_size = 1
 materialized_batch_size = 16
@@ -33,6 +38,9 @@ init_sampling_step = 1
 class ComplexEventVideoDB:
     def __init__(self, bbox_file = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/bbox.json"):
         self.spatial_feature_dim = 5
+        # self.feature_names = ["centroid_x", "centroid_y", "width", "height", "wh_ratio"]
+        self.feature_names = ["x", "y", "w", "h", "r"]
+        # self.feature_names = ["x1", "y1", "x2", "y2"]
         # Read in bbox info
         with open(bbox_file, 'r') as f:
             self.maskrcnn_bboxes = json.loads(f.read())
@@ -40,13 +48,15 @@ class ComplexEventVideoDB:
 
         # Get ground-truth labels
         # self.pos_frames, self.pos_frames_per_instance = turning_car_and_pedestrain_at_intersection()
-        self.pos_frames, self.pos_frames_per_instance = test_a(self.maskrcnn_bboxes)
+        self.pos_frames, self.pos_frames_per_instance = test_c(self.maskrcnn_bboxes)
         self.n_positive_instances = len(self.pos_frames_per_instance)
         self.avg_duration = 1.0 * len(self.pos_frames) / self.n_positive_instances
-        print(self.avg_duration)
+        print(len(self.pos_frames), self.n_positive_instances, self.avg_duration)
         self.num_positive_instances_found = 0
         self.raw_frames = np.full(self.n_frames, True, dtype=np.bool)
         self.materialized_frames = np.full(self.n_frames, False, dtype=np.bool)
+        self.iteration = 0
+        self.vis_decision_output = []
 
         # Initially, materialize 1/init_sampling_step (e.g. 1%) of all frames.
         for i in range(0, self.n_frames, init_sampling_step):
@@ -65,12 +75,12 @@ class ComplexEventVideoDB:
         self.plot_data_y_annotated = np.array([0])
         self.plot_data_y_materialized = np.array([self.materialized_frames.nonzero()[0].size])
 
-        # Filtering stage 
+        # Filtering stage
         self.candidates = np.full(self.n_frames, True, dtype=np.bool)
         for frame_id in range(self.n_frames):
             res_per_frame = self.maskrcnn_bboxes["frame_{}.jpg".format(frame_id)]
             # is_candidate, bbox = filter.car_and_pedestrain_at_intersection(res_per_frame, frame_id)
-            is_candidate, bbox = filter.test_a(res_per_frame, frame_id)
+            is_candidate, bbox = filter.test_c(res_per_frame, frame_id)
             if not is_candidate:
                 self.candidates[frame_id] = False
             else:
@@ -100,7 +110,18 @@ class ComplexEventVideoDB:
             self.clf = self.proxy_model_training.run(self.raw_frames, self.materialized_frames)
 
             self.get_frames_stats()
+
+            if not self.iteration % 20: 
+                self.visualize_classifier_decision()
+            self.iteration += 1
+
         print("stats_per_chunk", self.stats_per_chunk)
+        
+        # Write out decision tree text report
+        with open('outputs/tree_report_test_c.txt', 'w') as f:
+            for element in self.vis_decision_output:
+                f.write(element + "\n\n")
+
         return self.plot_data_y_annotated, self.plot_data_y_materialized
 
     def construct_spatial_feature(self, bbox):
@@ -111,6 +132,7 @@ class ComplexEventVideoDB:
         height = y2 - y1
         wh_ratio = width / height
         return np.array([centroid_x, centroid_y, width, height, wh_ratio])
+        # return np.array([x1, y1, x2, y2])
 
     def update_random_choice_p(self):
         """Given positive frames seen, compute the probabilities associated with each frame for random choice.
@@ -132,6 +154,70 @@ class ComplexEventVideoDB:
             for i in range(int(self.avg_duration * scale) + 1):
                 if frame_id - i >= 0:
                     self.p[frame_id - i] = min(func(i), self.p[frame_id - i])
+
+    def visualize_classifier_decision(self):
+        # Make a copy 
+        clf_copy = deepcopy(self.clf)
+
+        # Find smallest decision tree in the random forest classifier
+        smallest_tree = clf_copy.estimators_[0]
+        min_leaf_node_count = sum(clf_copy.estimators_[0].tree_.children_left < 0)
+        for est in clf_copy.estimators_:
+            if sum(est.tree_.children_left < 0) < min_leaf_node_count:
+                min_leaf_node_count = sum(est.tree_.children_left < 0)
+                smallest_tree = est
+
+        # Prune the decision tree 
+        self.prune_duplicate_leaves(smallest_tree)
+        r1 = tree.export_text(smallest_tree, feature_names=self.feature_names)
+
+        # Evaluate metrics on training data 
+        x_train = self.spatial_features[~(self.raw_frames | self.materialized_frames)]
+        y_train = self.Y[~(self.raw_frames | self.materialized_frames)]
+        y_pred = self.clf.predict(x_train)
+        tn, fp, fn, tp = confusion_matrix(y_train, y_pred).ravel()
+        training_data_str = "[training data] accuracy: {}; f1_score: {}; tn, fp, fn, tp: {}, {}, {}, {}".format(accuracy_score(y_train, y_pred), f1_score(y_train, y_pred), tn, fp, fn, tp)
+
+        # Evaluate metrics on all (filtered) data
+        y_pred = self.clf.predict(self.spatial_features[self.candidates])
+        tn, fp, fn, tp = confusion_matrix(self.Y[self.candidates], y_pred).ravel()
+        all_data_str = "[all data] accuracy: {}; f1_score: {}; tn, fp, fn, tp: {}, {}, {}, {}".format(accuracy_score(self.Y[self.candidates], y_pred), f1_score(self.Y[self.candidates], y_pred), tn, fp, fn, tp)
+        # rfc_disp = RocCurveDisplay.from_estimator(self.clf, self.spatial_features, self.Y, alpha=0.8)
+        # plt.savefig("outputs/roc_{}.pdf".format(self.iteration), bbox_inches='tight', pad_inches=0)
+        self.vis_decision_output.append("========== Iteration: {} ==========\n".format(self.iteration) + r1 + training_data_str + "\n" + all_data_str)
+
+    @staticmethod
+    def is_leaf(inner_tree, index):
+        # Check whether node is leaf node
+        return (inner_tree.children_left[index] == TREE_LEAF and 
+                inner_tree.children_right[index] == TREE_LEAF)
+
+    @classmethod
+    def prune_index(cls, inner_tree, decisions, index=0):
+        # Start pruning from the bottom - if we start from the top, we might miss
+        # nodes that become leaves during pruning.
+        # Do not use this directly - use prune_duplicate_leaves instead.
+        if not cls.is_leaf(inner_tree, inner_tree.children_left[index]):
+            cls.prune_index(inner_tree, decisions, inner_tree.children_left[index])
+        if not cls.is_leaf(inner_tree, inner_tree.children_right[index]):
+            cls.prune_index(inner_tree, decisions, inner_tree.children_right[index])
+
+        # Prune children if both children are leaves now and make the same decision:     
+        if (cls.is_leaf(inner_tree, inner_tree.children_left[index]) and
+            cls.is_leaf(inner_tree, inner_tree.children_right[index]) and
+            (decisions[index] == decisions[inner_tree.children_left[index]]) and 
+            (decisions[index] == decisions[inner_tree.children_right[index]])):
+            # turn node into a leaf by "unlinking" its children
+            inner_tree.children_left[index] = TREE_LEAF
+            inner_tree.children_right[index] = TREE_LEAF
+            inner_tree.feature[index] = TREE_UNDEFINED
+            ##print("Pruned {}".format(index))
+
+    @classmethod
+    def prune_duplicate_leaves(cls, mdl):
+        # Remove leaves if both 
+        decisions = mdl.tree_.value.argmax(axis=2).flatten().tolist() # Decision for each node
+        cls.prune_index(mdl.tree_, decisions)
 
     def get_frames_stats(self):
         print("raw frames: {0}, materialized frames: {1}, negative frames seen: {2}, positive frames seen: {3}.".format(self.raw_frames.nonzero()[0].size, self.materialized_frames.nonzero()[0].size, len(self.negative_frames_seen), len(self.positive_frames_seen)))
@@ -208,7 +294,7 @@ class ComplexEventVideoDBSkewed(ComplexEventVideoDB):
         self.user_feedback = UserFeedback(self.pos_frames, self.candidates)
         self.proxy_model_training = ProxyModelTraining(self.spatial_features, self.Y)
 
-class IterativeProcessing(ComplexEventVideoDB):
+class FilteredProcessing(ComplexEventVideoDB):
     def __init__(self) -> None:
         super().__init__()
 
@@ -271,16 +357,15 @@ class RandomProcessing(ComplexEventVideoDB):
                 self.plot_data_y_annotated = np.append(self.plot_data_y_annotated, self.num_positive_instances_found)
         return self.plot_data_y_annotated, self.plot_data_y_materialized
 
-        
 if __name__ == '__main__':
     plot_data_y_annotated_list = []
     plot_data_y_materialized_list = []
-    for _ in range(20):
+    for _ in range(1):
         cevdb = ComplexEventVideoDB()
-        # cevdb = RandomProcessing()
+        # cevdb = FilteredProcessing()
         plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
         plot_data_y_annotated_list.append(plot_data_y_annotated)
         plot_data_y_materialized_list.append(plot_data_y_materialized)
-    cevdb.save_data(plot_data_y_annotated_list, "iterative_test_a")
+    # cevdb.save_data(plot_data_y_annotated_list, "iterative_test_b")
     # cevdb.save_data(plot_data_y_annotated_list, "random_test_a")
     # cevdb.save_data(plot_data_y_materialized_list, "filtered_materialized")
