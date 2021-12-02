@@ -28,7 +28,10 @@ import filter
 from sklearn.metrics import RocCurveDisplay
 from sklearn.tree._tree import TREE_LEAF, TREE_UNDEFINED
 from copy import deepcopy
-
+import cv2
+from shapely.geometry import Polygon
+from sklearn.manifold import TSNE
+from mpl_toolkits.mplot3d import Axes3D
 
 annotated_batch_size = 1
 materialized_batch_size = 16
@@ -45,10 +48,11 @@ class ComplexEventVideoDB:
         with open(bbox_file, 'r') as f:
             self.maskrcnn_bboxes = json.loads(f.read())
         self.n_frames = len(self.maskrcnn_bboxes)
+        self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
 
         # Get ground-truth labels
         # self.pos_frames, self.pos_frames_per_instance = turning_car_and_pedestrain_at_intersection()
-        self.pos_frames, self.pos_frames_per_instance = test_c(self.maskrcnn_bboxes)
+        self.pos_frames, self.pos_frames_per_instance = test_b(self.maskrcnn_bboxes)
         self.n_positive_instances = len(self.pos_frames_per_instance)
         self.avg_duration = 1.0 * len(self.pos_frames) / self.n_positive_instances
         print(len(self.pos_frames), self.n_positive_instances, self.avg_duration)
@@ -66,7 +70,7 @@ class ComplexEventVideoDB:
         self.negative_frames_seen = []
         self.positive_frames_seen = []
         self.p = np.ones(self.n_frames)
-        
+
         self.spatial_features = np.zeros((self.n_frames, self.spatial_feature_dim), dtype=np.float64)
         self.Y = np.zeros(self.n_frames, dtype=np.int)
         for i in range(self.n_frames):
@@ -80,7 +84,7 @@ class ComplexEventVideoDB:
         for frame_id in range(self.n_frames):
             res_per_frame = self.maskrcnn_bboxes["frame_{}.jpg".format(frame_id)]
             # is_candidate, bbox = filter.car_and_pedestrain_at_intersection(res_per_frame, frame_id)
-            is_candidate, bbox = filter.test_c(res_per_frame, frame_id)
+            is_candidate, bbox = filter.test_b(res_per_frame, frame_id)
             if not is_candidate:
                 self.candidates[frame_id] = False
             else:
@@ -111,16 +115,35 @@ class ComplexEventVideoDB:
 
             self.get_frames_stats()
 
-            if not self.iteration % 20: 
+            if not self.iteration % 20:
                 self.visualize_classifier_decision()
             self.iteration += 1
 
         print("stats_per_chunk", self.stats_per_chunk)
-        
+
         # Write out decision tree text report
-        with open('outputs/tree_report_test_c.txt', 'w') as f:
-            for element in self.vis_decision_output:
-                f.write(element + "\n\n")
+        with open('outputs/tree_report_test_b.txt', 'w') as f:
+            for element, rules in self.vis_decision_output:
+                # print("rules", rules)
+                f.write(element + "\nExtracted rule: ")
+                for i, rule in enumerate(rules):
+                    if not rule:
+                        continue
+                    f.write("(")
+                    for j, pred in enumerate(rule):
+                        if pred[1] != -float('inf') and pred[2] != float('inf'):
+                            pred_str = "{:.2f} < {} <= {:.2f}".format(pred[1], pred[0], pred[2])
+                        elif pred[1] == -float('inf'):
+                            pred_str = "{} <= {:.2f}".format(pred[0], pred[2])
+                        elif pred[2] == float('inf'):
+                            pred_str = "{} > {:.2f}".format(pred[0], pred[1])
+                        if j < len(rule) - 1:
+                            pred_str += ", "
+                        f.write(pred_str)
+                    f.write(")")
+                    if i < len(rules) - 1:
+                        f.write(" or ")
+                f.write("\n")
 
         return self.plot_data_y_annotated, self.plot_data_y_materialized
 
@@ -156,7 +179,7 @@ class ComplexEventVideoDB:
                     self.p[frame_id - i] = min(func(i), self.p[frame_id - i])
 
     def visualize_classifier_decision(self):
-        # Make a copy 
+        # Make a copy
         clf_copy = deepcopy(self.clf)
 
         # Find smallest decision tree in the random forest classifier
@@ -167,11 +190,13 @@ class ComplexEventVideoDB:
                 min_leaf_node_count = sum(est.tree_.children_left < 0)
                 smallest_tree = est
 
-        # Prune the decision tree 
+        # Prune the decision tree
         self.prune_duplicate_leaves(smallest_tree)
-        r1 = tree.export_text(smallest_tree, feature_names=self.feature_names)
+        # r1 = tree.export_text(smallest_tree, feature_names=self.feature_names)
+        rules = self.extract_rules(smallest_tree, self.feature_names)
+        self.visualize_rules(rules)
 
-        # Evaluate metrics on training data 
+        # Evaluate metrics on training data
         x_train = self.spatial_features[~(self.raw_frames | self.materialized_frames)]
         y_train = self.Y[~(self.raw_frames | self.materialized_frames)]
         y_pred = self.clf.predict(x_train)
@@ -184,12 +209,97 @@ class ComplexEventVideoDB:
         all_data_str = "[all data] accuracy: {}; f1_score: {}; tn, fp, fn, tp: {}, {}, {}, {}".format(accuracy_score(self.Y[self.candidates], y_pred), f1_score(self.Y[self.candidates], y_pred), tn, fp, fn, tp)
         # rfc_disp = RocCurveDisplay.from_estimator(self.clf, self.spatial_features, self.Y, alpha=0.8)
         # plt.savefig("outputs/roc_{}.pdf".format(self.iteration), bbox_inches='tight', pad_inches=0)
-        self.vis_decision_output.append("========== Iteration: {} ==========\n".format(self.iteration) + r1 + training_data_str + "\n" + all_data_str)
+        self.vis_decision_output.append(("========== Iteration: {} ==========\n".format(self.iteration) + training_data_str + "\n" + all_data_str, rules))
+
+    def new_model_measures(self,X,Y,new_model,branches_df):
+        result_dict={}
+        probas,depths=[],[]
+        for inst in X:
+            prob,depth=new_model.predict_probas_and_depth(inst,branches_df)
+            probas.append(prob)
+            depths.append(depth)
+        predictions=[self.classes_[i] for i in np.array([np.argmax(prob) for prob in probas])]
+        result_dict['new_model_average_depth']=np.mean(depths)
+        result_dict['new_model_min_depth'] = np.min(depths)
+        result_dict['new_model_max_depth'] = np.max(depths)
+        result_dict['new_model_accuracy'] = np.sum(predictions==Y) / len(Y)
+        # result_dict['new_model_auc'] = self.get_auc(Y,np.array(probas),self.classes_)
+        # result_dict['new_model_kappa'] = cohen_kappa_score(Y,predictions)
+        result_dict['new_model_number_of_nodes'] = new_model.number_of_children()
+        # result_dict['new_model_probas'] = probas
+        return result_dict
+
+    @staticmethod
+    def extract_rules(tree, feature_names):
+        tree_ = tree.tree_
+        rules = []
+        def traverse(node_id, pred):
+            if tree_.children_left[node_id] != tree_.children_right[node_id]:
+                name = feature_names[tree_.feature[node_id]]
+                threshold = tree_.threshold[node_id]
+                traverse(tree_.children_left[node_id], pred + [(name, "<=", threshold)])
+                traverse(tree_.children_right[node_id], pred + [(name, ">", threshold)])
+            else:
+                if np.argmax(tree_.value[node_id]) == 1:
+                    rule = pred.copy()
+                    # Simplify the rule by grouping together predicates on the same feature
+                    values = set(map(lambda x: x[0], rule))
+                    # simplified_rule: [(feature name, > value, <= value)]
+                    simplified_rule = [(x, np.max([y[2] for y in rule if y[0] == x and y[1] == ">"], initial=-float('inf')), np.min([y[2] for y in rule if y[0]==x and y[1] == "<="], initial=float('inf'))) for x in values]
+                    simplified_rule.sort(key=lambda tup: tup[0])
+                    rules.append(simplified_rule)
+                    # print(simplified_rule)
+        traverse(0, [])
+        # print("rules", rules)
+
+        return rules
+
+    def visualize_rules(self, rules):
+        img = cv2.imread(self.base_image_path)
+        # pts = []
+        overlay = img.copy()
+        for i, rule in enumerate(rules):
+            local_overlay = img.copy()
+            # pts.append()
+            # print("pts", pts)
+            color = list(np.random.random(size=3) * 256)
+            overlay = cv2.fillPoly(overlay, [self.find_polygon_points(rule)], color)
+            local_overlay = cv2.fillPoly(local_overlay, [self.find_polygon_points(rule)], color)
+            w = 200
+            h = 100
+            spacing = 50
+            num_per_row = 4
+            x = 10 + (w + spacing) * (i % 5)
+            y = 10 + (h + spacing) * (i // 5)
+            overlay = cv2.rectangle(overlay, (x, y), (x+w, y+h), color, -1)  # A filled rectangle
+            local_overlay = cv2.rectangle(local_overlay, (x, y), (x+w, y+h), color, -1)  # A filled rectangle
+            # for pred in rule:
+            #     if pred[0] == "r":
+
+            out_img = cv2.addWeighted(local_overlay, 0.7, img, 0.3, 0)
+            cv2.imwrite("{0}/{1}_{2}.jpg".format("/home/ubuntu/complex_event_video/src/outputs", self.iteration, i), out_img)
+        out_img = cv2.addWeighted(overlay, 0.7, img, 0.3, 0)
+        cv2.imwrite("{0}/{1}.jpg".format("/home/ubuntu/complex_event_video/src/outputs", self.iteration), out_img)
+
+    @staticmethod
+    def find_polygon_points(rule):
+        x_min, y_min, x_max, y_max = 0, 0, 960, 540
+        for pred in rule:
+            if pred[0] == "x":
+                x_min = max(pred[1], 0)
+                x_max = min(pred[2], 960)
+            elif pred[0] == "y":
+                y_min = max(pred[1], 0)
+                y_max = min(pred[2], 540)
+        poly1 = Polygon([(0, 480), (450, 394), (782, 492)])
+        poly2 = Polygon([(x_min, y_min), (x_min, y_max), (x_max, y_max), (x_max, y_min)])
+        poly3 = poly1.intersection(poly2)
+        return np.array([[x, y] for x, y in poly3.exterior.coords], np.int32)
 
     @staticmethod
     def is_leaf(inner_tree, index):
         # Check whether node is leaf node
-        return (inner_tree.children_left[index] == TREE_LEAF and 
+        return (inner_tree.children_left[index] == TREE_LEAF and
                 inner_tree.children_right[index] == TREE_LEAF)
 
     @classmethod
@@ -202,10 +312,10 @@ class ComplexEventVideoDB:
         if not cls.is_leaf(inner_tree, inner_tree.children_right[index]):
             cls.prune_index(inner_tree, decisions, inner_tree.children_right[index])
 
-        # Prune children if both children are leaves now and make the same decision:     
+        # Prune children if both children are leaves now and make the same decision:
         if (cls.is_leaf(inner_tree, inner_tree.children_left[index]) and
             cls.is_leaf(inner_tree, inner_tree.children_right[index]) and
-            (decisions[index] == decisions[inner_tree.children_left[index]]) and 
+            (decisions[index] == decisions[inner_tree.children_left[index]]) and
             (decisions[index] == decisions[inner_tree.children_right[index]])):
             # turn node into a leaf by "unlinking" its children
             inner_tree.children_left[index] = TREE_LEAF
@@ -215,7 +325,7 @@ class ComplexEventVideoDB:
 
     @classmethod
     def prune_duplicate_leaves(cls, mdl):
-        # Remove leaves if both 
+        # Remove leaves if both
         decisions = mdl.tree_.value.argmax(axis=2).flatten().tolist() # Decision for each node
         cls.prune_index(mdl.tree_, decisions)
 
@@ -224,6 +334,15 @@ class ComplexEventVideoDB:
         if len(self.positive_frames_seen) == 1:
             print(self.positive_frames_seen)
         # print("The user has seen {0} frames and found {1} positive frames so far.".format(len(self.positive_frames_seen) + len(self.negative_frames_seen), len(self.positive_frames_seen)))
+
+    def tsne_plot(self):
+        spatial_features_embedded = TSNE(n_components=3, learning_rate="auto", init="random").fit_transform(self.spatial_features[self.candidates])
+        fig = plt.figure(figsize=(12, 12))
+        ax = fig.add_subplot(projection='3d')
+        # fig, ax = plt.subplots(1, figsize=(4, 3))
+        ax.scatter(spatial_features_embedded[:, 0], spatial_features_embedded[:, 1], spatial_features_embedded[:, 2], c=self.Y[self.candidates], label=self.Y[self.candidates], alpha=0.5)
+        ax.legend()
+        plt.savefig("tsne.pdf", bbox_inches='tight', pad_inches=0)
 
     @staticmethod
     def save_data(plot_data_y_list, method):
@@ -362,10 +481,11 @@ if __name__ == '__main__':
     plot_data_y_materialized_list = []
     for _ in range(1):
         cevdb = ComplexEventVideoDB()
+        cevdb.tsne_plot()
         # cevdb = FilteredProcessing()
-        plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
-        plot_data_y_annotated_list.append(plot_data_y_annotated)
-        plot_data_y_materialized_list.append(plot_data_y_materialized)
+        # plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
+        # plot_data_y_annotated_list.append(plot_data_y_annotated)
+        # plot_data_y_materialized_list.append(plot_data_y_materialized)
     # cevdb.save_data(plot_data_y_annotated_list, "iterative_test_b")
     # cevdb.save_data(plot_data_y_annotated_list, "random_test_a")
     # cevdb.save_data(plot_data_y_materialized_list, "filtered_materialized")
