@@ -39,23 +39,52 @@ materialized_batch_size = 16
 init_sampling_step = 1
 
 class ComplexEventVideoDB:
-    def __init__(self, bbox_file = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/bbox.json"):
-        self.spatial_feature_dim = 5
-        # self.feature_names = ["centroid_x", "centroid_y", "width", "height", "wh_ratio"]
-        self.feature_names = ["x", "y", "w", "h", "r"]
-        # self.feature_names = ["x1", "y1", "x2", "y2"]
+    def __init__(self, bbox_file="/home/ubuntu/complex_event_video/data/car_turning_traffic2/bbox.json", query="test_b", temporal_heuristic=True):
+        self.query = query
+        self.temporal_heuristic = temporal_heuristic
         # Read in bbox info
         with open(bbox_file, 'r') as f:
             self.maskrcnn_bboxes = json.loads(f.read())
         self.n_frames = len(self.maskrcnn_bboxes)
+
+        # with open("ms_coco_classnames.txt") as f:
+        #     coco_names = f.read().splitlines()
+        # bboxes_lst = []
+        # with open("/home/ubuntu/complex_event_video/data/car_turning_traffic2/traffic-2.txt", 'r') as f:
+        #     lines = f.readlines()
+        #     for line in lines:
+        #         # [fid, tid, cid, x1, y1, x2, y2], types: int
+        #         bboxes_lst.append(list(map(int, line.split())))
+        # self.n_frames = bboxes_lst[-1][0] + 1
+
+        # self.maskrcnn_bboxes = {"frame_{}.jpg".format(key): [] for key in range(self.n_frames)}
+        # for elem in bboxes_lst:
+        #     # x1, y1, x2, y2, class_name, tid
+        #     self.maskrcnn_bboxes["frame_{}.jpg".format(elem[0])].append([
+        #         elem[3],
+        #         elem[4],
+        #         elem[5],
+        #         elem[6],
+        #         coco_names[elem[2]],
+        #         elem[1]
+        #     ])
+
         self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
 
         # Get ground-truth labels
-        # self.pos_frames, self.pos_frames_per_instance = turning_car_and_pedestrain_at_intersection()
-        self.pos_frames, self.pos_frames_per_instance = test_b(self.maskrcnn_bboxes)
+        if query in ["test_a", "test_b", "test_c"]:
+            self.pos_frames, self.pos_frames_per_instance = eval(query + "(self.maskrcnn_bboxes)")
+        elif query == "turning_car_and_pedestrain_at_intersection":
+            self.pos_frames, self.pos_frames_per_instance = turning_car_and_pedestrain_at_intersection()
+        elif query in ["test_d"]:
+            self.pos_frames, self.pos_frames_per_instance = eval(query + "(self.maskrcnn_bboxes)")
+
         self.n_positive_instances = len(self.pos_frames_per_instance)
         self.avg_duration = 1.0 * len(self.pos_frames) / self.n_positive_instances
-        print(len(self.pos_frames), self.n_positive_instances, self.avg_duration)
+        print("# positive frames: ", len(self.pos_frames), "; # distinct instances: ", self.n_positive_instances, "; average duration: ", self.avg_duration)
+        print("Durations of all instances: ")
+        print(" ".join([str(v[1]- v[0]) for _, v in self.pos_frames_per_instance.items()]))
+        # exit(1)
         self.num_positive_instances_found = 0
         self.raw_frames = np.full(self.n_frames, True, dtype=np.bool)
         self.materialized_frames = np.full(self.n_frames, False, dtype=np.bool)
@@ -71,6 +100,12 @@ class ComplexEventVideoDB:
         self.positive_frames_seen = []
         self.p = np.ones(self.n_frames)
 
+        if query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
+            self.spatial_feature_dim = 5
+            self.feature_names = ["x", "y", "w", "h", "r"]
+        elif query in ["test_d"]:
+            self.spatial_feature_dim = 10
+            self.feature_names = ["x1", "y1", "w1", "h1", "r1", "x2", "y2", "w2", "h2", "r2"]
         self.spatial_features = np.zeros((self.n_frames, self.spatial_feature_dim), dtype=np.float64)
         self.Y = np.zeros(self.n_frames, dtype=np.int)
         for i in range(self.n_frames):
@@ -83,12 +118,19 @@ class ComplexEventVideoDB:
         self.candidates = np.full(self.n_frames, True, dtype=np.bool)
         for frame_id in range(self.n_frames):
             res_per_frame = self.maskrcnn_bboxes["frame_{}.jpg".format(frame_id)]
-            # is_candidate, bbox = filter.car_and_pedestrain_at_intersection(res_per_frame, frame_id)
-            is_candidate, bbox = filter.test_b(res_per_frame, frame_id)
+            if query in ["test_a", "test_b", "test_c"]:
+                is_candidate, bbox = getattr(filter, query)(res_per_frame, frame_id)
+            elif query == "turning_car_and_pedestrain_at_intersection":
+                is_candidate, bbox = filter.car_and_pedestrain_at_intersection(res_per_frame, frame_id)
+            elif query in ["test_d"]:
+                is_candidate, bbox1, bbox2 = getattr(filter, query)(res_per_frame)
             if not is_candidate:
                 self.candidates[frame_id] = False
             else:
-                self.spatial_features[frame_id] = self.construct_spatial_feature(bbox)
+                if query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
+                    self.spatial_features[frame_id] = self.construct_spatial_feature(bbox)
+                elif query in ["test_d"]:
+                    self.spatial_features[frame_id] = self.construct_spatial_feature_two_objects(bbox1, bbox2)
 
         # ExSample initialization
         self.number_of_chunks = 1
@@ -122,7 +164,7 @@ class ComplexEventVideoDB:
         print("stats_per_chunk", self.stats_per_chunk)
 
         # Write out decision tree text report
-        with open('outputs/tree_report_test_b.txt', 'w') as f:
+        with open('outputs/tree_report_{}.txt'.format(self.query), 'w') as f:
             for element, rules in self.vis_decision_output:
                 # print("rules", rules)
                 f.write(element + "\nExtracted rule: ")
@@ -157,6 +199,22 @@ class ComplexEventVideoDB:
         return np.array([centroid_x, centroid_y, width, height, wh_ratio])
         # return np.array([x1, y1, x2, y2])
 
+    def construct_spatial_feature_two_objects(self, bbox1, bbox2):
+        x11, y11, x21, y21 = bbox1
+        centroid_x1 = (x11 + x21) / 2
+        centroid_y1 = (y11 + y21) / 2
+        width1 = x21 - x11
+        height1 = y21 - y11
+        wh_ratio1 = width1 / height1
+
+        x12, y12, x22, y22 = bbox2
+        centroid_x2 = (x12 + x22) / 2
+        centroid_y2 = (y12 + y22) / 2
+        width2 = x22 - x12
+        height2 = y22 - y12
+        wh_ratio2 = width2 / height2
+        return np.array([centroid_x1, centroid_y1, width1, height1, wh_ratio1, centroid_x2, centroid_y2, width2, height2, wh_ratio2])
+
     def update_random_choice_p(self):
         """Given positive frames seen, compute the probabilities associated with each frame for random choice.
         Frames that are close to a positive frame that have been seen are more likely to be positive as well, thus should have a smaller probability of returning to user for annotations.
@@ -165,6 +223,9 @@ class ComplexEventVideoDB:
         Return: Numpy_Array[proba]
         """
         self.p = np.ones(self.n_frames)
+        if not self.temporal_heuristic:
+            # No temporal heuristic. Set same probability dacay for all frames.
+            return
 
         scale = 0.5
         func = lambda x : (x ** 2) / (int(self.avg_duration * scale) ** 2)
@@ -194,7 +255,7 @@ class ComplexEventVideoDB:
         self.prune_duplicate_leaves(smallest_tree)
         # r1 = tree.export_text(smallest_tree, feature_names=self.feature_names)
         rules = self.extract_rules(smallest_tree, self.feature_names)
-        self.visualize_rules(rules)
+        # self.visualize_rules(rules)
 
         # Evaluate metrics on training data
         x_train = self.spatial_features[~(self.raw_frames | self.materialized_frames)]
@@ -210,24 +271,6 @@ class ComplexEventVideoDB:
         # rfc_disp = RocCurveDisplay.from_estimator(self.clf, self.spatial_features, self.Y, alpha=0.8)
         # plt.savefig("outputs/roc_{}.pdf".format(self.iteration), bbox_inches='tight', pad_inches=0)
         self.vis_decision_output.append(("========== Iteration: {} ==========\n".format(self.iteration) + training_data_str + "\n" + all_data_str, rules))
-
-    def new_model_measures(self,X,Y,new_model,branches_df):
-        result_dict={}
-        probas,depths=[],[]
-        for inst in X:
-            prob,depth=new_model.predict_probas_and_depth(inst,branches_df)
-            probas.append(prob)
-            depths.append(depth)
-        predictions=[self.classes_[i] for i in np.array([np.argmax(prob) for prob in probas])]
-        result_dict['new_model_average_depth']=np.mean(depths)
-        result_dict['new_model_min_depth'] = np.min(depths)
-        result_dict['new_model_max_depth'] = np.max(depths)
-        result_dict['new_model_accuracy'] = np.sum(predictions==Y) / len(Y)
-        # result_dict['new_model_auc'] = self.get_auc(Y,np.array(probas),self.classes_)
-        # result_dict['new_model_kappa'] = cohen_kappa_score(Y,predictions)
-        result_dict['new_model_number_of_nodes'] = new_model.number_of_children()
-        # result_dict['new_model_probas'] = probas
-        return result_dict
 
     @staticmethod
     def extract_rules(tree, feature_names):
@@ -349,69 +392,6 @@ class ComplexEventVideoDB:
         with open("outputs/{}.json".format(method), 'w') as f:
             f.write(json.dumps([arr.tolist() for arr in plot_data_y_list]))
 
-class ComplexEventVideoDBSkewed(ComplexEventVideoDB):
-   def __init__(self, bbox_file="/home/ubuntu/complex_event_video/data/car_turning_traffic2/bbox.json"):
-        self.spatial_feature_dim = 5
-        self.edge_corner_bbox = (367, 345, 540, 418)
-        # Read in bbox info
-        with open(bbox_file, 'r') as f:
-            self.maskrcnn_bboxes = json.loads(f.read())
-
-        # Manually append 22500 negative frames
-        bbox_of_last_frame = self.maskrcnn_bboxes["frame_22500.jpg"]
-        for i in range(22501, 45001):
-            self.maskrcnn_bboxes["frame_{}.jpg".format(i)] = bbox_of_last_frame
-
-        self.n_frames = len(self.maskrcnn_bboxes)
-        # Read labels
-        self.pos_frames = []
-        self.pos_frames_per_instance = {}
-        with open("/home/ubuntu/complex_event_video/data/annotation.csv", "r") as csvfile:
-            csvreader = csv.reader(csvfile)
-            next(csvreader)
-            for i, row in enumerate(csvreader):
-                start_frame, end_frame = int(row[0]), int(row[1])
-                self.pos_frames += list(range(start_frame, end_frame+1))
-                self.pos_frames_per_instance[i] = (start_frame, end_frame+1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
-
-        self.num_positive_instances_found = 0
-        # frames_unseen --> raw_frames
-        self.raw_frames = np.full(self.n_frames, True, dtype=np.bool)
-        self.materialized_frames = np.full(self.n_frames, False, dtype=np.bool)
-
-        # Initially, materialize 1/init_sampling_step (e.g. 1%) of all frames.
-        for i in range(0, self.n_frames, init_sampling_step):
-            self.raw_frames[i] = False
-            self.materialized_frames[i] = True
-
-        self.negative_frames_seen = []
-        self.positive_frames_seen = []
-        self.p = np.ones(self.n_frames)
-        self.candidates = np.full(self.n_frames, False, dtype=np.bool)
-        self.spatial_features = np.zeros((self.n_frames, self.spatial_feature_dim), dtype=np.float64)
-        self.Y = np.zeros(self.n_frames, dtype=np.int)
-        for i in range(self.n_frames):
-            if i in self.pos_frames:
-                self.Y[i] = 1
-        self.plot_data_y_annotated = np.array([0])
-        self.plot_data_y_materialized = np.array([self.materialized_frames.nonzero()[0].size])
-        self.clf = RandomForestClassifier(
-            # criterion="entropy",
-            # max_depth=10,
-            n_estimators=10,
-            # min_samples_split=32,
-            class_weight="balanced"
-        )
-        self.get_candidates()
-
-        # ExSample initialization
-        self.number_of_chunks = 2
-        self.stats_per_chunk = [[0, 0] for _ in range(self.number_of_chunks)] # N^1 and n
-
-        self.query_initialization = RandomInitialization(self.pos_frames, self.spatial_features, self.Y, self.candidates)
-        self.frame_selection = RandomFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size)
-        self.user_feedback = UserFeedback(self.pos_frames, self.candidates)
-        self.proxy_model_training = ProxyModelTraining(self.spatial_features, self.Y)
 
 class FilteredProcessing(ComplexEventVideoDB):
     def __init__(self) -> None:
@@ -480,10 +460,10 @@ if __name__ == '__main__':
     plot_data_y_annotated_list = []
     plot_data_y_materialized_list = []
     for _ in range(1):
-        cevdb = ComplexEventVideoDB()
-        cevdb.tsne_plot()
+        cevdb = ComplexEventVideoDB(query="test_d", temporal_heuristic=True)
+        # cevdb.tsne_plot()
         # cevdb = FilteredProcessing()
-        # plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
+        plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
         # plot_data_y_annotated_list.append(plot_data_y_annotated)
         # plot_data_y_materialized_list.append(plot_data_y_materialized)
     # cevdb.save_data(plot_data_y_annotated_list, "iterative_test_b")
