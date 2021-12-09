@@ -42,6 +42,64 @@ class ComplexEventVideoDB:
     def __init__(self, bbox_file="/home/ubuntu/complex_event_video/data/car_turning_traffic2/bbox.json", query="test_b", temporal_heuristic=True):
         self.query = query
         self.temporal_heuristic = temporal_heuristic
+        self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
+
+        """Read in object detection bounding box information
+        Properties initialized:
+            self.maskrcnn_bboxes,
+            self.n_frames
+        """
+        self.ingest_bbox_info(bbox_file)
+
+        """Ingest ground-truth labels of the target event
+        Properties initialized:
+            self.pos_frames,
+            self.pos_frames_per_instance,
+            self.n_positive_instances,
+            self.avg_duration
+        """
+        self.ingest_gt_labels()
+
+        """1. Apply initial query to filter out unnecessary frames
+        2. Construct spatial features for candidate frames
+        Properties initialized:
+            self.candidates,
+            self.spatial_feature_dim,
+            self.feature_names,
+            self.spatial_features
+        """
+        self.filtering_stage()
+
+        self.num_positive_instances_found = 0
+        self.raw_frames = np.full(self.n_frames, True, dtype=np.bool)
+        self.materialized_frames = np.full(self.n_frames, False, dtype=np.bool)
+        self.iteration = 0
+        self.vis_decision_output = []
+        self.Y = np.zeros(self.n_frames, dtype=np.int)
+        for i in range(self.n_frames):
+            if i in self.pos_frames:
+                self.Y[i] = 1
+        self.plot_data_y_annotated = np.array([0])
+        self.plot_data_y_materialized = np.array([self.materialized_frames.nonzero()[0].size])
+        self.negative_frames_seen = []
+        self.positive_frames_seen = []
+        self.p = np.ones(self.n_frames)
+
+        # Initially, materialize 1/init_sampling_step (e.g. 1%) of all frames.
+        for i in range(0, self.n_frames, init_sampling_step):
+            self.raw_frames[i] = False
+            self.materialized_frames[i] = True
+
+        # ExSample initialization
+        self.number_of_chunks = 1
+        self.stats_per_chunk = [[0, 0] for _ in range(self.number_of_chunks)] # N^1 and n
+
+        self.query_initialization = RandomInitialization(self.pos_frames, self.candidates)
+        self.frame_selection = RandomFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
+        self.user_feedback = UserFeedback(self.n_frames, self.pos_frames)
+        self.proxy_model_training = ProxyModelTraining(self.spatial_features, self.Y)
+
+    def ingest_bbox_info(self, bbox_file):
         # Read in bbox info
         with open(bbox_file, 'r') as f:
             self.maskrcnn_bboxes = json.loads(f.read())
@@ -68,9 +126,7 @@ class ComplexEventVideoDB:
         #         coco_names[elem[2]],
         #         elem[1]
         #     ])
-
-        self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
-
+    def ingest_gt_labels(self):
         # Get ground-truth labels
         if self.query in ["test_a", "test_b", "test_c"]:
             self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
@@ -86,21 +142,6 @@ class ComplexEventVideoDB:
         print("# positive frames: ", len(self.pos_frames), "; # distinct instances: ", self.n_positive_instances, "; average duration: ", self.avg_duration)
         print("Durations of all instances: ")
         print(" ".join([str(v[1]- v[0]) for _, v in self.pos_frames_per_instance.items()]))
-        # exit(1)
-        self.num_positive_instances_found = 0
-        self.raw_frames = np.full(self.n_frames, True, dtype=np.bool)
-        self.materialized_frames = np.full(self.n_frames, False, dtype=np.bool)
-        self.iteration = 0
-        self.vis_decision_output = []
-
-        # Initially, materialize 1/init_sampling_step (e.g. 1%) of all frames.
-        for i in range(0, self.n_frames, init_sampling_step):
-            self.raw_frames[i] = False
-            self.materialized_frames[i] = True
-
-        self.negative_frames_seen = []
-        self.positive_frames_seen = []
-        self.p = np.ones(self.n_frames)
 
     def filtering_stage(self):
         if self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
@@ -113,13 +154,6 @@ class ComplexEventVideoDB:
             self.spatial_feature_dim = 8
             self.feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
         self.spatial_features = np.zeros((self.n_frames, self.spatial_feature_dim), dtype=np.float64)
-        self.Y = np.zeros(self.n_frames, dtype=np.int)
-        for i in range(self.n_frames):
-            if i in self.pos_frames:
-                self.Y[i] = 1
-        self.plot_data_y_annotated = np.array([0])
-        self.plot_data_y_materialized = np.array([self.materialized_frames.nonzero()[0].size])
-
         # Filtering stage
         self.candidates = np.full(self.n_frames, True, dtype=np.bool)
         for frame_id in range(self.n_frames):
@@ -509,7 +543,7 @@ if __name__ == '__main__':
     plot_data_y_annotated_list = []
     plot_data_y_materialized_list = []
     for _ in range(1):
-        cevdb = ComplexEventVideoDB(query="test_d", temporal_heuristic=True)
+        cevdb = ComplexEventVideoDB(query="test_e", temporal_heuristic=True)
         # cevdb.tsne_plot()
         # cevdb = FilteredProcessing()
         plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
