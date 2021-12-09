@@ -72,12 +72,14 @@ class ComplexEventVideoDB:
         self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
 
         # Get ground-truth labels
-        if query in ["test_a", "test_b", "test_c"]:
-            self.pos_frames, self.pos_frames_per_instance = eval(query + "(self.maskrcnn_bboxes)")
-        elif query == "turning_car_and_pedestrain_at_intersection":
+        if self.query in ["test_a", "test_b", "test_c"]:
+            self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
+        elif self.query == "turning_car_and_pedestrain_at_intersection":
             self.pos_frames, self.pos_frames_per_instance = turning_car_and_pedestrain_at_intersection()
-        elif query in ["test_d"]:
-            self.pos_frames, self.pos_frames_per_instance = eval(query + "(self.maskrcnn_bboxes)")
+        elif self.query in ["test_d"]:
+            self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
+        elif self.query in ["test_e"]:
+            self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
 
         self.n_positive_instances = len(self.pos_frames_per_instance)
         self.avg_duration = 1.0 * len(self.pos_frames) / self.n_positive_instances
@@ -100,12 +102,16 @@ class ComplexEventVideoDB:
         self.positive_frames_seen = []
         self.p = np.ones(self.n_frames)
 
-        if query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
+    def filtering_stage(self):
+        if self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
             self.spatial_feature_dim = 5
             self.feature_names = ["x", "y", "w", "h", "r"]
-        elif query in ["test_d"]:
+        elif self.query in ["test_d"]:
             self.spatial_feature_dim = 10
             self.feature_names = ["x1", "y1", "w1", "h1", "r1", "x2", "y2", "w2", "h2", "r2"]
+        elif self.query in ["test_e"]:
+            self.spatial_feature_dim = 8
+            self.feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
         self.spatial_features = np.zeros((self.n_frames, self.spatial_feature_dim), dtype=np.float64)
         self.Y = np.zeros(self.n_frames, dtype=np.int)
         for i in range(self.n_frames):
@@ -118,28 +124,23 @@ class ComplexEventVideoDB:
         self.candidates = np.full(self.n_frames, True, dtype=np.bool)
         for frame_id in range(self.n_frames):
             res_per_frame = self.maskrcnn_bboxes["frame_{}.jpg".format(frame_id)]
-            if query in ["test_a", "test_b", "test_c"]:
-                is_candidate, bbox = getattr(filter, query)(res_per_frame, frame_id)
-            elif query == "turning_car_and_pedestrain_at_intersection":
+            if self.query in ["test_a", "test_b", "test_c"]:
+                is_candidate, bbox = getattr(filter, self.query)(res_per_frame, frame_id)
+            elif self.query == "turning_car_and_pedestrain_at_intersection":
                 is_candidate, bbox = filter.car_and_pedestrain_at_intersection(res_per_frame, frame_id)
-            elif query in ["test_d"]:
-                is_candidate, bbox1, bbox2 = getattr(filter, query)(res_per_frame)
+            elif self.query in ["test_d"]:
+                is_candidate, bbox1, bbox2 = getattr(filter, self.query)(res_per_frame)
+            elif self.query in ["test_e"]:
+                is_candidate, car_box, person_box = getattr(filter, self.query)(res_per_frame)
             if not is_candidate:
                 self.candidates[frame_id] = False
             else:
-                if query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
+                if self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
                     self.spatial_features[frame_id] = self.construct_spatial_feature(bbox)
-                elif query in ["test_d"]:
+                elif self.query in ["test_d"]:
                     self.spatial_features[frame_id] = self.construct_spatial_feature_two_objects(bbox1, bbox2)
-
-        # ExSample initialization
-        self.number_of_chunks = 1
-        self.stats_per_chunk = [[0, 0] for _ in range(self.number_of_chunks)] # N^1 and n
-
-        self.query_initialization = RandomInitialization(self.pos_frames, self.candidates)
-        self.frame_selection = RandomFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
-        self.user_feedback = UserFeedback(self.n_frames, self.pos_frames)
-        self.proxy_model_training = ProxyModelTraining(self.spatial_features, self.Y)
+                elif self.query in ["test_e"]:
+                    self.spatial_features[frame_id] = self.construct_spatial_feature_spatial_relationship(car_box, person_box)
 
     def run(self):
         self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk = self.query_initialization.run(self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk)
@@ -215,6 +216,23 @@ class ComplexEventVideoDB:
         wh_ratio2 = width2 / height2
         return np.array([centroid_x1, centroid_y1, width1, height1, wh_ratio1, centroid_x2, centroid_y2, width2, height2, wh_ratio2])
 
+    def construct_spatial_feature_spatial_relationship(self, car_box, person_box):
+        x, y, x2, y2 = car_box
+        xp, yp, x4, y4 = person_box
+        w = x2 - x
+        h = y2 - y
+        wp = x4 - xp
+        hp = y4 - yp
+        s1 = (x - xp) / w
+        s2 = (y - yp) / h
+        s3 = (y + h - yp - hp) / h
+        s4 = (x + w - xp - wp) / w
+        s5 = hp / h
+        s6 = wp / w
+        s7 = (wp * hp) / (w * h)
+        s8 = (wp + hp) / (w + h)
+        return np.array([s1, s2, s3, s4, s5, s6, s7, s8])
+
     def update_random_choice_p(self):
         """Given positive frames seen, compute the probabilities associated with each frame for random choice.
         Frames that are close to a positive frame that have been seen are more likely to be positive as well, thus should have a smaller probability of returning to user for annotations.
@@ -255,7 +273,8 @@ class ComplexEventVideoDB:
         self.prune_duplicate_leaves(smallest_tree)
         # r1 = tree.export_text(smallest_tree, feature_names=self.feature_names)
         rules = self.extract_rules(smallest_tree, self.feature_names)
-        # self.visualize_rules(rules)
+        # self.visualize_rules_one_object(rules)
+        self.visualize_rules_spatial_relationship(rules)
 
         # Evaluate metrics on training data
         x_train = self.spatial_features[~(self.raw_frames | self.materialized_frames)]
@@ -297,7 +316,7 @@ class ComplexEventVideoDB:
 
         return rules
 
-    def visualize_rules(self, rules):
+    def visualize_rules_one_object(self, rules):
         img = cv2.imread(self.base_image_path)
         # pts = []
         overlay = img.copy()
@@ -323,6 +342,36 @@ class ComplexEventVideoDB:
             cv2.imwrite("{0}/{1}_{2}.jpg".format("/home/ubuntu/complex_event_video/src/outputs", self.iteration, i), out_img)
         out_img = cv2.addWeighted(overlay, 0.7, img, 0.3, 0)
         cv2.imwrite("{0}/{1}.jpg".format("/home/ubuntu/complex_event_video/src/outputs", self.iteration), out_img)
+
+    def visualize_rules_spatial_relationship(self, rules):
+        for i, rule in enumerate(rules):
+            x1, y1, x2, y2 = 50, 50, 60, 60
+            s1_min, s1_max, s2_min, s2_max = 0, 100, 0, 100
+            for pred in rule:
+                if pred[0] == "s1":
+                    s1_min = max(pred[1], s1_min)
+                    s1_max = min(pred[2], s1_max)
+                elif pred[0] == "s2":
+                    s2_min = max(pred[1], s2_min)
+                    s2_max = min(pred[2], s2_max)
+                # elif pred[0] == "s3":
+                #     s3_min = max(pred[1], s3_min)
+                #     s3_max = min(pred[2], s3_max)
+                # elif pred[0] == "s4":
+                #     s4_min = max(pred[1], s4_min)
+                #     s4_max = min(pred[2], s4_max)
+
+            img = np.zeros([110, 110, 3],dtype=np.uint8)
+            img.fill(255)
+            color = list(np.random.random(size=3) * 256)
+            # Draw base box
+            img = cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 1)
+            # Draw visualization for s1 and s2
+            print(x1 + s2_min, y1 + s1_min, x1 + s2_max, y1 + s1_max)
+            img = cv2.rectangle(img, (x1 + int(s2_min*10), y1 + int(s1_min*10)), (x1 + int(s2_max*10), y1 + int(s1_max*10)), (0,0,255), 1)
+            # # Draw visualization for s3 and s4
+            # img = cv2.rectangle(img, (x1 + s2_min, y1 + s1_min), (x1 + s2_max, y1 + s1_max), color, 2)
+            cv2.imwrite("{0}/spatial_rel_{1}_{2}.jpg".format("/home/ubuntu/complex_event_video/src/outputs", self.iteration, i), img)
 
     @staticmethod
     def find_polygon_points(rule):
