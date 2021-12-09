@@ -97,6 +97,29 @@ def test_d(res_per_frame):
         return (x < 520 and r > 0.3)
     return template_two_objects_b(res_per_frame, [predicate1, predicate2])
 
+def test_e(res_per_frame):
+    """
+    Event definition:
+    - Car and pedestrain at the intersection
+    - Predicate: spatial relationship between car and person
+    """
+    def predicate(car_box, person_box):
+        x, y, x2, y2 = car_box
+        xp, yp, x4, y4 = person_box
+        w = x2 - x
+        h = y2 - y
+        wp = x4 - xp
+        hp = y4 - yp
+        s1 = (x - xp) / w
+        s2 = (y - yp) / h
+        s3 = (y + h - yp - hp) / h
+        s4 = (x + w - xp - wp) / w
+        s5 = hp / h
+        s6 = wp / w
+        s7 = (wp * hp) / (w * h)
+        s8 = (wp + hp) / (w + h)
+        return (s1 > 0.2 and s1 < 0.9 and s2 > 0.2 and s2 < 0.9)
+    return template_spatial_relationship(res_per_frame, predicate)
 
 def template_two_objects(res_per_frame, predicates):
     has_car_1 = 0
@@ -142,4 +165,23 @@ def template_two_objects_b(res_per_frame, predicates):
             return True, car_box_pos, person_box_pos
     if has_car and has_pedestrian:
         return True, car_box_candidate, person_box_candidate
+    return False, None, None
+
+
+def template_spatial_relationship(res_per_frame, predicate):
+    edge_corner_bbox = (367, 345, 540, 418)
+    car_boxes = []
+    person_boxes = []
+    for x1, y1, x2, y2, class_name, _ in res_per_frame:
+        if (class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2))):
+            person_boxes.append((x1, y1, x2, y2))
+        elif (class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2))):
+            car_boxes.append((x1, y1, x2, y2))
+    # Check whether contains the target spatial relationship
+    for car_box in car_boxes:
+        for person_box in person_boxes:
+            if predicate(car_box, person_box):
+                return True, car_box, person_box
+    if car_boxes and person_boxes:
+        return True, random.choice(car_boxes), random.choice(person_boxes)
     return False, None, None
