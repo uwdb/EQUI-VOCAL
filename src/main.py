@@ -32,6 +32,7 @@ import cv2
 from shapely.geometry import Polygon
 from sklearn.manifold import TSNE
 from mpl_toolkits.mplot3d import Axes3D
+from glob import glob
 
 annotated_batch_size = 1
 materialized_batch_size = 16
@@ -39,7 +40,7 @@ materialized_batch_size = 16
 init_sampling_step = 1
 
 class ComplexEventVideoDB:
-    def __init__(self, bbox_file="/home/ubuntu/complex_event_video/data/car_turning_traffic2/bbox.json", query="test_b", temporal_heuristic=True):
+    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True):
         self.query = query
         self.temporal_heuristic = temporal_heuristic
         self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
@@ -49,7 +50,10 @@ class ComplexEventVideoDB:
             self.maskrcnn_bboxes,
             self.n_frames
         """
-        self.ingest_bbox_info(bbox_file)
+        if dataset == "visualroad_traffic2":
+            self.ingest_bbox_info()
+        elif dataset == "meva":
+            self.ingest_bbox_info_meva()
 
         """Ingest ground-truth labels of the target event
         Properties initialized:
@@ -99,9 +103,9 @@ class ComplexEventVideoDB:
         self.user_feedback = UserFeedback(self.n_frames, self.pos_frames)
         self.proxy_model_training = ProxyModelTraining(self.spatial_features, self.Y)
 
-    def ingest_bbox_info(self, bbox_file):
+    def ingest_bbox_info(self):
         # Read in bbox info
-        with open(bbox_file, 'r') as f:
+        with open("/home/ubuntu/complex_event_video/data/car_turning_traffic2/bbox.json", 'r') as f:
             self.maskrcnn_bboxes = json.loads(f.read())
         self.n_frames = len(self.maskrcnn_bboxes)
 
@@ -126,6 +130,29 @@ class ComplexEventVideoDB:
         #         coco_names[elem[2]],
         #         elem[1]
         #     ])
+
+    def ingest_bbox_info_meva(self):
+        files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva") for y in glob(os.path.join(x[0], '*.json'))]
+        gt_annotations = [os.path.basename(y).replace(".activities.yml", "") for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+        self.maskrcnn_bboxes = {}
+        self.video_list = [] # (video_basename, frame_offset, n_frames)
+        for file in files:
+            if "school.G421.r13.json" not in file:
+                continue
+            # If the video doesn't have annotations, skip.
+            video_basename = os.path.basename(file).replace(".r13.json", "")
+            if video_basename not in gt_annotations:
+                continue
+            frame_offset = len(self.maskrcnn_bboxes)
+            # Read in bbox info
+            with open(file, 'r') as f:
+                bbox_dict = json.loads(f.read())
+                for local_frame_id, v in bbox_dict.items():
+                    self.maskrcnn_bboxes[video_basename + "_" + local_frame_id] = v
+            self.video_list.append((video_basename, frame_offset, len(bbox_dict)))
+        self.n_frames = len(self.maskrcnn_bboxes)
+        print("# all frames: ", self.n_frames, "; # video files: ", len(self.video_list))
+
     def ingest_gt_labels(self):
         # Get ground-truth labels
         if self.query in ["test_a", "test_b", "test_c"]:
@@ -136,6 +163,8 @@ class ComplexEventVideoDB:
             self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
         elif self.query in ["test_e"]:
             self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
+        elif self.query in ["meva_person_stands_up"]:
+            self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.video_list)")
 
         self.n_positive_instances = len(self.pos_frames_per_instance)
         self.avg_duration = 1.0 * len(self.pos_frames) / self.n_positive_instances
@@ -144,7 +173,10 @@ class ComplexEventVideoDB:
         print(" ".join([str(v[1]- v[0]) for _, v in self.pos_frames_per_instance.items()]))
 
     def filtering_stage(self):
-        if self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
+        if self.query in ["meva_person_stands_up"]:
+            self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates = getattr(filter, self.query)(self.maskrcnn_bboxes, self.video_list, self.pos_frames)
+            return
+        elif self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
             self.spatial_feature_dim = 5
             self.feature_names = ["x", "y", "w", "h", "r"]
         elif self.query in ["test_d"]:
@@ -156,25 +188,27 @@ class ComplexEventVideoDB:
         self.spatial_features = np.zeros((self.n_frames, self.spatial_feature_dim), dtype=np.float64)
         # Filtering stage
         self.candidates = np.full(self.n_frames, True, dtype=np.bool)
-        for frame_id in range(self.n_frames):
-            res_per_frame = self.maskrcnn_bboxes["frame_{}.jpg".format(frame_id)]
-            if self.query in ["test_a", "test_b", "test_c"]:
-                is_candidate, bbox = getattr(filter, self.query)(res_per_frame, frame_id)
-            elif self.query == "turning_car_and_pedestrain_at_intersection":
-                is_candidate, bbox = filter.car_and_pedestrain_at_intersection(res_per_frame, frame_id)
-            elif self.query in ["test_d"]:
-                is_candidate, bbox1, bbox2 = getattr(filter, self.query)(res_per_frame)
-            elif self.query in ["test_e"]:
-                is_candidate, car_box, person_box = getattr(filter, self.query)(res_per_frame)
-            if not is_candidate:
-                self.candidates[frame_id] = False
-            else:
-                if self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
-                    self.spatial_features[frame_id] = self.construct_spatial_feature(bbox)
+        if self.query in ["test_a", "test_b", "test_c", "test_d", "test_e", "turning_car_and_pedestrain_at_intersection"]:
+            for frame_id in range(self.n_frames):
+                res_per_frame = self.maskrcnn_bboxes["frame_{}.jpg".format(frame_id)]
+                if self.query in ["test_a", "test_b", "test_c"]:
+                    is_candidate, bbox = getattr(filter, self.query)(res_per_frame, frame_id)
+                elif self.query == "turning_car_and_pedestrain_at_intersection":
+                    is_candidate, bbox = filter.car_and_pedestrain_at_intersection(res_per_frame, frame_id)
                 elif self.query in ["test_d"]:
-                    self.spatial_features[frame_id] = self.construct_spatial_feature_two_objects(bbox1, bbox2)
+                    is_candidate, bbox1, bbox2 = getattr(filter, self.query)(res_per_frame)
                 elif self.query in ["test_e"]:
-                    self.spatial_features[frame_id] = self.construct_spatial_feature_spatial_relationship(car_box, person_box)
+                    is_candidate, car_box, person_box = getattr(filter, self.query)(res_per_frame)
+
+                if not is_candidate:
+                    self.candidates[frame_id] = False
+                else:
+                    if self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
+                        self.spatial_features[frame_id] = self.construct_spatial_feature(bbox)
+                    elif self.query in ["test_d"]:
+                        self.spatial_features[frame_id] = self.construct_spatial_feature_two_objects(bbox1, bbox2)
+                    elif self.query in ["test_e"]:
+                        self.spatial_features[frame_id] = self.construct_spatial_feature_spatial_relationship(car_box, person_box)
 
     def run(self):
         self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk = self.query_initialization.run(self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk)
@@ -308,7 +342,7 @@ class ComplexEventVideoDB:
         # r1 = tree.export_text(smallest_tree, feature_names=self.feature_names)
         rules = self.extract_rules(smallest_tree, self.feature_names)
         # self.visualize_rules_one_object(rules)
-        self.visualize_rules_spatial_relationship(rules)
+        # self.visualize_rules_spatial_relationship(rules)
 
         # Evaluate metrics on training data
         x_train = self.spatial_features[~(self.raw_frames | self.materialized_frames)]
@@ -477,9 +511,6 @@ class ComplexEventVideoDB:
 
 
 class FilteredProcessing(ComplexEventVideoDB):
-    def __init__(self) -> None:
-        super().__init__()
-
     def run(self):
         while self.num_positive_instances_found < self.n_positive_instances:
             self.update_random_choice_p()
@@ -509,9 +540,6 @@ class FilteredProcessing(ComplexEventVideoDB):
 
 
 class RandomProcessing(ComplexEventVideoDB):
-    def __init__(self) -> None:
-        super().__init__()
-
     def run(self):
         while self.num_positive_instances_found < self.n_positive_instances:
             self.update_random_choice_p()
@@ -543,9 +571,10 @@ if __name__ == '__main__':
     plot_data_y_annotated_list = []
     plot_data_y_materialized_list = []
     for _ in range(1):
-        cevdb = ComplexEventVideoDB(query="test_e", temporal_heuristic=True)
+        cevdb = ComplexEventVideoDB(dataset="meva", query="meva_person_stands_up", temporal_heuristic=True)
+        # cevdb = ComplexEventVideoDB(dataset="visualroad_traffic2", query="turning_car_and_pedestrain_at_intersection", temporal_heuristic=True)
         # cevdb.tsne_plot()
-        # cevdb = FilteredProcessing()
+        # cevdb = FilteredProcessing(dataset="meva", query="meva_person_stands_up", temporal_heuristic=False)
         plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
         # plot_data_y_annotated_list.append(plot_data_y_annotated)
         # plot_data_y_materialized_list.append(plot_data_y_materialized)
