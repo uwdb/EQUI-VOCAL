@@ -2,6 +2,9 @@ import csv
 
 from pandas.core import frame
 from utils.utils import isInsideIntersection, isOverlapping
+import os
+from glob import glob
+import yaml
 
 def turning_car_and_pedestrain_at_intersection():
     pos_frames = []
@@ -14,6 +17,27 @@ def turning_car_and_pedestrain_at_intersection():
             pos_frames += list(range(start_frame, end_frame+1))
             pos_frames_per_instance[i] = (start_frame, end_frame+1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
     return pos_frames, pos_frames_per_instance
+
+def meva_person_stands_up(video_list):
+    pos_frames = set()
+    pos_frames_per_instance = {}
+    files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+    num_instance = 0
+    for video_basename, frame_offset, _ in video_list:
+        matching = [f for f in files if video_basename + ".activities" in f]
+        assert(len(matching) == 1)
+        file = matching[0]
+        # Read in bbox info
+        with open(file, 'r') as f:
+            annotation = yaml.safe_load(f)
+            for row in annotation:
+                if "act" in row and "person_stands_up" in row["act"]["act2"]:
+                    start_frame, end_frame = row["act"]["timespan"][0]["tsr0"]
+                    for i in range(start_frame, end_frame+1):
+                        pos_frames.add(frame_offset + i)
+                    pos_frames_per_instance[num_instance] = (frame_offset + start_frame, frame_offset + end_frame + 1, 0)
+                    num_instance += 1
+    return sorted(pos_frames), pos_frames_per_instance
 
 def test_a(maskrcnn_bboxes):
     """
