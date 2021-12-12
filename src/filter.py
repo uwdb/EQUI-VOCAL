@@ -1,5 +1,10 @@
 from utils.utils import isInsideIntersection, isOverlapping
 import random
+import os
+from glob import glob
+import yaml
+import numpy as np
+
 
 def car_and_pedestrain_at_intersection(res_per_frame, frame_id):
     edge_corner_bbox = (367, 345, 540, 418)
@@ -33,6 +38,61 @@ def car_and_pedestrain_at_intersection(res_per_frame, frame_id):
         if has_car and has_pedestrian:
             return True, (car_x1, car_y1, car_x2, car_y2)
     return False, None
+
+def meva_person_stands_up(maskrcnn_bboxes, video_list, pos_frames):
+    n_frames = len(maskrcnn_bboxes)
+    spatial_feature_dim = 5
+    feature_names = ["x", "y", "w", "h", "r"]
+    spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
+    # Filtering stage
+    candidates = np.full(n_frames, True, dtype=np.bool)
+    for video_basename, frame_offset, n_frames in video_list:
+        files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+        matching = [f for f in files if video_basename + ".activities" in f]
+        assert(len(matching) == 1)
+        activities_file = matching[0]
+        geom_file = activities_file.replace(".activities", ".geom")
+        print("file: ", activities_file)
+        with open(activities_file, 'r') as f:
+            activities_annotation = yaml.load(f, Loader=yaml.CLoader)
+        print("loaded activities file")
+        with open(geom_file, 'r') as f:
+            geom_annotation = yaml.load(f, Loader=yaml.CLoader)
+        print("loaded geom file")
+        for local_frame_id in range(n_frames):
+            res_per_frame = maskrcnn_bboxes[video_basename + "_" + str(local_frame_id)]
+            frame_id = frame_offset + local_frame_id
+            if frame_id not in pos_frames:
+                person_boxes = []
+                for x1, y1, x2, y2, class_name, _ in res_per_frame:
+                    if (class_name == "person"):
+                        person_boxes.append((x1, y1, x2, y2))
+                if person_boxes:
+                    spatial_features[frame_id] = construct_spatial_feature(random.choice(person_boxes))
+                else:
+                    candidates[frame_id] = False
+            else:
+                for row in activities_annotation:
+                    if "act" in row and "person_stands_up" in row["act"]["act2"]:
+                        start_frame, end_frame = row["act"]["timespan"][0]["tsr0"]
+                        if local_frame_id >= start_frame and local_frame_id <= end_frame:
+                            actor_id = row["act"]["actors"][0]["id1"]
+                            break
+                # - {'geom': {'g0': '170 396 524 1001', 'id0': 1, 'id1': 185, 'keyframe': True, 'ts0': 4513}}
+                for row in geom_annotation:
+                    if "geom" in row and row["geom"]["id1"] == actor_id and row["geom"]["ts0"] == local_frame_id:
+                        spatial_features[frame_id] = construct_spatial_feature(list(map(int, row["geom"]["g0"].split())))
+                        break
+    return feature_names, spatial_feature_dim, spatial_features, candidates
+
+def construct_spatial_feature(bbox):
+    x1, y1, x2, y2 = bbox
+    centroid_x = (x1 + x2) / 2
+    centroid_y = (y1 + y2) / 2
+    width = x2 - x1
+    height = y2 - y1
+    wh_ratio = width / height
+    return np.array([centroid_x, centroid_y, width, height, wh_ratio])
 
 def test_a(res_per_frame, frame_id):
     predicate = lambda x1, y1, x2, y2 : 1.0 * (x2 - x1) / (y2 - y1) > 2
