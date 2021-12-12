@@ -155,14 +155,10 @@ class ComplexEventVideoDB:
 
     def ingest_gt_labels(self):
         # Get ground-truth labels
-        if self.query in ["test_a", "test_b", "test_c"]:
+        if self.query.startswith("test"):
             self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
         elif self.query == "turning_car_and_pedestrain_at_intersection":
             self.pos_frames, self.pos_frames_per_instance = turning_car_and_pedestrain_at_intersection()
-        elif self.query in ["test_d"]:
-            self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
-        elif self.query in ["test_e"]:
-            self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
         elif self.query in ["meva_person_stands_up"]:
             self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.video_list)")
 
@@ -173,42 +169,11 @@ class ComplexEventVideoDB:
         print(" ".join([str(v[1]- v[0]) for _, v in self.pos_frames_per_instance.items()]))
 
     def filtering_stage(self):
-        if self.query in ["meva_person_stands_up"]:
+        if self.dataset == "meva":
             self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates = getattr(filter, self.query)(self.maskrcnn_bboxes, self.video_list, self.pos_frames)
             return
-        elif self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
-            self.spatial_feature_dim = 5
-            self.feature_names = ["x", "y", "w", "h", "r"]
-        elif self.query in ["test_d"]:
-            self.spatial_feature_dim = 10
-            self.feature_names = ["x1", "y1", "w1", "h1", "r1", "x2", "y2", "w2", "h2", "r2"]
-        elif self.query in ["test_e"]:
-            self.spatial_feature_dim = 8
-            self.feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
-        self.spatial_features = np.zeros((self.n_frames, self.spatial_feature_dim), dtype=np.float64)
-        # Filtering stage
-        self.candidates = np.full(self.n_frames, True, dtype=np.bool)
-        if self.query in ["test_a", "test_b", "test_c", "test_d", "test_e", "turning_car_and_pedestrain_at_intersection"]:
-            for frame_id in range(self.n_frames):
-                res_per_frame = self.maskrcnn_bboxes["frame_{}.jpg".format(frame_id)]
-                if self.query in ["test_a", "test_b", "test_c"]:
-                    is_candidate, bbox = getattr(filter, self.query)(res_per_frame, frame_id)
-                elif self.query == "turning_car_and_pedestrain_at_intersection":
-                    is_candidate, bbox = filter.car_and_pedestrain_at_intersection(res_per_frame, frame_id)
-                elif self.query in ["test_d"]:
-                    is_candidate, bbox1, bbox2 = getattr(filter, self.query)(res_per_frame)
-                elif self.query in ["test_e"]:
-                    is_candidate, car_box, person_box = getattr(filter, self.query)(res_per_frame)
-
-                if not is_candidate:
-                    self.candidates[frame_id] = False
-                else:
-                    if self.query in ["test_a", "test_b", "test_c", "turning_car_and_pedestrain_at_intersection"]:
-                        self.spatial_features[frame_id] = self.construct_spatial_feature(bbox)
-                    elif self.query in ["test_d"]:
-                        self.spatial_features[frame_id] = self.construct_spatial_feature_two_objects(bbox1, bbox2)
-                    elif self.query in ["test_e"]:
-                        self.spatial_features[frame_id] = self.construct_spatial_feature_spatial_relationship(car_box, person_box)
+        elif self.dataset == "visualroad_traffic2":
+            self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates = getattr(filter, self.query)(self.maskrcnn_bboxes)
 
     def run(self):
         self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk = self.query_initialization.run(self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk)
@@ -257,49 +222,6 @@ class ComplexEventVideoDB:
                 f.write("\n")
 
         return self.plot_data_y_annotated, self.plot_data_y_materialized
-
-    def construct_spatial_feature(self, bbox):
-        x1, y1, x2, y2 = bbox
-        centroid_x = (x1 + x2) / 2
-        centroid_y = (y1 + y2) / 2
-        width = x2 - x1
-        height = y2 - y1
-        wh_ratio = width / height
-        return np.array([centroid_x, centroid_y, width, height, wh_ratio])
-        # return np.array([x1, y1, x2, y2])
-
-    def construct_spatial_feature_two_objects(self, bbox1, bbox2):
-        x11, y11, x21, y21 = bbox1
-        centroid_x1 = (x11 + x21) / 2
-        centroid_y1 = (y11 + y21) / 2
-        width1 = x21 - x11
-        height1 = y21 - y11
-        wh_ratio1 = width1 / height1
-
-        x12, y12, x22, y22 = bbox2
-        centroid_x2 = (x12 + x22) / 2
-        centroid_y2 = (y12 + y22) / 2
-        width2 = x22 - x12
-        height2 = y22 - y12
-        wh_ratio2 = width2 / height2
-        return np.array([centroid_x1, centroid_y1, width1, height1, wh_ratio1, centroid_x2, centroid_y2, width2, height2, wh_ratio2])
-
-    def construct_spatial_feature_spatial_relationship(self, car_box, person_box):
-        x, y, x2, y2 = car_box
-        xp, yp, x4, y4 = person_box
-        w = x2 - x
-        h = y2 - y
-        wp = x4 - xp
-        hp = y4 - yp
-        s1 = (x - xp) / w
-        s2 = (y - yp) / h
-        s3 = (y + h - yp - hp) / h
-        s4 = (x + w - xp - wp) / w
-        s5 = hp / h
-        s6 = wp / w
-        s7 = (wp * hp) / (w * h)
-        s8 = (wp + hp) / (w + h)
-        return np.array([s1, s2, s3, s4, s5, s6, s7, s8])
 
     def update_random_choice_p(self):
         """Given positive frames seen, compute the probabilities associated with each frame for random choice.
@@ -571,8 +493,8 @@ if __name__ == '__main__':
     plot_data_y_annotated_list = []
     plot_data_y_materialized_list = []
     for _ in range(1):
-        cevdb = ComplexEventVideoDB(dataset="meva", query="meva_person_stands_up", temporal_heuristic=True)
-        # cevdb = ComplexEventVideoDB(dataset="visualroad_traffic2", query="turning_car_and_pedestrain_at_intersection", temporal_heuristic=True)
+        # cevdb = ComplexEventVideoDB(dataset="meva", query="meva_person_stands_up", temporal_heuristic=True)
+        cevdb = ComplexEventVideoDB(dataset="visualroad_traffic2", query="test_e", temporal_heuristic=True)
         # cevdb.tsne_plot()
         # cevdb = FilteredProcessing(dataset="meva", query="meva_person_stands_up", temporal_heuristic=False)
         plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
