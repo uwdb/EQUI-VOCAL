@@ -57,7 +57,8 @@ def preprocess(model):
     # print("files", files)
     for file in files:
         print("file: ", file)
-        if "school.G421.r13.avi" not in file:
+        if "school.G336.r13.avi" not in file:
+        # if "school.G421.r13.avi" not in file:
             continue
         out_file = os.path.join(os.path.dirname(file), os.path.basename(file)[:-4] + ".json")
         if os.path.isfile(out_file):
