@@ -33,6 +33,7 @@ from shapely.geometry import Polygon
 from sklearn.manifold import TSNE
 from mpl_toolkits.mplot3d import Axes3D
 from glob import glob
+import pandas as pd
 
 annotated_batch_size = 1
 materialized_batch_size = 16
@@ -40,9 +41,11 @@ materialized_batch_size = 16
 init_sampling_step = 1
 
 class ComplexEventVideoDB:
-    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True):
+    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL"):
+        self.dataset = dataset
         self.query = query
         self.temporal_heuristic = temporal_heuristic
+        self.method = method
         self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
 
         """Read in object detection bounding box information
@@ -132,12 +135,17 @@ class ComplexEventVideoDB:
         #     ])
 
     def ingest_bbox_info_meva(self):
+        if self.query in ["meva_person_embraces_person", "meva_person_stands_up"]:
+            video_camera = "school.G421"
+        elif self.query in ["meva_person_enters_vehicle"]:
+            video_camera = "school.G336"
         files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva") for y in glob(os.path.join(x[0], '*.json'))]
         gt_annotations = [os.path.basename(y).replace(".activities.yml", "") for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
         self.maskrcnn_bboxes = {}
         self.video_list = [] # (video_basename, frame_offset, n_frames)
         for file in files:
-            if "school.G421.r13.json" not in file:
+            # if "school.G421.r13.json" not in file:
+            if "{}.r13.json".format(video_camera) not in file:
                 continue
             # If the video doesn't have annotations, skip.
             video_basename = os.path.basename(file).replace(".r13.json", "")
@@ -159,7 +167,7 @@ class ComplexEventVideoDB:
             self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
         elif self.query == "turning_car_and_pedestrain_at_intersection":
             self.pos_frames, self.pos_frames_per_instance = turning_car_and_pedestrain_at_intersection()
-        elif self.query in ["meva_person_stands_up"]:
+        elif self.query.startswith("meva"):
             self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.video_list)")
 
         self.n_positive_instances = len(self.pos_frames_per_instance)
@@ -167,13 +175,23 @@ class ComplexEventVideoDB:
         print("# positive frames: ", len(self.pos_frames), "; # distinct instances: ", self.n_positive_instances, "; average duration: ", self.avg_duration)
         print("Durations of all instances: ")
         print(" ".join([str(v[1]- v[0]) for _, v in self.pos_frames_per_instance.items()]))
+        temp = np.array([(v[1]- v[0]) for _, v in self.pos_frames_per_instance.items()])
+        print("duration std: ", temp.std())
 
     def filtering_stage(self):
         if self.dataset == "meva":
-            self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates = getattr(filter, self.query)(self.maskrcnn_bboxes, self.video_list, self.pos_frames)
-            return
+            outfile_name = os.path.join("outputs/intermediate_results", "{}.npz".format(self.query))
+            if os.path.exists(outfile_name):
+                npzfile = np.load(outfile_name)
+                self.spatial_features = npzfile["spatial_features"]
+                self.candidates = npzfile["candidates"]
+                self.feature_names, self.spatial_feature_dim = getattr(filter, self.query)(self.maskrcnn_bboxes, self.video_list, self.pos_frames, cached=True)
+            else:
+                self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates = getattr(filter, self.query)(self.maskrcnn_bboxes, self.video_list, self.pos_frames)
+                np.savez(outfile_name, spatial_features=self.spatial_features, candidates=self.candidates)
         elif self.dataset == "visualroad_traffic2":
             self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates = getattr(filter, self.query)(self.maskrcnn_bboxes)
+        print("# candidate frames:", self.candidates.sum())
 
     def run(self):
         self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk = self.query_initialization.run(self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk)
@@ -221,6 +239,17 @@ class ComplexEventVideoDB:
                         f.write(" or ")
                 f.write("\n")
 
+        # Plot feature importance
+        importances = self.clf.feature_importances_
+        std = np.std([tree.feature_importances_ for tree in self.clf.estimators_], axis=0)
+        forest_importances = pd.Series(importances, index=self.feature_names)
+        fig, ax = plt.subplots()
+        forest_importances.plot.bar(yerr=std, ax=ax)
+        ax.set_title("Feature importances using MDI")
+        ax.set_ylabel("Mean decrease in impurity")
+        fig.tight_layout()
+        plt.savefig("outputs/importances_{}.pdf".format(self.query), bbox_inches='tight', pad_inches=0)
+
         return self.plot_data_y_annotated, self.plot_data_y_materialized
 
     def update_random_choice_p(self):
@@ -261,6 +290,14 @@ class ComplexEventVideoDB:
 
         # Prune the decision tree
         self.prune_duplicate_leaves(smallest_tree)
+
+        # dot_data = tree.export_graphviz(smallest_tree, out_file=None,
+        #                         feature_names=["centroid_x", "centroid_y", "width", "height", "aspect ratio"],
+        #                         class_names=["0", "1"],
+        #                         filled=True, rounded=True, special_characters=True)
+        # graph = graphviz.Source(dot_data, format="png")
+        # graph.render("decision_tree")
+
         # r1 = tree.export_text(smallest_tree, feature_names=self.feature_names)
         rules = self.extract_rules(smallest_tree, self.feature_names)
         # self.visualize_rules_one_object(rules)
@@ -426,13 +463,16 @@ class ComplexEventVideoDB:
         ax.legend()
         plt.savefig("tsne.pdf", bbox_inches='tight', pad_inches=0)
 
-    @staticmethod
-    def save_data(plot_data_y_list, method):
+    def save_data(self, plot_data_y_list):
+        method =  "{}_{}_{}_heuristic".format(self.query, self.method, "with" if self.temporal_heuristic else "without")
         with open("outputs/{}.json".format(method), 'w') as f:
             f.write(json.dumps([arr.tolist() for arr in plot_data_y_list]))
 
 
 class FilteredProcessing(ComplexEventVideoDB):
+    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True):
+        super().__init__(dataset, query, temporal_heuristic, "filtered")
+
     def run(self):
         while self.num_positive_instances_found < self.n_positive_instances:
             self.update_random_choice_p()
@@ -462,6 +502,8 @@ class FilteredProcessing(ComplexEventVideoDB):
 
 
 class RandomProcessing(ComplexEventVideoDB):
+    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True):
+        super().__init__(dataset, query, temporal_heuristic, "random")
     def run(self):
         while self.num_positive_instances_found < self.n_positive_instances:
             self.update_random_choice_p()
@@ -492,14 +534,12 @@ class RandomProcessing(ComplexEventVideoDB):
 if __name__ == '__main__':
     plot_data_y_annotated_list = []
     plot_data_y_materialized_list = []
-    for _ in range(1):
-        # cevdb = ComplexEventVideoDB(dataset="meva", query="meva_person_stands_up", temporal_heuristic=True)
-        cevdb = ComplexEventVideoDB(dataset="visualroad_traffic2", query="test_e", temporal_heuristic=True)
+    for i in range(20):
+        print("Iteration: ", i)
+        # cevdb = ComplexEventVideoDB(dataset="meva", query="meva_person_enters_vehicle", temporal_heuristic=False)
+        # cevdb = ComplexEventVideoDB(dataset="visualroad_traffic2", query="turning_car_and_pedestrain_at_intersection", temporal_heuristic=True)
         # cevdb.tsne_plot()
-        # cevdb = FilteredProcessing(dataset="meva", query="meva_person_stands_up", temporal_heuristic=False)
+        cevdb = FilteredProcessing(dataset="meva", query="meva_person_embraces_person", temporal_heuristic=True)
         plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
-        # plot_data_y_annotated_list.append(plot_data_y_annotated)
-        # plot_data_y_materialized_list.append(plot_data_y_materialized)
-    # cevdb.save_data(plot_data_y_annotated_list, "iterative_test_b")
-    # cevdb.save_data(plot_data_y_annotated_list, "random_test_a")
-    # cevdb.save_data(plot_data_y_materialized_list, "filtered_materialized")
+        plot_data_y_annotated_list.append(plot_data_y_annotated)
+    cevdb.save_data(plot_data_y_annotated_list)

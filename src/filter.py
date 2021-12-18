@@ -60,9 +60,9 @@ def turning_car_and_pedestrain_at_intersection(maskrcnn_bboxes):
         has_car = 0
         has_pedestrian = 0
         for x1, y1, x2, y2, class_name, _ in res_per_frame:
-            if (class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2))):
+            if class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2)):
                 has_pedestrian = 1
-            elif (class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2))):
+            elif class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2)):
                 # Watch the video and identify the correct cars. Hardcode the correct car bbox to use.
                 if frame_id >= 14043 and frame_id <= 14079 and (x1 < 500 or x1 > 800):
                     continue
@@ -90,14 +90,16 @@ def turning_car_and_pedestrain_at_intersection(maskrcnn_bboxes):
             candidates[frame_id] = False
     return feature_names, spatial_feature_dim, spatial_features, candidates
 
-def meva_person_stands_up(maskrcnn_bboxes, video_list, pos_frames):
+def meva_person_stands_up(maskrcnn_bboxes, video_list, pos_frames, cached=False):
     n_frames = len(maskrcnn_bboxes)
     spatial_feature_dim = 5
     feature_names = ["x", "y", "w", "h", "r"]
+    if cached:
+        return feature_names, spatial_feature_dim
     spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
     # Filtering stage
     candidates = np.full(n_frames, True, dtype=np.bool)
-    for video_basename, frame_offset, n_frames in video_list:
+    for video_basename, frame_offset, n_local_frames in video_list:
         files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
         matching = [f for f in files if video_basename + ".activities" in f]
         assert(len(matching) == 1)
@@ -110,13 +112,13 @@ def meva_person_stands_up(maskrcnn_bboxes, video_list, pos_frames):
         with open(geom_file, 'r') as f:
             geom_annotation = yaml.load(f, Loader=yaml.CLoader)
         print("loaded geom file")
-        for local_frame_id in range(n_frames):
+        for local_frame_id in range(n_local_frames):
             res_per_frame = maskrcnn_bboxes[video_basename + "_" + str(local_frame_id)]
             frame_id = frame_offset + local_frame_id
             if frame_id not in pos_frames:
                 person_boxes = []
                 for x1, y1, x2, y2, class_name, _ in res_per_frame:
-                    if (class_name == "person"):
+                    if class_name == "person":
                         person_boxes.append((x1, y1, x2, y2))
                 if person_boxes:
                     spatial_features[frame_id] = construct_spatial_feature(random.choice(person_boxes))
@@ -135,6 +137,152 @@ def meva_person_stands_up(maskrcnn_bboxes, video_list, pos_frames):
                         spatial_features[frame_id] = construct_spatial_feature(list(map(int, row["geom"]["g0"].split())))
                         break
     return feature_names, spatial_feature_dim, spatial_features, candidates
+
+
+def meva_person_embraces_person(maskrcnn_bboxes, video_list, pos_frames, cached=False):
+    return meva_base_spatial_relationship_same_object(maskrcnn_bboxes, video_list, pos_frames, "person_embraces_person", cached=cached)
+
+def meva_person_enters_vehicle(maskrcnn_bboxes, video_list, pos_frames, cached=False):
+    return meva_base_spatial_relationship_different_objects(maskrcnn_bboxes, video_list, pos_frames, "person_enters_vehicle", cached=cached)
+
+def meva_base_spatial_relationship_different_objects(maskrcnn_bboxes, video_list, pos_frames, activity_name, cached=False):
+    """Utilize spatial relationship
+    """
+    n_frames = len(maskrcnn_bboxes)
+    spatial_feature_dim = 8
+    feature_names = ["delta_x1", "delta_y1", "delta_y2", "delta_x2", "height_ratio", "width_ratio", "area_ratio", "perimeter_ratio"]
+    if cached:
+        return feature_names, spatial_feature_dim
+    spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
+    candidates = np.full(n_frames, True, dtype=np.bool)
+    for video_basename, frame_offset, n_local_frames in video_list:
+        files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+        matching = [f for f in files if video_basename + ".activities" in f]
+        assert(len(matching) == 1)
+        activities_file = matching[0]
+        geom_file = activities_file.replace(".activities", ".geom")
+        types_file = activities_file.replace(".activities", ".types")
+        print("file: ", activities_file)
+        with open(activities_file, 'r') as f:
+            activities_annotation = yaml.load(f, Loader=yaml.CLoader)
+        print("loaded activities file")
+        with open(geom_file, 'r') as f:
+            geom_annotation = yaml.load(f, Loader=yaml.CLoader)
+        print("loaded geom file")
+        with open(types_file, 'r') as f:
+            types_annotation = yaml.load(f, Loader=yaml.CLoader)
+        print("loaded types file")
+        for local_frame_id in range(n_local_frames):
+            res_per_frame = maskrcnn_bboxes[video_basename + "_" + str(local_frame_id)]
+            frame_id = frame_offset + local_frame_id
+            if frame_id not in pos_frames:
+                person_boxes = []
+                car_boxes = []
+                for x1, y1, x2, y2, class_name, _ in res_per_frame:
+                    if class_name == "person":
+                        person_boxes.append((x1, y1, x2, y2))
+                    elif class_name in ["car", "bus", "truck"]:
+                        car_boxes.append((x1, y1, x2, y2))
+                if person_boxes and car_boxes:
+                    # Candidate, negative frame
+                    person_box = random.choice(person_boxes)
+                    car_box = random.choice(car_boxes)
+                    spatial_features[frame_id] = construct_spatial_feature_spatial_relationship(person_box, car_box)
+                else:
+                    candidates[frame_id] = False
+            else:
+                for row in activities_annotation:
+                    if "act" in row and activity_name in row["act"]["act2"]:
+                        # start_frame, end_frame = row["act"]["timespan"][0]["tsr0"]
+                        start_frame = max(row["act"]["actors"][0]["timespan"][0]["tsr0"][0], row["act"]["actors"][1]["timespan"][0]["tsr0"][0])
+                        end_frame = min(row["act"]["actors"][0]["timespan"][0]["tsr0"][1], row["act"]["actors"][1]["timespan"][0]["tsr0"][1])
+                        if local_frame_id >= start_frame and local_frame_id <= end_frame:
+                            # [{'id1': 82, 'timespan': [{'tsr0': [5167, 5568]}]}, {'id1': 83, 'timespan': [{'tsr0': [5167, 5568]}]}]
+                            actor_id1 = row["act"]["actors"][0]["id1"]
+                            actor_id2 = row["act"]["actors"][1]["id1"]
+                            break
+                # - {'geom': {'g0': '170 396 524 1001', 'id0': 1, 'id1': 185, 'keyframe': True, 'ts0': 4513}}
+                for row in types_annotation:
+                    if "types" in row and row["types"]["id1"] == actor_id1:
+                        actor_type1 = list(row["types"]["cset3"].keys())[0]
+                    elif "types" in row and row["types"]["id1"] == actor_id2:
+                        actor_type2 = list(row["types"]["cset3"].keys())[0]
+                if actor_type1 == "vehicle":
+                    assert(actor_type2 == "person")
+                    temp_id = actor_id1
+                    actor_id1 = actor_id2
+                    actor_id2 = temp_id
+                actor1_box, actor2_box = None, None
+                for row in geom_annotation:
+                    if "geom" in row and row["geom"]["id1"] == actor_id1 and row["geom"]["ts0"] == local_frame_id:
+                        actor1_box = list(map(int, row["geom"]["g0"].split()))
+                    elif "geom" in row and row["geom"]["id1"] == actor_id2 and row["geom"]["ts0"] == local_frame_id:
+                        actor2_box = list(map(int, row["geom"]["g0"].split()))
+                    if actor1_box and actor2_box:
+                        spatial_features[frame_id] = construct_spatial_feature_spatial_relationship(actor1_box, actor2_box)
+                        break
+    return feature_names, spatial_feature_dim, spatial_features, candidates
+
+
+def meva_base_spatial_relationship_same_object(maskrcnn_bboxes, video_list, pos_frames, activity_name, cached=False):
+    """Utilize spatial relationship
+    """
+    n_frames = len(maskrcnn_bboxes)
+    spatial_feature_dim = 8
+    feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
+    if cached:
+        return feature_names, spatial_feature_dim
+    spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
+    candidates = np.full(n_frames, True, dtype=np.bool)
+    for video_basename, frame_offset, n_local_frames in video_list:
+        files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+        matching = [f for f in files if video_basename + ".activities" in f]
+        assert(len(matching) == 1)
+        activities_file = matching[0]
+        geom_file = activities_file.replace(".activities", ".geom")
+        print("file: ", activities_file)
+        with open(activities_file, 'r') as f:
+            activities_annotation = yaml.load(f, Loader=yaml.CLoader)
+        print("loaded activities file")
+        with open(geom_file, 'r') as f:
+            geom_annotation = yaml.load(f, Loader=yaml.CLoader)
+        print("loaded geom file")
+        for local_frame_id in range(n_local_frames):
+            res_per_frame = maskrcnn_bboxes[video_basename + "_" + str(local_frame_id)]
+            frame_id = frame_offset + local_frame_id
+            if frame_id not in pos_frames:
+                person_boxes = []
+                for x1, y1, x2, y2, class_name, _ in res_per_frame:
+                    if class_name == "person":
+                        person_boxes.append((x1, y1, x2, y2))
+                if len(person_boxes) >= 2:
+                    # Candidate, negative frame
+                    person_box1, person_box2 = random.sample(person_boxes, 2)
+                    spatial_features[frame_id] = construct_spatial_feature_spatial_relationship(person_box1, person_box2)
+                else:
+                    candidates[frame_id] = False
+            else:
+                for row in activities_annotation:
+                    if "act" in row and activity_name in row["act"]["act2"]:
+                        start_frame, end_frame = row["act"]["timespan"][0]["tsr0"]
+                        if local_frame_id >= start_frame and local_frame_id <= end_frame:
+                            # [{'id1': 82, 'timespan': [{'tsr0': [5167, 5568]}]}, {'id1': 83, 'timespan': [{'tsr0': [5167, 5568]}]}]
+                            actor_id1, actor_id2 = random.sample(row["act"]["actors"], 2)
+                            actor_id1 = actor_id1["id1"]
+                            actor_id2 = actor_id2["id1"]
+                            break
+                # - {'geom': {'g0': '170 396 524 1001', 'id0': 1, 'id1': 185, 'keyframe': True, 'ts0': 4513}}
+                actor1_box, actor2_box = None, None
+                for row in geom_annotation:
+                    if "geom" in row and row["geom"]["id1"] == actor_id1 and row["geom"]["ts0"] == local_frame_id:
+                        actor1_box = list(map(int, row["geom"]["g0"].split()))
+                    elif "geom" in row and row["geom"]["id1"] == actor_id2 and row["geom"]["ts0"] == local_frame_id:
+                        actor2_box = list(map(int, row["geom"]["g0"].split()))
+                    if actor1_box and actor2_box:
+                        spatial_features[frame_id] = construct_spatial_feature_spatial_relationship(actor1_box, actor2_box)
+                        break
+    return feature_names, spatial_feature_dim, spatial_features, candidates
+
 
 def test_a(maskrcnn_bboxes):
     predicate = lambda x1, y1, x2, y2 : 1.0 * (x2 - x1) / (y2 - y1) > 2
@@ -174,9 +322,9 @@ def template_one_object(maskrcnn_bboxes, predicate):
         person_boxes = []
         car_satisfies_predicate_boxes = []
         for x1, y1, x2, y2, class_name, _ in res_per_frame:
-            if (class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2))):
+            if class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2)):
                 person_boxes.append((x1, y1, x2, y2))
-            elif (class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2))):
+            elif class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2)):
                 car_boxes.append((x1, y1, x2, y2))
                 if predicate(x1, y1, x2, y2):
                     car_satisfies_predicate_boxes.append((x1, y1, x2, y2))
@@ -267,11 +415,11 @@ def template_two_objects_b(maskrcnn_bboxes, predicates):
         car_satisfies_predicate_boxes = []
         person_satisfies_predicate_boxes = []
         for x1, y1, x2, y2, class_name, _ in res_per_frame:
-            if (class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2))):
+            if class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2)):
                 person_boxes.append((x1, y1, x2, y2))
                 if predicates[1](x1, y1, x2, y2):
                     person_satisfies_predicate_boxes.append((x1, y1, x2, y2))
-            elif (class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2))):
+            elif class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2)):
                 car_boxes.append((x1, y1, x2, y2))
                 if predicates[0](x1, y1, x2, y2):
                     car_satisfies_predicate_boxes.append((x1, y1, x2, y2))
@@ -299,9 +447,9 @@ def template_spatial_relationship(maskrcnn_bboxes, predicate):
         person_boxes = []
         relationship_boxes = []
         for x1, y1, x2, y2, class_name, _ in res_per_frame:
-            if (class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2))):
+            if class_name == "person" and isOverlapping(edge_corner_bbox, (x1, y1, x2, y2)):
                 person_boxes.append((x1, y1, x2, y2))
-            elif (class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2))):
+            elif class_name in ["car", "truck"] and isInsideIntersection((x1, y1, x2, y2)):
                 car_boxes.append((x1, y1, x2, y2))
         if car_boxes and person_boxes:
             # Check whether contains the target spatial relationship

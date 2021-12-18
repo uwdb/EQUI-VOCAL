@@ -19,6 +19,15 @@ def turning_car_and_pedestrain_at_intersection():
     return pos_frames, pos_frames_per_instance
 
 def meva_person_stands_up(video_list):
+    return meva_base(video_list, "person_stands_up")
+
+def meva_person_embraces_person(video_list):
+    return meva_base(video_list, "person_embraces_person")
+
+def meva_person_enters_vehicle(video_list):
+    return meva_base_b(video_list, "person_enters_vehicle")
+
+def meva_base(video_list, activity_name):
     pos_frames = set()
     pos_frames_per_instance = {}
     files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
@@ -31,13 +40,37 @@ def meva_person_stands_up(video_list):
         with open(file, 'r') as f:
             annotation = yaml.safe_load(f)
             for row in annotation:
-                if "act" in row and "person_stands_up" in row["act"]["act2"]:
+                if "act" in row and activity_name in row["act"]["act2"]:
                     start_frame, end_frame = row["act"]["timespan"][0]["tsr0"]
                     for i in range(start_frame, end_frame+1):
                         pos_frames.add(frame_offset + i)
                     pos_frames_per_instance[num_instance] = (frame_offset + start_frame, frame_offset + end_frame + 1, 0)
                     num_instance += 1
     return sorted(pos_frames), pos_frames_per_instance
+
+
+def meva_base_b(video_list, activity_name):
+    pos_frames = set()
+    pos_frames_per_instance = {}
+    files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+    num_instance = 0
+    for video_basename, frame_offset, _ in video_list:
+        matching = [f for f in files if video_basename + ".activities" in f]
+        assert(len(matching) == 1)
+        file = matching[0]
+        # Read in bbox info
+        with open(file, 'r') as f:
+            annotation = yaml.safe_load(f)
+            for row in annotation:
+                if "act" in row and activity_name in row["act"]["act2"]:
+                    start_frame = max(row["act"]["actors"][0]["timespan"][0]["tsr0"][0], row["act"]["actors"][1]["timespan"][0]["tsr0"][0])
+                    end_frame = min(row["act"]["actors"][0]["timespan"][0]["tsr0"][1], row["act"]["actors"][1]["timespan"][0]["tsr0"][1])
+                    for i in range(start_frame, end_frame+1):
+                        pos_frames.add(frame_offset + i)
+                    pos_frames_per_instance[num_instance] = (frame_offset + start_frame, frame_offset + end_frame + 1, 0)
+                    num_instance += 1
+    return sorted(pos_frames), pos_frames_per_instance
+
 
 def test_a(maskrcnn_bboxes):
     """
@@ -110,14 +143,14 @@ def test_e(maskrcnn_bboxes):
         h = y2 - y
         wp = x4 - xp
         hp = y4 - yp
-        s1 = (y - yp) / h # Relative distance between y1 and y1'
-        s2 = (x - xp) / w # Relative distance between x1 and x1'
-        s3 = (y + h - yp - hp) / h # Relative distance between y2 and y2'
-        s4 = (x + w - xp - wp) / w # Relative distance between x2 and x2'
-        s5 = hp / h # Height fraction
-        s6 = wp / w # Width fraction
-        s7 = (wp * hp) / (w * h) # Area fraction
-        s8 = (wp + hp) / (w + h) # Perimeter fraction
+        s1 = (y - yp) / h # delta y1
+        s2 = (x - xp) / w # delta x1
+        s3 = (y + h - yp - hp) / h # delta y2
+        s4 = (x + w - xp - wp) / w # delta x2
+        s5 = hp / h # Height ratio
+        s6 = wp / w # Width ratio
+        s7 = (wp * hp) / (w * h) # Area ratio
+        s8 = (wp + hp) / (w + h) # Perimeter ratio
         return (s1 > 0.2 and s1 < 0.9 and s2 > 0.2 and s2 < 0.9)
     return template_spatial_relationship(maskrcnn_bboxes, predicate)
 
