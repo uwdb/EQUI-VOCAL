@@ -22,6 +22,7 @@ from tqdm import tqdm
 from sklearn import tree, metrics
 import numpy as np
 import graphviz
+from sklearn.ensemble import RandomForestClassifier
 
 from utils.utils import isInsideIntersection, isOverlapping
 from utils import tools
@@ -161,12 +162,19 @@ class PedestrianAndCarWithSpatialFeatures(FasterRCNN):
             if i in self.pos_frames:
                 self.Y[i] = 1
         self.pred = np.zeros(len(self.maskrcnn_bboxes), dtype=np.int)
-        self.clf = tree.DecisionTreeClassifier(
+        # self.clf = tree.DecisionTreeClassifier(
+        #     # criterion="entropy",
+        #     max_depth=None,
+        #     min_samples_split=2,
+        #     # class_weight="balanced"
+        #     )
+        self.clf = RandomForestClassifier(
             # criterion="entropy",
-            max_depth=None,
-            min_samples_split=2,
-            # class_weight="balanced"
-            )
+            # max_depth=10,
+            n_estimators=10,
+            # min_samples_split=32,
+            class_weight="balanced"
+        )
         # self.clf = SVC(gamma='scale', C=0.0025, class_weight="balanced")
 
     # First pass
@@ -197,7 +205,6 @@ class PedestrianAndCarWithSpatialFeatures(FasterRCNN):
                     height = y2 - y1
                     wh_ratio = width / height
                     self.X[frame_idx] = np.array([centroid_x, centroid_y, width, height, wh_ratio])
-
 
     def decision_tree(self):
         self.pred_train = self.pred[:15649]
@@ -433,8 +440,8 @@ if __name__ == '__main__':
     # out_dir = "/home/ubuntu/complex_event_video/src/tests/pedestrian_and_car_preds"
     # evaluate_model(model, save_results=False)
 
-    # model = PedestrianAndCarWithSpatialFeatures()
-    model = SceneGraph()
+    model = PedestrianAndCarWithSpatialFeatures()
+    # model = SceneGraph()
     # out_dir = "/home/ubuntu/complex_event_video/src/tests/pedestrian_and_car_with_spatial_features_larger_intersection_preds"
     print("evaluating faster r cnn.")
     model.eval_faster_r_cnn()

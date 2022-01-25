@@ -12,7 +12,7 @@ VERSION = 1.0
 QUERIES_PER_TILE = 4
 TILES_SCALE_MULTIPLIER = 1
 # TRAFFIC_CAMERAS_PER_TILE = 4
-TRAFFIC_CAMERAS_PER_TILE = 4
+TRAFFIC_CAMERAS_PER_TILE = 1
 PANORAMIC_CAMERAS_PER_TILE = 0
 # PANORAMIC_CAMERAS_PER_TILE = 1
 CAMERA_HEIGHT = 4
@@ -34,20 +34,21 @@ traffic_density = [50, 100, 200]
 pedestrian_density = [100, 250, 400]
 weather = [
     carla.WeatherParameters.Default,
-    carla.WeatherParameters.ClearNoon,
-    carla.WeatherParameters.CloudyNoon,
-    carla.WeatherParameters.WetNoon,
-    carla.WeatherParameters.WetCloudyNoon,
+    # carla.WeatherParameters.ClearNoon,
+    # carla.WeatherParameters.CloudyNoon,
+    # carla.WeatherParameters.WetNoon,
+    # carla.WeatherParameters.WetCloudyNoon,
     carla.WeatherParameters.MidRainyNoon,
-    carla.WeatherParameters.HardRainNoon,
-    carla.WeatherParameters.SoftRainNoon,
-    carla.WeatherParameters.ClearSunset,
-    carla.WeatherParameters.CloudySunset,
-    carla.WeatherParameters.WetSunset,
-    carla.WeatherParameters.WetCloudySunset,
-    carla.WeatherParameters.MidRainSunset,
+    # carla.WeatherParameters.HardRainNoon,
+    # carla.WeatherParameters.SoftRainNoon,
+    # carla.WeatherParameters.ClearSunset,
+    # carla.WeatherParameters.CloudySunset,
+    # carla.WeatherParameters.WetSunset,
+    # carla.WeatherParameters.WetCloudySunset,
+    # carla.WeatherParameters.MidRainSunset,
     carla.WeatherParameters.HardRainSunset,
-    carla.WeatherParameters.SoftRainSunset]
+    # carla.WeatherParameters.SoftRainSunset
+    ]
 
 
 def load_configuration(path):

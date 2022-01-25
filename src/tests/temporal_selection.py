@@ -44,6 +44,7 @@ def save_data(plot_data_y_list, method):
 def plot_data():
     best_method = [None, 99999]
     fig, ax = plt.subplots(1)
+    legend_items = []
     for filename in os.listdir(root_dir):
         if not filename.endswith(".json"):
             continue
@@ -69,9 +70,11 @@ def plot_data():
         # ip_y_mean = np.mean(ip_y, axis=0)
         ip_x_values = range(ip_y.shape[1])
         color = next(cgen)["color"]
-        ax.plot(ip_y_mean, ip_x_values, label=parsed, color=color)
+        line, = ax.plot(ip_y_mean, ip_x_values, label=parsed, color=color)
+        legend_items.append((parsed, line))
         # ax.fill_betweenx(ip_x_values, ip_y_lower, ip_y_upper, facecolor=color, alpha=0.2)
-    ax.legend(loc='lower right')
+    legend_items.sort()
+    ax.legend([x[1] for x in legend_items], [x[0] for x in legend_items], loc='lower right')
     ax.set_xlabel('number of frames that user has seen')
     ax.set_ylabel('number of positive frames the user finds')
     ax.grid()
@@ -80,23 +83,23 @@ def plot_data():
     plt.savefig(os.path.join(root_dir, "plot"))
 
 if __name__ == '__main__':
-    # scale_list = [0.5, 1, 2, 3, 4, 8, 16]
-    # func_list = ["linear", "quadratic"]
-    # for scale in scale_list:
-    #     for func in func_list:
-    #         plot_data_y_list = []
-    #         for _ in range(100):
-    #             ip = TemporalSelection(scale, func)
-    #             # Cold start
-    #             print("Cold start:")
-    #             ip.random_sampling()
-    #             print("Cold start done.")
-    #             # Iterative processing
-    #             batched_frames = np.empty(BATCH_SIZE)  # Construct a pseudo list of length BATCH_SIZE to pass the While condition.
-    #             while ip.get_num_positive_instances_found() < 15 and batched_frames.size >= BATCH_SIZE:
-    #                 batched_frames = ip.get_next_batch()
-    #                 for frame_id in batched_frames:
-    #                     ip.simulate_user_annotation(frame_id)
-    #             plot_data_y_list.append(ip.get_plot_data_y())
-    #         save_data(plot_data_y_list, func + "-" + str(scale))
+    scale_list = [0.5, 1, 2, 3, 4, 8, 16]
+    func_list = ["linear", "quadratic"]
+    for scale in scale_list:
+        for func in func_list:
+            plot_data_y_list = []
+            for _ in range(100):
+                ip = TemporalSelection(scale, func)
+                # Cold start
+                print("Cold start:")
+                ip.random_sampling()
+                print("Cold start done.")
+                # Iterative processing
+                batched_frames = np.empty(BATCH_SIZE)  # Construct a pseudo list of length BATCH_SIZE to pass the While condition.
+                while ip.get_num_positive_instances_found() < 15 and batched_frames.size >= BATCH_SIZE:
+                    batched_frames = ip.get_next_batch()
+                    for frame_id in batched_frames:
+                        ip.simulate_user_annotation(frame_id)
+                plot_data_y_list.append(ip.get_plot_data_y())
+            save_data(plot_data_y_list, func + "-" + str(scale))
     plot_data()

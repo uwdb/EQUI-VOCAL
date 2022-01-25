@@ -1,0 +1,42 @@
+.type IntList = [next: IntList, x: number]
+.decl Obj(oid: number, vid: number, fid: number, cid: number, x1: float, y1: float, x2: float, y2: float)
+.decl g1(oid: number, vid: number, fid: number, x1: float, y1: float, x2: float, y2: float) inline
+.decl g2(oid: number, vid: number, fid: number, x1: float, y1: float, x2: float, y2: float) inline
+.decl g1seq(vid: number, fid1: number, fid2: number, oid1: number, oid2: number, x1: float, y1: float, x2: float, y2: float)
+.decl g2seq(vid: number, fid1: number, fid2: number, oid1: number, oid2: number, x1: float, y1: float, x2: float, y2: float)
+
+.functor get_iou(x1: float, y1: float, x2: float, y2: float, x1p: float, y1p: float, x2p: float, y2p: float):float
+.input Obj(filename="data/facts/bdd_obj.facts")
+
+// oid mappings:
+// 0: person, 1: bicycle, 2: car
+g1(oid, vid, fid, x1, y1, x2, y2) :- Obj(oid, vid, fid, 0, x1, y1, x2, y2), vid < 1.
+
+g2(oid, vid, fid, x1, y1, x2, y2) :- Obj(oid, vid, fid, 2, x1, y1, x2, y2), vid < 1.
+
+g1seq(vid, fid, fid, oid, oid, x1, y1, x2, y2) :- g1(oid, vid, fid, x1, y1, x2, y2).
+g1seq(vid, fid1, fid3, oid1, oid2, x1p, y1p, x2p, y2p) :- g1seq(vid, fid1, fid2, oid1, _, x1, y1, x2, y2), g1(oid2, vid, fid3, x1p, y1p, x2p, y2p), fid3 = fid2 + 1, @get_iou(x1, y1, x2, y2, x1p, y1p, x2p, y2p) > 0.5. // UDF(); IOU > 0.5.
+
+.decl g1seq_duration(vid: number, fid1: number, fid2: number, oid1: number, oid2: number)
+g1seq_duration(vid, fid1, fid2, oid1, oid2) :- g1seq(vid, fid1, fid2, oid1, oid2, _, _, _, _), fid2 - fid1 > 30.
+
+.decl g1seq_a(vid: number, fid1: number, fid2: number, oid1: number, oid2: number)
+g1seq_a(vid, fid1, m, oid1, oid2) :- g1seq_duration(vid, fid1, _, oid1, oid2), m = max fid2: {g1seq_duration(vid, fid1, fid2, oid1, oid2)}.
+.decl g1seq_filtered(vid: number, fid1: number, fid2: number, oid1: number, oid2: number)
+g1seq_filtered(vid, m, fid2, oid1, oid2) :- g1seq_a(vid, _, fid2, oid1, oid2), m = min fid1: {g1seq_a(vid, fid1, fid2, oid1, oid2)}.
+
+g2seq(vid, fid, fid, oid, oid, x1, y1, x2, y2) :- g2(oid, vid, fid, x1, y1, x2, y2).
+g2seq(vid, fid1, fid3, oid1, oid2, x1p, y1p, x2p, y2p) :- g2seq(vid, fid1, fid2, oid1, _, x1, y1, x2, y2), g2(oid2, vid, fid3, x1p, y1p, x2p, y2p), fid3 = fid2 + 1, @get_iou(x1, y1, x2, y2, x1p, y1p, x2p, y2p) > 0.5.
+
+.decl g2seq_duration(vid: number, fid1: number, fid2: number, oid1: number, oid2: number)
+g2seq_duration(vid, fid1, fid2, oid1, oid2) :- g2seq(vid, fid1, fid2, oid1, oid2, _, _, _, _), fid2 - fid1 > 30.
+
+.decl g2seq_a(vid: number, fid1: number, fid2: number, oid1: number, oid2: number)
+g2seq_a(vid, fid1, m, oid1, oid2) :- g2seq_duration(vid, fid1, _, oid1, oid2), m = max fid2: {g2seq_duration(vid, fid1, fid2, oid1, oid2)}.
+.decl g2seq_filtered(vid: number, fid1: number, fid2: number, oid1: number, oid2: number)
+g2seq_filtered(vid, m, fid2, oid1, oid2) :- g2seq_a(vid, _, fid2, oid1, oid2), m = min fid1: {g2seq_a(vid, fid1, fid2, oid1, oid2)}.
+
+.decl q(vid: number, fid1: number, fid2: number, fid3: number, fid4: number, oid1: number, oid2: number, oid3: number, oid4: number)
+q(vid, fid1, fid2, fid3, fid4, oid1, oid2, oid3, oid4) :- g1seq_filtered(vid, fid1, fid2, oid1, oid2), g2seq_filtered(vid, fid3, fid4, oid3, oid4), fid1 < fid3, fid3 - fid1 < 100.
+
+.output q(filename="data/answers/q1_bdd_v0.ans")

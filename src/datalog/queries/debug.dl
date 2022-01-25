@@ -1,0 +1,12 @@
+.decl g1(fid1: number, x1: float, y1: float, x2: float, y2: float)
+g1(1, 1, 1, 2, 2).
+g1(2, 1.5, 1.5, 2, 2).
+g1(3, 1.5, 1.5, 3, 3).
+g1(4, 2, 2, 3, 3).
+.decl g1seq(fid1: number, fid2: number, iou: float)
+
+.functor get_iou(x1: float, y1: float, x2: float, y2: float, x1p: float, y1p: float, x2p: float, y2p: float):float
+
+g1seq(fid1, fid2, iou) :- g1(fid1, x1, y1, x2, y2), g1(fid2, x1p, y1p, x2p, y2p), iou=@get_iou(x1, y1, x2, y2, x1p, y1p, x2p, y2p).
+
+.output g1seq(IO=stdout)
