@@ -15,40 +15,6 @@ import argparse
 import yaml
 import logging
 from common import *
-import queue
-import carla_vehicle_annotator as cva
-
-def retrieve_data(sensor_queue, frame, timeout=10):
-    while True:
-        try:
-            data = sensor_queue.get(True,timeout)
-        except queue.Empty:
-            return None
-        if data.frame == frame:
-            return data
-
-
-def save_bbox(bboxes, vehicle_class):
-    result = []
-    for bbox, pred_class in zip(bboxes, vehicle_class):
-        x1 = int(bbox[0,0])
-        y1 = int(bbox[0,1])
-        x2 = int(bbox[1,0])
-        y2 = int(bbox[1,1])
-        if pred_class == 0:
-            class_name = "car"
-        elif pred_class == 1:
-            class_name = "truck"
-        elif pred_class == 2:
-            class_name = "motorbike"
-        elif pred_class == 3:
-            class_name = "bicycle"
-        elif pred_class == 9:
-            class_name = "person"
-
-        # List[(x1, y1, x2, y2, class_name, score)]
-        result.append([x1, y1, x2, y2, class_name, 1.0])
-    return result
 
 
 class Configuration:
@@ -66,8 +32,7 @@ class Configuration:
         self.remaining_walker_locations = self.all_walker_locations
         self.remaining_traffic_camera_locations = self._shuffle(list(traffic_camera_locations))
         self.remaining_panoramic_camera_locations = self._shuffle(list(panoramic_camera_locations))
-        self.depth_queue = [queue.Queue() for _ in range(TRAFFIC_CAMERAS_PER_TILE)]
-        self.rgb_camera_queue = [queue.Queue() for _ in range(TRAFFIC_CAMERAS_PER_TILE)]
+
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -127,7 +92,6 @@ def create_listener(configuration, type, id):
         writer.clear()
 
     def listener(image):
-        configuration.rgb_camera_queue[id - configuration.id * TRAFFIC_CAMERAS_PER_TILE].put(image)
         if 0 <= count[0] <= FPS * configuration.duration:
             if 'semantic' in type:
                 image.convert(carla.ColorConverter.CityScapesPalette)
@@ -142,70 +106,64 @@ def create_listener(configuration, type, id):
     return listener
 
 
-def create_camera(configuration, type, id, transform=None, fov=90, yaw=None, location=None,
-                  blueprint_name='sensor.camera.rgb'):
+def create_camera(configuration, type, id, transform=None, fov=90, yaw=None, location=None, blueprint_name='sensor.camera.rgb', ego_vehicle=None):
+
     blueprint = configuration.world.get_blueprint_library().find(blueprint_name)
     blueprint.set_attribute('image_size_x', str(configuration.resolution[0]))
     blueprint.set_attribute('image_size_y', str(configuration.resolution[1]))
     blueprint.set_attribute('fov', str(fov))
-
-    attach_to_vehicle = random.choice([True, False])
-    if attach_to_vehicle:
-        transform = carla.Transform(carla.Location(x=1.5, z=2.4))
-        # Spawn ego vehicle
-        blueprints = configuration.world.get_blueprint_library().filter('vehicle.*')
-        ego_bp = random.choice(blueprints)
-        print("ego_bp", ego_bp)
-        ego_transform = configuration.next_vehicle_location()
-        print("ego_transform", ego_transform)
-        if ego_transform:
-            ego_vehicle = configuration.world.spawn_actor(ego_bp, ego_transform)
-            ego_vehicle.set_autopilot(True)
-        else:
-            ego_vehicle = None
-        # ego_vehicle = SpawnActor(ego_bp, ego_transform).then(SetAutopilot(FutureActor, True)) if ego_transform else None
-        print("ego_vehicle", ego_vehicle)
 
     if not transform:
         # create normal RGB camera
         transform = transform or configuration.next_traffic_camera_location()
         transform.location = location or transform.location
         transform.location += carla.Location(z=CAMERA_HEIGHT)
-        # transform.location.x = 199
-        # transform.location.y = -239
-        # transform.location.z = 5.2
-        transform.rotation.yaw = yaw or transform.rotation.yaw
-        transform.rotation.yaw += random.randint(-fov/2, fov/2) + random.choice([0, 180])
-        # transform.rotation.yaw = -52
-        # print("(x,y,z,yaw) = ({},{},{},{})".format(transform.location.x, transform.location.y,transform.location.z, transform.rotation.yaw))
+        transform.location.x = 199
+        transform.location.y = -239
+        transform.location.z = 5.2
+        # transform.rotation.yaw = yaw or transform.rotation.yaw
+        # transform.rotation.yaw += random.randint(-fov/2, fov/2) + random.choice([0, 180])
+        transform.rotation.yaw = -52
+        print("(x,y,z,yaw) = ({},{},{},{})".format(transform.location.x, transform.location.y,transform.location.z, transform.rotation.yaw))
     else:
         transform.rotation.yaw = yaw or transform.rotation.yaw
 
     # print("camera", blueprint, transform, ego_vehicle, attach_to_vehicle)
-    camera = configuration.world.spawn_actor(blueprint, transform, attach_to=ego_vehicle if attach_to_vehicle else None)
+    camera = configuration.world.spawn_actor(blueprint, transform, attach_to=ego_vehicle)
     listener = create_listener(configuration, type, id)
     camera.count = listener.count
     camera.close = listener.close
     camera.requested_transform = transform
     camera.listen(listener)
 
-    # Create depth camera at the same location
-    depth_bp = configuration.world.get_blueprint_library().find('sensor.camera.depth')
-    depth = configuration.world.spawn_actor(depth_bp, transform, attach_to=ego_vehicle if attach_to_vehicle else None)
-    depth.listen(configuration.depth_queue[id - configuration.id * TRAFFIC_CAMERAS_PER_TILE].put)
-    return camera, depth
+    return camera
 
 
-def create_semantic_camera(configuration, id, transform, prefix='traffic'):
-    return create_camera(configuration, 'semantic-' + prefix, id, transform=transform, blueprint_name='sensor.camera.semantic_segmentation')
+def create_semantic_camera(configuration, id, transform, ego_vehicle, prefix='traffic'):
+    return create_camera(configuration, 'semantic-' + prefix, id, transform=transform, blueprint_name='sensor.camera.semantic_segmentation', ego_vehicle=ego_vehicle)
 
 
 def create_traffic_cameras(configuration):
     cameras = []
     tile_base_id = configuration.id * TRAFFIC_CAMERAS_PER_TILE
     for id in range(TRAFFIC_CAMERAS_PER_TILE): # scale * TRAFFIC_SCALE_MULTIPLIER):
-        cameras.append(create_camera(configuration, 'traffic', tile_base_id + id))
-        # cameras.append(create_semantic_camera(configuration, tile_base_id + id, transform=cameras[-1].requested_transform))
+        # attach_to_vehicle = random.choice([True, False])
+        attach_to_vehicle = False
+        ego_vehicle = None
+        transform = None
+        if attach_to_vehicle:
+            transform = carla.Transform(carla.Location(x=1.5, z=2.4))
+            # Spawn ego vehicle
+            blueprints = configuration.world.get_blueprint_library().filter('vehicle.*')
+            ego_bp = random.choice(blueprints)
+            ego_transform = configuration.next_vehicle_location()
+            if ego_transform:
+                ego_vehicle = configuration.world.spawn_actor(ego_bp, ego_transform)
+                ego_vehicle.set_autopilot(True)
+            else:
+                ego_vehicle = None
+        cameras.append(create_camera(configuration, 'traffic', tile_base_id + id, ego_vehicle=ego_vehicle, transform=transform))
+        cameras.append(create_semantic_camera(configuration, tile_base_id + id, transform=cameras[-1].requested_transform, ego_vehicle=ego_vehicle))
     return cameras
 
 
@@ -289,7 +247,7 @@ def start_walker(configuration, controller, index):
 
 
 def is_complete(id, scale, cameras, duration, start_time):
-    frame_count = max(0, min([camera[0].count[0] for camera in cameras]))
+    frame_count = max(0, min([camera.count[0] for camera in cameras]))
     total_frames = duration * FPS
     fps = max(frame_count / (time.time() - start_time + 0.00001), 0)
     logging.info('Tile %d of %d: Rendered %d frames; %d remaining (%.1f FPS)', id + 1, scale, frame_count, total_frames - frame_count, fps)
@@ -353,46 +311,18 @@ def generate_tile(client, path, id, tile, scale, resolution, duration, panorama_
         traffic_cameras = create_traffic_cameras(configuration)
         # panoramic_cameras = create_panoramic_cameras(configuration)
 
-        bbox_json_list = [{} for _ in range(len(traffic_cameras))]
-        frame_id = 0
         while not is_complete(id, scale, traffic_cameras + panoramic_cameras, duration, start_time):
-            for _ in range(10):
-                nowFrame = world.tick()
-                detected_objects = [*world.get_actors().filter('vehicle.*'), *world.get_actors().filter('walker.*')]
-
-                for i in range(len(traffic_cameras)):
-                    cam, depth = traffic_cameras[i]
-                    depth_img = retrieve_data(configuration.depth_queue[i], nowFrame)
-                    rgb_img = retrieve_data(configuration.rgb_camera_queue[i], nowFrame)
-                    depth_meter = cva.extract_depth(depth_img)
-                    # Calculating visible bounding boxes
-                    filtered_out, removed = cva.auto_annotate(detected_objects, cam, depth_meter, json_path='vehicle_class_json_file.txt')
-                    # Save the results
-                    bbox_json_list[i]["frame_{}.jpg".format(frame_id)] = save_bbox(filtered_out['bbox'], filtered_out['class'])
-
-                frame_id += 1
+            [world.tick() for _ in range(10)]
 
     finally:
         logging.info('Destroying actors')
 
-        # Write bbox json to file
-        for i in range(len(traffic_cameras)):
-            with open(os.path.join(path, 'traffic-%03d.json' % (id * TRAFFIC_CAMERAS_PER_TILE + i)), 'w') as f:
-                f.write(json.dumps(bbox_json_list[i]))
-
         try:
-            for camera, depth in traffic_cameras:
-                camera.close()
-                camera.stop()
-                depth.stop()
-            for camera in panoramic_cameras:
-                camera.close()
-                camera.stop()
-            # [camera.close() for camera in traffic_cameras + panoramic_cameras]
-            # [camera.stop() for camera in traffic_cameras + panoramic_cameras]
+            [camera.close() for camera in traffic_cameras + panoramic_cameras]
+            [camera.stop() for camera in traffic_cameras + panoramic_cameras]
             #[controller.stop() for controller in world.get_actors([c.actor_id for c in controllers])]
 
-            client.apply_batch_sync([carla.command.DestroyActor(c) for c_tuple in traffic_cameras for c in c_tuple] +
+            client.apply_batch_sync([carla.command.DestroyActor(c) for c in traffic_cameras] +
                                     [carla.command.DestroyActor(c) for c in panoramic_cameras] +
                                     [carla.command.DestroyActor(v.actor_id) for v in vehicles] +
                                     [carla.command.DestroyActor(c.actor_id) for c in controllers] +
@@ -467,7 +397,7 @@ def generate(path, tiles, scale, resolution, duration, panorama_fov, seed=None, 
             if not walkers is None:
                 used_tiles[-1].walkers = walkers
             # Use a specific map
-            # used_tiles[-1].map = "Town04"
+            used_tiles[-1].map = "Town04"
             logging.info(used_tiles[-1])
             write_configuration(path, used_tiles, scale, resolution, duration, panorama_fov, seed, hostname, port, timeout)
             generate_tile(client, path, id, used_tiles[-1], scale, resolution, duration, panorama_fov)

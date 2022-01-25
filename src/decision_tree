@@ -1,0 +1,17 @@
+digraph Tree {
+node [shape=box, style="filled, rounded", color="black", fontname="helvetica"] ;
+edge [fontname="helvetica"] ;
+0 [label=<width &le; 98.913<br/>gini = 0.499<br/>samples = 516<br/>value = [428.241, 395.506]<br/>class = 0>, fillcolor="#fdf5f0"] ;
+1 [label=<centroid_x &le; 241.839<br/>gini = 0.125<br/>samples = 151<br/>value = [423.561, 30.521]<br/>class = 0>, fillcolor="#e78a47"] ;
+0 -> 1 [labeldistance=2.5, labelangle=45, headlabel="True"] ;
+2 [label=<gini = 0.0<br/>samples = 120<br/>value = [423.561, 0.0]<br/>class = 0>, fillcolor="#e58139"] ;
+1 -> 2 ;
+5 [label=<gini = -0.0<br/>samples = 31<br/>value = [0.0, 30.521]<br/>class = 1>, fillcolor="#399de5"] ;
+1 -> 5 ;
+6 [label=<height &le; 46.154<br/>gini = 0.025<br/>samples = 365<br/>value = [4.68, 364.984]<br/>class = 1>, fillcolor="#3c9ee5"] ;
+0 -> 6 [labeldistance=2.5, labelangle=-45, headlabel="False"] ;
+7 [label=<gini = 0.0<br/>samples = 1<br/>value = [4.68, 0.0]<br/>class = 0>, fillcolor="#e58139"] ;
+6 -> 7 ;
+8 [label=<gini = 0.0<br/>samples = 364<br/>value = [0.0, 364.984]<br/>class = 1>, fillcolor="#399de5"] ;
+6 -> 8 ;
+}
