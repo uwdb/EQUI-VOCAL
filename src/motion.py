@@ -521,7 +521,6 @@ def trail_based_match(tracks):
 if __name__ == '__main__':
     # prepare_track()
     # visualize_track()
-
     tracks = np.loadtxt("/gscratch/balazinska/enhaoz/complex_event_video/data/car_turning_traffic2/track.json", delimiter=',')
 
     mean_avg_rank = 0
