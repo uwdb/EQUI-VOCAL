@@ -404,6 +404,7 @@ def optical_flow(frame_no, bbox, window_size=15, tau=1e-2):
     # cv2.imwrite('/gscratch/balazinska/enhaoz/complex_event_video/tmp/resized_frame1.png', frame1)
 
     ret, frame2 = cap.read()
+    cap.release()
     # Crop the bounding box
     frame2 = frame2[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]
     # Resize image
