@@ -100,7 +100,7 @@ def meva_person_stands_up(maskrcnn_bboxes, video_list, pos_frames, cached=False)
     # Filtering stage
     candidates = np.full(n_frames, True, dtype=np.bool)
     for video_basename, frame_offset, n_local_frames in video_list:
-        files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+        files = [y for x in os.walk("../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
         matching = [f for f in files if video_basename + ".activities" in f]
         assert(len(matching) == 1)
         activities_file = matching[0]
@@ -156,7 +156,7 @@ def meva_base_spatial_relationship_different_objects(maskrcnn_bboxes, video_list
     spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
     candidates = np.full(n_frames, True, dtype=np.bool)
     for video_basename, frame_offset, n_local_frames in video_list:
-        files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+        files = [y for x in os.walk("../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
         matching = [f for f in files if video_basename + ".activities" in f]
         assert(len(matching) == 1)
         activities_file = matching[0]
@@ -235,7 +235,7 @@ def meva_base_spatial_relationship_same_object(maskrcnn_bboxes, video_list, pos_
     spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
     candidates = np.full(n_frames, True, dtype=np.bool)
     for video_basename, frame_offset, n_local_frames in video_list:
-        files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+        files = [y for x in os.walk("../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
         matching = [f for f in files if video_basename + ".activities" in f]
         assert(len(matching) == 1)
         activities_file = matching[0]

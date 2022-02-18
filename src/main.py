@@ -1,37 +1,19 @@
-from time import time
-from shutil import copyfile
 import json
-from typing import List, Tuple
-import torch
-import math
-from torchvision import datasets, transforms
-from torchvision.utils import save_image
 import os
-import csv
-from tqdm import tqdm
-from sklearn import tree, metrics
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
-from sklearn.ensemble import RandomForestClassifier
 import numpy as np
-import graphviz
-import random
-import more_itertools as mit
 import matplotlib.pyplot as plt
-import sys
-from utils import tools
 from frame_selection import RandomFrameSelection
 from user_feedback import UserFeedback
 from proxy_model_training import ProxyModelTraining
 from query_initialization import RandomInitialization
 from prepare_query_ground_truth import *
 import filter
-from sklearn.metrics import RocCurveDisplay
 from sklearn.tree._tree import TREE_LEAF, TREE_UNDEFINED
 from copy import deepcopy
 import cv2
 from shapely.geometry import Polygon
 from sklearn.manifold import TSNE
-from mpl_toolkits.mplot3d import Axes3D
 from glob import glob
 import pandas as pd
 
@@ -46,7 +28,7 @@ class ComplexEventVideoDB:
         self.query = query
         self.temporal_heuristic = temporal_heuristic
         self.method = method
-        self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
+        # self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
 
         """Read in object detection bounding box information
         Properties initialized:
@@ -78,11 +60,11 @@ class ComplexEventVideoDB:
         self.filtering_stage()
 
         self.num_positive_instances_found = 0
-        self.raw_frames = np.full(self.n_frames, True, dtype=np.bool)
-        self.materialized_frames = np.full(self.n_frames, False, dtype=np.bool)
+        self.raw_frames = np.full(self.n_frames, True, dtype=bool)
+        self.materialized_frames = np.full(self.n_frames, False, dtype=bool)
         self.iteration = 0
         self.vis_decision_output = []
-        self.Y = np.zeros(self.n_frames, dtype=np.int)
+        self.Y = np.zeros(self.n_frames, dtype=int)
         for i in range(self.n_frames):
             if i in self.pos_frames:
                 self.Y[i] = 1
@@ -108,7 +90,7 @@ class ComplexEventVideoDB:
 
     def ingest_bbox_info(self):
         # Read in bbox info
-        with open("/home/ubuntu/complex_event_video/data/car_turning_traffic2/bbox.json", 'r') as f:
+        with open("../data/car_turning_traffic2/bbox.json", 'r') as f:
             self.maskrcnn_bboxes = json.loads(f.read())
         self.n_frames = len(self.maskrcnn_bboxes)
 
@@ -139,8 +121,8 @@ class ComplexEventVideoDB:
             video_camera = "school.G421"
         elif self.query in ["meva_person_enters_vehicle"]:
             video_camera = "school.G336"
-        files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva") for y in glob(os.path.join(x[0], '*.json'))]
-        gt_annotations = [os.path.basename(y).replace(".activities.yml", "") for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+        files = [y for x in os.walk("../data/meva") for y in glob(os.path.join(x[0], '*.json'))]
+        gt_annotations = [os.path.basename(y).replace(".activities.yml", "") for x in os.walk("../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
         self.maskrcnn_bboxes = {}
         self.video_list = [] # (video_basename, frame_offset, n_frames)
         for file in files:
@@ -357,7 +339,6 @@ class ComplexEventVideoDB:
             w = 200
             h = 100
             spacing = 50
-            num_per_row = 4
             x = 10 + (w + spacing) * (i % 5)
             y = 10 + (h + spacing) * (i // 5)
             overlay = cv2.rectangle(overlay, (x, y), (x+w, y+h), color, -1)  # A filled rectangle
@@ -366,9 +347,9 @@ class ComplexEventVideoDB:
             #     if pred[0] == "r":
 
             out_img = cv2.addWeighted(local_overlay, 0.7, img, 0.3, 0)
-            cv2.imwrite("{0}/{1}_{2}.jpg".format("/home/ubuntu/complex_event_video/src/outputs", self.iteration, i), out_img)
+            cv2.imwrite("{0}/{1}_{2}.jpg".format("outputs", self.iteration, i), out_img)
         out_img = cv2.addWeighted(overlay, 0.7, img, 0.3, 0)
-        cv2.imwrite("{0}/{1}.jpg".format("/home/ubuntu/complex_event_video/src/outputs", self.iteration), out_img)
+        cv2.imwrite("{0}/{1}.jpg".format("outputs", self.iteration), out_img)
 
     def visualize_rules_spatial_relationship(self, rules):
         for i, rule in enumerate(rules):
@@ -398,7 +379,7 @@ class ComplexEventVideoDB:
             img = cv2.rectangle(img, (x1 + int(s2_min*10), y1 + int(s1_min*10)), (x1 + int(s2_max*10), y1 + int(s1_max*10)), (0,0,255), 1)
             # # Draw visualization for s3 and s4
             # img = cv2.rectangle(img, (x1 + s2_min, y1 + s1_min), (x1 + s2_max, y1 + s1_max), color, 2)
-            cv2.imwrite("{0}/spatial_rel_{1}_{2}.jpg".format("/home/ubuntu/complex_event_video/src/outputs", self.iteration, i), img)
+            cv2.imwrite("{0}/spatial_rel_{1}_{2}.jpg".format("outputs", self.iteration, i), img)
 
     @staticmethod
     def find_polygon_points(rule):
@@ -537,9 +518,9 @@ if __name__ == '__main__':
     for i in range(20):
         print("Iteration: ", i)
         # cevdb = ComplexEventVideoDB(dataset="meva", query="meva_person_enters_vehicle", temporal_heuristic=False)
-        # cevdb = ComplexEventVideoDB(dataset="visualroad_traffic2", query="turning_car_and_pedestrain_at_intersection", temporal_heuristic=True)
+        cevdb = ComplexEventVideoDB(dataset="visualroad_traffic2", query="turning_car_and_pedestrain_at_intersection", temporal_heuristic=True)
         # cevdb.tsne_plot()
-        cevdb = FilteredProcessing(dataset="meva", query="meva_person_embraces_person", temporal_heuristic=True)
+        # cevdb = FilteredProcessing(dataset="meva", query="meva_person_embraces_person", temporal_heuristic=True)
         plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
         plot_data_y_annotated_list.append(plot_data_y_annotated)
     cevdb.save_data(plot_data_y_annotated_list)
