@@ -50,8 +50,9 @@ wget "https://sourceforge.net/projects/boost/files/boost/1.72.0/boost_1_72_0.tar
 it is a temporary fix. it worked for me.
 
 # Souffle
-- install-dir: /home/ubuntu/complex_event_video/src/datalog/souffle/install/bin/souffle
-
+- Install souffle from source code: https://souffle-lang.github.io/build#installing-souffl%C3%A9
+- install-dir: /home/ubuntu/complex_event_video/src/datalog/souffle/install
+- souffle-path: /home/ubuntu/complex_event_video/src/datalog/souffle/install/bin/souffle
 - User-defined functors:
 ```
 g++ functors.cpp -c -fPIC -o functors.o
@@ -80,3 +81,12 @@ ffmpeg -i /home/ubuntu/complex_event_video/data/bdd100k/videos/test/cafae648-c3d
 aws s3 sync s3://mevadata-public-01/drops-123-r13 . --no-sign-request --exclude "*" --include "*school.G336*"
 ```
 - Potential interesting events: person stands up, person sits down, person rides bicycle, person embraces person.
+
+# Python
+1. Create a virtual environment. Experiments were run with Python 3.8.10: \
+`python3 -m venv ../myenv` \
+`source ../myenv/bin/activate`
+1. Install requirements: \
+`pip install -r requirements.txt`
+1. Setup vfe python library: \
+`pip install -e .`
