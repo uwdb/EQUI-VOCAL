@@ -4,135 +4,16 @@
 
 import json
 from sort import *
+import os
 import numpy as np
 import cv2
 from sklearn.ensemble import RandomForestClassifier
-from sklearn import svm
-from random import sample
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
-from scipy.stats import mode
-from sklearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
 from scipy import signal
 import matplotlib.pyplot as plt
-from skimage.measure import block_reduce
-from skimage.transform import rescale, resize, downscale_local_mean
-import math
-
-def _c(ca, i, j, p, q):
-
-    if ca[i, j] > -1:
-        return ca[i, j]
-    elif i == 0 and j == 0:
-        ca[i, j] = np.linalg.norm(p[i]-q[j])
-    elif i > 0 and j == 0:
-        ca[i, j] = max(_c(ca, i-1, 0, p, q), np.linalg.norm(p[i]-q[j]))
-    elif i == 0 and j > 0:
-        ca[i, j] = max(_c(ca, 0, j-1, p, q), np.linalg.norm(p[i]-q[j]))
-    elif i > 0 and j > 0:
-        ca[i, j] = max(
-            min(
-                _c(ca, i-1, j, p, q),
-                _c(ca, i-1, j-1, p, q),
-                _c(ca, i, j-1, p, q)
-            ),
-            np.linalg.norm(p[i]-q[j])
-            )
-    else:
-        ca[i, j] = float('inf')
-
-    return ca[i, j]
-
-
-def frdist(p, q):
-    """
-    Computes the discrete Fréchet distance between
-    two curves. The Fréchet distance between two curves in a
-    metric space is a measure of the similarity between the curves.
-    The discrete Fréchet distance may be used for approximately computing
-    the Fréchet distance between two arbitrary curves,
-    as an alternative to using the exact Fréchet distance between a polygonal
-    approximation of the curves or an approximation of this value.
-    This is a Python 3.* implementation of the algorithm produced
-    in Eiter, T. and Mannila, H., 1994. Computing discrete Fréchet distance.
-    Tech. Report CD-TR 94/64, Information Systems Department, Technical
-    University of Vienna.
-    http://www.kr.tuwien.ac.at/staff/eiter/et-archive/cdtr9464.pdf
-    Function dF(P, Q): real;
-        input: polygonal curves P = (u1, . . . , up) and Q = (v1, . . . , vq).
-        return: δdF (P, Q)
-        ca : array [1..p, 1..q] of real;
-        function c(i, j): real;
-            begin
-                if ca(i, j) > -1 then return ca(i, j)
-                elsif i = 1 and j = 1 then ca(i, j) := d(u1, v1)
-                elsif i > 1 and j = 1 then ca(i, j) := max{ c(i - 1, 1), d(ui, v1) }
-                elsif i = 1 and j > 1 then ca(i, j) := max{ c(1, j - 1), d(u1, vj) }
-                elsif i > 1 and j > 1 then ca(i, j) :=
-                max{ min(c(i - 1, j), c(i - 1, j - 1), c(i, j - 1)), d(ui, vj ) }
-                else ca(i, j) = ∞
-                return ca(i, j);
-            end; /* function c */
-        begin
-            for i = 1 to p do for j = 1 to q do ca(i, j) := -1.0;
-            return c(p, q);
-        end.
-    Parameters
-    ----------
-    P : Input curve - two dimensional array of points
-    Q : Input curve - two dimensional array of points
-    Returns
-    -------
-    dist: float64
-        The discrete Fréchet distance between curves `P` and `Q`.
-    Examples
-    --------
-    >>> from frechetdist import frdist
-    >>> P=[[1,1], [2,1], [2,2]]
-    >>> Q=[[2,2], [0,1], [2,4]]
-    >>> frdist(P,Q)
-    >>> 2.0
-    >>> P=[[1,1], [2,1], [2,2]]
-    >>> Q=[[1,1], [2,1], [2,2]]
-    >>> frdist(P,Q)
-    >>> 0
-    """
-    p = np.array(p, np.float64)
-    q = np.array(q, np.float64)
-
-    len_p = len(p)
-    len_q = len(q)
-
-    if len_p == 0 or len_q == 0:
-        raise ValueError('Input curves are empty.')
-
-    if len_p != len_q or len(p[0]) != len(q[0]):
-        raise ValueError('Input curves do not have the same dimensions.')
-
-    ca = (np.ones((len_p, len_q), dtype=np.float64) * -1)
-
-    dist = _c(ca, len_p-1, len_q-1, p, q)
-    return dist
-
-def frdist_approx(p, q):
-    if len(p) > len(q):
-        temp = p
-        p = q
-        q = temp
-    current_idx = 0
-    frdist = 0
-    for p_centroid in p:
-        min_dist = float("inf")
-        for idx, q_centroid in enumerate(q):
-            if idx < current_idx:
-                continue
-            edist = math.dist(p_centroid, q_centroid)
-            if edist < min_dist:
-                min_dist = edist
-                current_idx = idx
-        frdist += min_dist
-    return frdist / len(p)
+from skimage.transform import resize
 
 def prepare_track():
     #create instance of SORT
@@ -323,73 +204,6 @@ def dense_optical_flow(frame_no, bbox):
     # cv2.imwrite('/gscratch/balazinska/enhaoz/complex_event_video/tmp/opticalhsv.png', bgr)
     return bgr
 
-def discrete_frechet_distance(tracks):
-    # Doesn't seem to be very useful
-    # TODO: might want to delete this function
-    track_id_list = np.unique(tracks[:, 1])
-
-    # Turning car
-    pos_ids = [1, 18, 24, 91, 100, 117, 126, 154, 162, 214, 217, 232, 245, 291, 294, 354, 328, 335, 359, 344, 400, 419]
-    neg_ids = []
-    for track_id in track_id_list:
-        if track_id not in pos_ids:
-            neg_ids.append(track_id)
-
-    train_pos, test_pos = train_test_split(pos_ids, train_size=0.75)
-    train_neg, test_neg = train_test_split(neg_ids, train_size=len(train_pos)/len(neg_ids))
-    print("train_pos:", train_pos)
-    print("train_neg:", train_neg)
-    train_x = []
-    train_y = []
-    test_x = []
-    test_y = []
-    test_track_id = []
-    for track_id in track_id_list:
-        one_track = tracks[tracks[:, 1]==track_id]
-        one_track = one_track[np.argsort(one_track[:, 0])]
-        trajectory = []
-        for row in one_track:
-            x1 = max(row[2], 0)
-            y1 = max(row[3], 0)
-            x2 = max(row[4], 0)
-            y2 = max(row[5], 0)
-            trajectory.append([(x1 + x2) / 2, (y1 + y2) / 2])
-        if track_id in train_pos:
-            train_x.append(trajectory)
-            train_y.append(1)
-        # elif track_id in train_neg:
-        #     train_x.append(trajectory)
-        #     train_y.append(0)
-        else:
-            test_x.append(trajectory)
-            if track_id in test_pos:
-                test_y.append(1)
-            else:
-                test_y.append(0)
-            test_track_id.append(track_id)
-
-    # Predict similar tracks
-    test_track_id = np.asarray(test_track_id)
-    scores = []
-    for track_id, test_trajectory in zip(test_track_id, test_x):
-        dist = float("inf")
-        for train_trajectory in train_x:
-            dist = min(frdist_approx(test_trajectory, train_trajectory), dist)
-        print("test_track_id:", track_id, "score: ", dist)
-        scores.append(dist)
-    scores = np.asarray(scores)
-    ind = np.argsort(scores)
-    ranked = test_track_id[ind]
-    print("ranked", ranked)
-    ranked_scores = scores[ind]
-
-    rank = 0
-    for idx in test_pos:
-        print(np.where(ranked == idx)[0])
-        rank += np.where(ranked == idx)[0][0]
-    print("avg rank of test_pos:", rank/len(test_pos), "total number:", len(ranked))
-    return rank/len(test_pos)
-
 def optical_flow(frame_no, bbox, window_size=15, tau=1e-2):
     cap = cv2.VideoCapture("/gscratch/balazinska/enhaoz/complex_event_video/data/visual_road/traffic-2.mp4")
     frame_no = min(frame_no, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - 2)
@@ -517,18 +331,134 @@ def trail_based_match(tracks):
     print("avg rank of test_pos:", rank/len(test_pos), "total number:", len(ranked))
     return rank/len(test_pos)
 
+"""
+MOT20:
+gt.txt: Each line contains 10 values
+<frame>, <track_id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
+"""
+def ingest_mot():
+    print("[ingest_mot]")
+    tracks = np.loadtxt("/gscratch/balazinska/enhaoz/complex_event_video/data/MOT20/train/MOT20-05/gt/gt.txt", delimiter=',')
+    tracks = tracks[:, :6]
+    tracks[:, 4] += tracks[:, 2]
+    tracks[:, 5] += tracks[:, 3]
+    return tracks
+
+def trail_based_match_inference(tracks, pos_ids, seq_name="MOT20-05", topk=10):
+    print("[trail_based_match_inference]")
+    img = os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/MOT20/train/", seq_name, "img1/000001.jpg")
+    im =  cv2.imread(img,1)
+    height, width, c = im.shape
+
+    track_id_list = np.unique(tracks[:, 1])
+
+    train_x = []
+    test_x = []
+    test_track_id = []
+    for track_id in track_id_list:
+        one_track = tracks[tracks[:, 1]==track_id]
+        one_track = one_track[np.argsort(one_track[:, 0])]
+        mask = np.zeros((height, width))
+        for row in one_track:
+            x1 = max(row[2], 0)
+            y1 = max(row[3], 0)
+            x2 = max(row[4], 0)
+            y2 = max(row[5], 0)
+            mask[int(y1):int(y2), int(x1):int(x2)] = 1
+        if track_id in pos_ids:
+            train_x.append(mask)
+        else:
+            test_x.append(mask)
+            test_track_id.append(track_id)
+
+    # Predict similar tracks
+    test_track_id = np.asarray(test_track_id)
+    scores = []
+    for track_id, test_mask in zip(test_track_id, test_x):
+        dist = -1
+        for train_mask in train_x:
+            similarity = np.sum(test_mask*train_mask) * (np.sum(train_mask) + np.sum(test_mask)) / 0.5
+            dist = max(similarity, dist)
+        # print("test_track_id:", track_id, "score: ", dist)
+        scores.append(dist)
+    scores = np.asarray(scores)
+    ind = np.argsort(-scores)
+    ranked = test_track_id[ind]
+    ranked_scores = scores[ind]
+    topk_track_ids = ranked[:topk]
+    topk_scores = ranked_scores[:topk]
+    print("topk_track_ids", topk_track_ids)
+    return topk_track_ids, topk_scores
+
+def visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores, seq_name="MOT20-05"):
+    fps=25
+    img = os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/MOT20/train/", seq_name, "img1/000001.jpg")
+    ref_im =  cv2.imread(img,1)
+    height, width, _ = ref_im.shape
+
+    filepaths = []
+    for idx, track_ids in enumerate([pos_ids, topk_ids]):
+        query_name = "_".join([str(x) for x in pos_ids])
+        for rank, track_id in enumerate(track_ids):
+            track_id = int(track_id)
+            one_track = tracks[tracks[:, 1]==track_id]
+            one_track = one_track[np.argsort(one_track[:, 0])]
+
+            output_dir = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/tmp/track_mot/"
+
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            # Define the codec and create VideoWriter object. The output is stored in 'outpy.avi' file.
+            sub_dir = "topk_preds" if idx else "pos_samples"
+            if idx:
+                out_filename = os.path.join(output_dir, query_name, sub_dir, '{}_{}_{}.mp4'.format(rank+1, str(track_id).zfill(6), int(topk_scores[rank])))
+            else:
+                out_filename = os.path.join(output_dir, query_name, sub_dir, '{}.mp4'.format(str(track_id).zfill(6)))
+            filepaths.append(out_filename)
+            if os.path.isfile(out_filename):
+                continue
+            if not os.path.exists(os.path.join(output_dir, query_name, sub_dir)):
+                os.makedirs(os.path.join(output_dir, query_name, sub_dir))
+            print("[Writing video file]", out_filename)
+            out = cv2.VideoWriter(out_filename, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width,height))
+
+            tracking_path = []
+            for row in one_track:
+                fid = int(row[0])
+                img = os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/MOT20/train/", seq_name, "img1", "{}.jpg".format(str(fid).zfill(6)))
+                frame =  cv2.imread(img,1)
+                frame = cv2.rectangle(frame, (int(row[2]), int(row[3])), (int(row[4]), int(row[5])), (36,255,12), 3)
+                tracking_path.append([(row[2] + row[4]) / 2, (row[3] + row[5]) / 2])
+                for i in range(1, len(tracking_path)):
+                    frame = cv2.line(frame, (int(tracking_path[i - 1][0]), int(tracking_path[i - 1][1])), (int(tracking_path[i][0]), int(tracking_path[i][1])), (0, 255, 0), 3)
+                out.write(frame)
+            out.release()
+            frame = ref_im.copy()
+            # Write a preview image
+            for i in range(1, len(tracking_path)):
+                frame = cv2.line(frame, (int(tracking_path[i - 1][0]), int(tracking_path[i - 1][1])), (int(tracking_path[i][0]), int(tracking_path[i][1])), (0, 255, 0), 3)
+            cv2.imwrite(os.path.join(output_dir, query_name, sub_dir, '{}_{}_{}.jpg'.format(rank+1, str(track_id).zfill(6), int(topk_scores[rank]))), frame)
+
 
 if __name__ == '__main__':
+    tracks = ingest_mot()
+    track_id_list = np.unique(tracks[:, 1])
+    pos_ids = np.random.choice(track_id_list, 5, replace=False)
+    # pos_ids = [181]
+    topk_ids, topk_scores = trail_based_match_inference(tracks, pos_ids)
+    visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores)
+
     # prepare_track()
     # visualize_track()
-    tracks = np.loadtxt("/gscratch/balazinska/enhaoz/complex_event_video/data/car_turning_traffic2/track.json", delimiter=',')
+    # tracks = np.loadtxt("/gscratch/balazinska/enhaoz/complex_event_video/data/car_turning_traffic2/track.json", delimiter=',')
 
-    mean_avg_rank = 0
-    for _ in range(100):
-        # mean_avg_rank += match_track(tracks)
-        mean_avg_rank += trail_based_match(tracks)
-    mean_avg_rank /= 100
-    print("mean avg rank:", mean_avg_rank)
+    # mean_avg_rank = 0
+    # for _ in range(100):
+    #     # mean_avg_rank += match_track(tracks)
+    #     mean_avg_rank += trail_based_match(tracks)
+    # mean_avg_rank /= 100
+    # print("mean avg rank:", mean_avg_rank)
 
     # bgr = dense_optical_flow(0, tracks[0, 2:])
     # print(bgr)
