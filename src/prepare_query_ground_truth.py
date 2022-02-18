@@ -1,5 +1,4 @@
 import csv
-
 from pandas.core import frame
 from utils.utils import isInsideIntersection, isOverlapping
 import os
@@ -9,7 +8,7 @@ import yaml
 def turning_car_and_pedestrain_at_intersection():
     pos_frames = []
     pos_frames_per_instance = {}
-    with open("/home/ubuntu/complex_event_video/data/annotation.csv", "r") as csvfile:
+    with open("../data/annotation.csv", "r") as csvfile:
         csvreader = csv.reader(csvfile)
         next(csvreader)
         for i, row in enumerate(csvreader):
@@ -30,7 +29,7 @@ def meva_person_enters_vehicle(video_list):
 def meva_base(video_list, activity_name):
     pos_frames = set()
     pos_frames_per_instance = {}
-    files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+    files = [y for x in os.walk("../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
     num_instance = 0
     for video_basename, frame_offset, _ in video_list:
         matching = [f for f in files if video_basename + ".activities" in f]
@@ -52,7 +51,7 @@ def meva_base(video_list, activity_name):
 def meva_base_b(video_list, activity_name):
     pos_frames = set()
     pos_frames_per_instance = {}
-    files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
+    files = [y for x in os.walk("../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.yml'))]
     num_instance = 0
     for video_basename, frame_offset, _ in video_list:
         matching = [f for f in files if video_basename + ".activities" in f]
