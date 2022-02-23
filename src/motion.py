@@ -14,6 +14,7 @@ from sklearn.decomposition import PCA
 from scipy import signal
 import matplotlib.pyplot as plt
 from skimage.transform import resize
+from numpy.random import default_rng
 
 def prepare_track():
     #create instance of SORT
@@ -377,7 +378,8 @@ def trail_based_match_inference(tracks, pos_ids, seq_name="MOT20-05", topk=10):
     for track_id, test_mask in zip(test_track_id, test_x):
         dist = -1
         for train_mask in train_x:
-            similarity = np.sum(test_mask*train_mask) * (np.sum(train_mask) + np.sum(test_mask)) / 0.5
+            # similarity = np.sum(test_mask*train_mask) * (np.sum(train_mask) + np.sum(test_mask)) / 0.5
+            similarity = np.sum(test_mask*train_mask) / np.sum(np.maximum(train_mask, test_mask))
             dist = max(similarity, dist)
         # print("test_track_id:", track_id, "score: ", dist)
         scores.append(dist)
@@ -398,13 +400,13 @@ def visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores, seq_name="MOT20-
 
     filepaths = []
     for idx, track_ids in enumerate([pos_ids, topk_ids]):
-        query_name = "_".join([str(x) for x in pos_ids])
+        query_name = "_".join([str(int(x)) for x in pos_ids])
         for rank, track_id in enumerate(track_ids):
             track_id = int(track_id)
             one_track = tracks[tracks[:, 1]==track_id]
             one_track = one_track[np.argsort(one_track[:, 0])]
 
-            output_dir = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/tmp/track_mot/"
+            output_dir = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/tmp/track_mot_new_metric/"
 
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
@@ -412,7 +414,7 @@ def visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores, seq_name="MOT20-
             # Define the codec and create VideoWriter object. The output is stored in 'outpy.avi' file.
             sub_dir = "topk_preds" if idx else "pos_samples"
             if idx:
-                out_filename = os.path.join(output_dir, query_name, sub_dir, '{}_{}_{}.mp4'.format(rank+1, str(track_id).zfill(6), int(topk_scores[rank])))
+                out_filename = os.path.join(output_dir, query_name, sub_dir, '{}_{}_{}.mp4'.format(rank+1, str(track_id).zfill(6), topk_scores[rank]))
             else:
                 out_filename = os.path.join(output_dir, query_name, sub_dir, '{}.mp4'.format(str(track_id).zfill(6)))
             filepaths.append(out_filename)
@@ -438,16 +440,26 @@ def visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores, seq_name="MOT20-
             # Write a preview image
             for i in range(1, len(tracking_path)):
                 frame = cv2.line(frame, (int(tracking_path[i - 1][0]), int(tracking_path[i - 1][1])), (int(tracking_path[i][0]), int(tracking_path[i][1])), (0, 255, 0), 3)
-            cv2.imwrite(os.path.join(output_dir, query_name, sub_dir, '{}_{}_{}.jpg'.format(rank+1, str(track_id).zfill(6), int(topk_scores[rank]))), frame)
+            if idx:
+                cv2.imwrite(os.path.join(output_dir, query_name, sub_dir, '{}_{}_{}.jpg'.format(rank+1, str(track_id).zfill(6), topk_scores[rank])), frame)
+            else:
+                cv2.imwrite(os.path.join(output_dir, query_name, sub_dir, '{}.jpg'.format(str(track_id).zfill(6))), frame)
 
 
 if __name__ == '__main__':
     tracks = ingest_mot()
     track_id_list = np.unique(tracks[:, 1])
-    pos_ids = np.random.choice(track_id_list, 5, replace=False)
+    # rng = default_rng()
+    # pos_ids = rng.choice(track_id_list, 10, replace=False)
     # pos_ids = [181]
-    topk_ids, topk_scores = trail_based_match_inference(tracks, pos_ids)
-    visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores)
+    """Manually pick some trajectories.
+    Long: 181, 981, 1032, 582, 931
+    Short: 199, 360, 252, 957, 844, 838
+    Bad: 742, 402, 799, 424
+    """
+    for pos_ids in [[181], [742], [199], [402], [981], [1032], [582], [931],  [360], [252], [957], [844], [838], [799], [424]]:
+        topk_ids, topk_scores = trail_based_match_inference(tracks, pos_ids)
+        visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores)
 
     # prepare_track()
     # visualize_track()
