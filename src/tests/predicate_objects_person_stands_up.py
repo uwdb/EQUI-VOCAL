@@ -209,7 +209,6 @@ def prepare_person_stands_up():
     for vid, video_basename in enumerate(video_basenames):
         print(video_basename)
         train_or_test = "train" if vid < middle_index else "val"
-        # Ingest video into numpy array, stored in ``buf''
         matching = [f for f in video_files if video_basename + ".r13.avi" in f]
         assert(len(matching) == 1)
         video_file = matching[0]
