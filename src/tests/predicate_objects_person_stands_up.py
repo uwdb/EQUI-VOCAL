@@ -26,9 +26,9 @@ import math
 from glob import glob
 import yaml
 import cv2
-from random import sample
 import collections
 from torch.utils.tensorboard import SummaryWriter
+import pandas as pd
 
 def construct_spatial_feature(bbox):
     if bbox == (0, 0, 0, 0):
@@ -129,39 +129,19 @@ def train_model(writer, model, dataloaders, criterion, optimizer, scheduler, dev
 
 def predicate_objects_vocal_preprocessing():
     def prepare_data(train_or_test):
-        label_dict = collections.defaultdict(list)
         X_train, y_train = [], []
         for i, neg_or_pos in enumerate(["neg", "pos"]):
-            for img_file in os.listdir("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_person_stands_up_refined/{}/{}".format(train_or_test, neg_or_pos)):
-                # 2018-03-07.11-00-01.11-05-01.school.G421_0016_2000.jpg
-                video_basename, actor_id, fid = img_file[:-4].split("_")
-                fid = int(fid)
-                actor_id = int(actor_id)
-                label_dict[video_basename].append([fid, actor_id, i])
-
-        video_camera = "school.G421"
-        video_basenames = [os.path.basename(y).replace(".activities.yml", "") for x in os.walk("../../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.{}.activities.yml'.format(video_camera)))]
-        print("video_basenames", video_basenames)
-
-        geom_files = [y for x in os.walk("../../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.{}.geom.yml'.format(video_camera)))]
-
-        for video_basename in video_basenames:
-            if video_basename not in label_dict.keys():
-                continue
-            label_list = label_dict[video_basename]
-            matching = [f for f in geom_files if video_basename + ".geom" in f]
-            assert(len(matching) == 1)
-            geom_file = matching[0]
-            with open(geom_file, 'r') as f:
-                geom_annotation = yaml.load(f, Loader=yaml.CLoader)
-            print("loaded geom file")
-            for geom_row in geom_annotation:
-                for fid, actor_id, label_y in label_list:
-                    if "geom" in geom_row and geom_row["geom"]["id1"] == actor_id and geom_row["geom"]["ts0"] == fid:
-                        bbox = list(map(int, geom_row["geom"]["g0"].split()))
-                        X_train.append(construct_spatial_feature(bbox))
-                        y_train.append(label_y)
-                        break
+            for img_file in os.listdir("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing/{}/{}".format(train_or_test, neg_or_pos)):
+                if img_file[-4:] != ".jpg":
+                    continue
+                # 2018-03-05.14-10-00.14-15-00.school.G421_895_1729_478_1917_976.jpg
+                _, _, x1, y1, x2, y2 = img_file[:-4].split("_")
+                x1 = int(x1)
+                y1 = int(y1)
+                x2 = int(x2)
+                y2 = int(y2)
+                X_train.append(construct_spatial_feature((x1, y1, x2, y2)))
+                y_train.append(i)
         X_train = np.asarray(X_train)
         y_train = np.asarray(y_train)
         return X_train, y_train
@@ -199,74 +179,48 @@ def predicate_objects_vocal(X_train, y_train, X_test, y_test, train_size=None, t
     return metrics.accuracy_score(y_test, y_pred), metrics.balanced_accuracy_score(y_test, y_pred), metrics.f1_score(y_test, y_pred), metrics.precision_score(y_test, y_pred, zero_division=0), metrics.recall_score(y_test, y_pred), training_time
 
 def prepare_person_stands_up():
-    activity_name = "person_stands_up"
     video_camera = "school.G421"
     video_basenames = [os.path.basename(y).replace(".activities.yml", "") for x in os.walk("../../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.{}.activities.yml'.format(video_camera)))]
+    json_files = [y for x in os.walk("../../data/meva") for y in glob(os.path.join(x[0], '*.json'))]
     print("video_basenames", video_basenames)
     middle_index = int(len(video_basenames) * 0.7)
-    activities_files = [y for x in os.walk("../../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.{}.activities.yml'.format(video_camera)))]
     video_files = [y for x in os.walk("../../data/meva") for y in glob(os.path.join(x[0], '*.avi'))]
+
+    person_boxes = []
+
     for vid, video_basename in enumerate(video_basenames):
         print(video_basename)
-        train_or_test = "train" if vid < middle_index else "val"
-        matching = [f for f in video_files if video_basename + ".r13.avi" in f]
-        assert(len(matching) == 1)
-        video_file = matching[0]
-        cap = cv2.VideoCapture(video_file)
-        all_actor_id = []
-        pos_actor_id = []
-        matching = [f for f in activities_files if video_basename + ".activities" in f]
-        assert(len(matching) == 1)
-        activities_file = matching[0]
-        geom_file = activities_file.replace(".activities", ".geom")
-        types_file = activities_file.replace(".activities", ".types")
-        with open(activities_file, 'r') as f:
-            activities_annotation = yaml.load(f, Loader=yaml.CLoader)
-        print("loaded activities file")
-        with open(geom_file, 'r') as f:
-            geom_annotation = yaml.load(f, Loader=yaml.CLoader)
-        print("loaded geom file")
-        with open(types_file, 'r') as f:
-            types_annotation = yaml.load(f, Loader=yaml.CLoader)
-        print("loaded types file")
-        # Construct all_actor_id list
-        for types_row in types_annotation:
-            if "types" in types_row and "cset3" in types_row["types"] and "person" in types_row["types"]["cset3"]:
-                all_actor_id.append(types_row["types"]["id1"])
-        # Construct pos_actor_id list
-        num_pos = 0
-        for row in activities_annotation:
-            if "act" in row and activity_name in row["act"]["act2"]:
-                actor_id = row["act"]["actors"][0]["id1"]
-                pos_actor_id.append(actor_id)
-                start_frame, end_frame = row["act"]["timespan"][0]["tsr0"]
-                offset = int((end_frame + 1 - start_frame) / 4)
-                pos_frames = []
-                print("before Range: ", start_frame, end_frame)
-                print("after Range: ", start_frame + offset, end_frame + 1 - offset)
-                for i in range(start_frame + offset, end_frame + 1 - offset):
-                    pos_frames.append(i)
-                for geom_row in geom_annotation:
-                    if "geom" in geom_row and geom_row["geom"]["id1"] == actor_id and geom_row["geom"]["ts0"] in pos_frames:
-                        bbox = list(map(int, geom_row["geom"]["g0"].split()))
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, geom_row["geom"]["ts0"])
-                        ret, frame = cap.read()
-                        cropped_image = frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-                        cv2.imwrite(os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_person_stands_up_refined", train_or_test, "pos", '{}_{}_{}.jpg'.format(video_basename, str(actor_id).zfill(4), geom_row["geom"]["ts0"])), cropped_image)
-                        num_pos += 1
-        # Construct neg_actor_id list
-        neg_candidates = []
-        for geom_row in geom_annotation:
-            if "geom" in geom_row and geom_row["geom"]["id1"] in all_actor_id and geom_row["geom"]["id1"] not in pos_actor_id:
-                bbox = list(map(int, geom_row["geom"]["g0"].split()))
-                neg_candidates.append([geom_row["geom"]["ts0"], bbox, geom_row["geom"]["id1"]])
-        for fid, bbox, actor_id in sample(neg_candidates, num_pos):
+        matching_video = [f for f in video_files if video_basename + ".r13.avi" in f]
+        matching_json = [f for f in json_files if video_basename + ".r13.json" in f]
+        if len(matching_video) == 0 or len(matching_json) == 0:
+            continue
+        assert(len(matching_video) == 1)
+        assert(len(matching_json) == 1)
+        video_file = matching_video[0]
+        json_file = matching_json[0]
+
+        with open(json_file, 'r') as f:
+            bbox_dict = json.loads(f.read())
+        for frame_id in range(len(bbox_dict)):
+            res_per_frame = bbox_dict[str(frame_id)]
+            for x1, y1, x2, y2, class_name, _ in res_per_frame:
+                if class_name == "person":
+                    person_boxes.append((int(x1), int(y1), int(x2), int(y2), frame_id, video_file))
+
+    person_boxes = random.sample(person_boxes, 3000)
+    df = pd.DataFrame(person_boxes, columns=["x1", "y1", "x2", "y2", "frame_id", "video_file"])
+    grouped = df.groupby(["video_file"])
+    for name, group in grouped:
+        cap = cv2.VideoCapture(name)
+        for _, row in group.iterrows():
+            x1, y1, x2, y2, fid, _ = row
             cap.set(cv2.CAP_PROP_POS_FRAMES, fid)
             ret, frame = cap.read()
-            cropped_image = frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-            cv2.imwrite(os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_person_stands_up_refined", train_or_test, "neg", '{}_{}_{}.jpg'.format(video_basename, str(actor_id).zfill(4), fid)), cropped_image)
+            if not ret:
+                continue
+            cropped_image = frame[y1:y2, x1:x2]
+            cv2.imwrite(os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing", '{}_{}_{}_{}_{}_{}.jpg'.format(name, fid, x1, y1, x2, y2)), cropped_image)
         cap.release()
-
 
 def query_person_stands_up(writer, train_size=None, test_size=None):
     """train_size: number of training images. If None, use all training images.
@@ -295,7 +249,7 @@ def query_person_stands_up(writer, train_size=None, test_size=None):
     #     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     # ])
 
-    data_dir = '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_person_stands_up_refined'
+    data_dir = '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing'
     image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x]) for x in ['train', 'val']}
     if train_size:
         image_datasets["train"] = random_split(image_datasets["train"], [train_size, len(image_datasets["train"])-train_size])[0]
@@ -330,7 +284,7 @@ def query_person_stands_up(writer, train_size=None, test_size=None):
     # Decay LR by a factor of 0.1 every 7 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)
 
-    return train_model(writer, model_conv, dataloaders, criterion, optimizer_conv, exp_lr_scheduler, device, dataset_sizes, num_epochs=25)
+    return train_model(writer, model_conv, dataloaders, criterion, optimizer_conv, exp_lr_scheduler, device, dataset_sizes, num_epochs=10)
 
 def run_vocal():
     out_list = []
@@ -359,16 +313,16 @@ def run_vocal():
         print("[training_time] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(training_time_list), statistics.stdev(training_time_list)))
         out_list.append([train_size, statistics.mean(acc_list), statistics.stdev(acc_list), statistics.mean(balanced_acc_list), statistics.stdev(balanced_acc_list), statistics.mean(f1_list), statistics.stdev(f1_list), statistics.mean(precision_list), statistics.stdev(precision_list), statistics.mean(recall_list), statistics.stdev(recall_list), statistics.mean(training_time_list), statistics.stdev(training_time_list)])
 
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/predicates/predicate_objects_person_stands_up_refined_vocal.json", 'w') as f:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/predicates/predicate_objects_person_sitting_and_standing_vocal.json", 'w') as f:
             f.write(json.dumps(out_list))
 
 def run_deep():
     out_list = []
-    # for train_size in [10, 20, 50, 100, 150, 200]:
-    for train_size in [200]:
+    for train_size in [10, 20, 50, 100, 150, 200, None]:
+    # for train_size in [None]:
         print("Train size: ", train_size)
         acc_list, balanced_acc_list, f1_list, precision_list, recall_list, training_time_list = ([] for _ in range(6))
-        for i in range(1):
+        for i in range(20):
             print("Iteration: ", i)
             writer = SummaryWriter(comment="trainSize_{}_itr_{}".format(train_size, i))
             acc, balanced_acc, f1, precision, recall, training_time = query_person_stands_up(writer, train_size)
@@ -386,8 +340,62 @@ def run_deep():
         print("[training_time] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(training_time_list), statistics.stdev(training_time_list)))
         out_list.append([train_size, statistics.mean(acc_list), statistics.stdev(acc_list), statistics.mean(balanced_acc_list), statistics.stdev(balanced_acc_list), statistics.mean(f1_list), statistics.stdev(f1_list), statistics.mean(precision_list), statistics.stdev(precision_list), statistics.mean(recall_list), statistics.stdev(recall_list), statistics.mean(training_time_list), statistics.stdev(training_time_list)])
 
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/predicates/predicate_objects_person_stands_up_deep.json", 'w') as f:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/predicates/predicate_objects_person_sitting_and_standing_deep.json", 'w') as f:
             f.write(json.dumps(out_list))
+
+
+def update_name():
+    """Made a mistake when naming the training files. This function is just for renaming the incorrect filenames. Not core codes.
+    """
+    video_camera = "school.G421"
+    video_basenames = [os.path.basename(y).replace(".activities.yml", "") for x in os.walk("../../data/meva/meva-data-repo/annotation/DIVA-phase-2/MEVA/kitware") for y in glob(os.path.join(x[0], '*.{}.activities.yml'.format(video_camera)))]
+    json_files = [y for x in os.walk("../../data/meva") for y in glob(os.path.join(x[0], '*.json'))]
+    print("video_basenames", video_basenames)
+    middle_index = int(len(video_basenames) * 0.7)
+    video_files = [y for x in os.walk("../../data/meva") for y in glob(os.path.join(x[0], '*.avi'))]
+
+    person_boxes = []
+
+    for vid, video_basename in enumerate(video_basenames):
+        print(video_basename)
+        matching_video = [f for f in video_files if video_basename + ".r13.avi" in f]
+        matching_json = [f for f in json_files if video_basename + ".r13.json" in f]
+        if len(matching_video) == 0 or len(matching_json) == 0:
+            continue
+        assert(len(matching_video) == 1)
+        assert(len(matching_json) == 1)
+        video_file = matching_video[0]
+        json_file = matching_json[0]
+
+        with open(json_file, 'r') as f:
+            bbox_dict = json.loads(f.read())
+        for frame_id in range(len(bbox_dict)):
+            res_per_frame = bbox_dict[str(frame_id)]
+            for x1, y1, x2, y2, class_name, _ in res_per_frame:
+                if class_name == "person":
+                    person_boxes.append((int(x1), int(y1), int(x2), int(y2), frame_id, video_file))
+
+    df = pd.DataFrame(person_boxes, columns=["x1", "y1", "x2", "y2", "frame_id", "video_file"])
+
+    for pos_or_neg in ["pos", "neg"]:
+        base_path = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing/{}".format(pos_or_neg)
+        for img_file in os.listdir(base_path):
+            if img_file[-4:] != ".jpg":
+                continue
+            print(img_file)
+            _, fid, x1, y1, x2, y2 = img_file[:-4].split("_")
+            fid = int(fid)
+            x1 = int(x1)
+            y1 = int(y1)
+            x2 = int(x2)
+            y2 = int(y2)
+            filtered = df[(df['frame_id']==fid) & (df['x1']==x1) & (df['x2']==x2) & (df['y1']==y1) & (df['y2']==y2)]
+            assert(filtered.shape[0]==1)
+            video_name = filtered.iloc[0]['video_file']
+            video_name = video_name[30:-8]
+            old_file = os.path.join(base_path, img_file)
+            new_file = os.path.join(base_path, '{}_{}_{}_{}_{}_{}.jpg'.format(video_name, fid, x1, y1, x2, y2))
+            os.rename(old_file, new_file)
 
 if __name__ == '__main__':
     # run_vocal()
@@ -395,3 +403,4 @@ if __name__ == '__main__':
     # prepare_person_stands_up()
     # query_person_stands_up()
     # predicate_objects_vocal()
+    # update_name()
