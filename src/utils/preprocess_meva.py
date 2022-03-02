@@ -23,14 +23,18 @@ from detectron2.data import MetadataCatalog, DatasetCatalog
 
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
+import sys
+# setting path
+sys.path.append('../')
 from faster_r_cnn import FasterRCNN
 from utils import frame_from_video
 import tools
+import argparse
 
 class FasterRCNNPreprocess(FasterRCNN):
     def __init__(self):
         super().__init__()
-        with open("/home/ubuntu/complex_event_video/src/ms_coco_classnames.txt") as f:
+        with open("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/ms_coco_classnames.txt") as f:
             self.coco_names = f.read().splitlines()
         self.bbox_info = {}
 
@@ -52,8 +56,8 @@ class FasterRCNNPreprocess(FasterRCNN):
 
 # Input: List[path_to_video_file]
 @tools.tik_tok
-def preprocess(model):
-    files = [y for x in os.walk("/home/ubuntu/complex_event_video/data/meva") for y in glob(os.path.join(x[0], '*.avi'))]
+def preprocess(model, video_dir):
+    files = [y for x in os.walk(os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva", video_dir)) for y in glob(os.path.join(x[0], '*.avi'))]
     # print("files", files)
     for file in files:
         print("file: ", file)
@@ -79,7 +83,7 @@ def preprocess(model):
             img_tensor = torch.from_numpy(img_transposed)
             inputs.append({"image":img_tensor}) # inputs is ready
             frame_ids.append(frame_id)
-            if len(inputs) < 8:
+            if len(inputs) < 4:
                 frame_id += 1
                 continue
             print("frame id:", frame_id)
@@ -96,5 +100,9 @@ def preprocess(model):
             f.write(json.dumps(bbox_info))
 
 if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--video-dir', type=str)
+    args = ap.parse_args()
+    print(args.video_dir)
     model = FasterRCNNPreprocess()
-    preprocess(model)
+    preprocess(model, args.video_dir)
