@@ -12,5 +12,5 @@ class FasterRCNN:
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.6  # set threshold for this model
         cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml")
         self.model = build_model(cfg) # returns a torch.nn.Module
-        DetectionCheckpointer(self.model).load('model_final_280758.pkl')
+        DetectionCheckpointer(self.model).load('/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/model_final_280758.pkl')
         self.model.train(False) # inference mode
