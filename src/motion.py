@@ -406,7 +406,7 @@ def visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores, seq_name="MOT20-
             one_track = tracks[tracks[:, 1]==track_id]
             one_track = one_track[np.argsort(one_track[:, 0])]
 
-            output_dir = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/tmp/track_mot_new_metric/"
+            output_dir = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/tmp/track_mot_new_metric_aggregate/"
 
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
@@ -457,7 +457,11 @@ if __name__ == '__main__':
     Short: 199, 360, 252, 957, 844, 838
     Bad: 742, 402, 799, 424
     """
-    for pos_ids in [[181], [742], [199], [402], [981], [1032], [582], [931],  [360], [252], [957], [844], [838], [799], [424]]:
+    # Single tracjectory query
+    # for pos_ids in [[181], [742], [199], [402], [981], [1032], [582], [931],  [360], [252], [957], [844], [838], [799], [424]]:
+
+    # Aggregate trajectories query
+    for pos_ids in [[181, 981], [199, 360], [742, 402], [1032, 252], [957, 799], [424, 582]]:
         topk_ids, topk_scores = trail_based_match_inference(tracks, pos_ids)
         visualize_track_mot(tracks, pos_ids, topk_ids, topk_scores)
 
