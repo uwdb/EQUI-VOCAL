@@ -29,6 +29,9 @@ import cv2
 import collections
 from torch.utils.tensorboard import SummaryWriter
 import pandas as pd
+import torchvision.transforms.functional as F
+from PIL import Image
+import argparse
 
 def construct_spatial_feature(bbox):
     if bbox == (0, 0, 0, 0):
@@ -114,7 +117,7 @@ def train_model(writer, model, dataloaders, criterion, optimizer, scheduler, dev
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
 
-        print("[Metrics] Accuracy: {}, Balanced Accuracy: {}, F1 Score: {}, Precision: {}, Recall: {}".format(metrics.accuracy_score(y_test, y_pred), metrics.balanced_accuracy_score(y_test, y_pred), metrics.f1_score(y_test, y_pred), metrics.precision_score(y_test, y_pred, zero_division=0), metrics.recall_score(y_test, y_pred)))
+        print("[Metrics] Accuracy: {}".format(metrics.accuracy_score(y_test, y_pred)))
 
         print()
 
@@ -125,7 +128,7 @@ def train_model(writer, model, dataloaders, criterion, optimizer, scheduler, dev
 
     # load best model weights
     model.load_state_dict(best_model_wts)
-    return metrics.accuracy_score(y_test, y_pred), metrics.balanced_accuracy_score(y_test, y_pred), metrics.f1_score(y_test, y_pred), metrics.precision_score(y_test, y_pred, zero_division=0), metrics.recall_score(y_test, y_pred), time_elapsed
+    return metrics.accuracy_score(y_test, y_pred), time_elapsed
 
 def predicate_objects_vocal_preprocessing():
     def prepare_data(train_or_test):
@@ -222,34 +225,72 @@ def prepare_person_stands_up():
             cv2.imwrite(os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing", '{}_{}_{}_{}_{}_{}.jpg'.format(name, fid, x1, y1, x2, y2)), cropped_image)
         cap.release()
 
-def query_person_stands_up(writer, train_size=None, test_size=None):
+class SquarePad:
+    def __call__(self, image):
+        max_wh = max(image.size)
+        p_left, p_top = [(max_wh - s) // 2 for s in image.size]
+        p_right, p_bottom = [max_wh - (s+pad) for s, pad in zip(image.size, [p_left, p_top])]
+        padding = (p_left, p_top, p_right, p_bottom)
+        return F.pad(image, padding, 0, 'constant')
+
+def __squarePad(image):
+    R = image[0]
+    G = image[1]
+    B = image[2]
+    R[R==0] = 0.485
+    G[G==0] = 0.456
+    B[B==0] = 0.406
+    image[0] = R
+    image[1] = G
+    image[2] = B
+    return image
+
+def query_person_stands_up(writer, data_dir, train_size=None, test_size=None, padded=False):
     """train_size: number of training images. If None, use all training images.
     test_size: number of test images. If None, use all test images.
     """
-    data_transforms = {
-        'train': transforms.Compose([
-            transforms.Resize((224,224)),
-            # transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]),
-        'val': transforms.Compose([
-            # transforms.Resize(256),
-            # transforms.CenterCrop(224),
-            transforms.Resize((224,224)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]),
-    }
-    # data_transform = transforms.Compose([
-    #     transforms.Resize((224,224)),
-    #     # transforms.CenterCrop(224),
-    #     # transforms.ToTensor(),
-    #     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    # ])
+    if padded:
+        data_transforms = {
+            'train': transforms.Compose([
+                # transforms.Lambda(lambda img: __squarePad(img)),
+                SquarePad(),
+                transforms.Resize((224,224)),
+                # transforms.RandomResizedCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Lambda(lambda img: __squarePad(img)),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+            'val': transforms.Compose([
+                SquarePad(),
+                # transforms.Lambda(lambda img: __squarePad(img)),
+                # transforms.Resize(256),
+                # transforms.CenterCrop(224),
+                transforms.Resize((224,224)),
+                transforms.ToTensor(),
+                transforms.Lambda(lambda img: __squarePad(img)),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+        }
+    else:
+        data_transforms = {
+            'train': transforms.Compose([
+                transforms.Resize((224,224)),
+                # transforms.RandomResizedCrop(224),
+                # transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+            'val': transforms.Compose([
+                # transforms.Resize(256),
+                # transforms.CenterCrop(224),
+                transforms.Resize((224,224)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+        }
 
-    data_dir = '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing'
+
     image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x]) for x in ['train', 'val']}
     if train_size:
         image_datasets["train"] = random_split(image_datasets["train"], [train_size, len(image_datasets["train"])-train_size])[0]
@@ -321,28 +362,93 @@ def run_deep():
     for train_size in [10, 20, 50, 100, 150, 200, None]:
     # for train_size in [None]:
         print("Train size: ", train_size)
-        acc_list, balanced_acc_list, f1_list, precision_list, recall_list, training_time_list = ([] for _ in range(6))
+        acc_list, training_time_list = [], []
         for i in range(20):
             print("Iteration: ", i)
             writer = SummaryWriter(comment="trainSize_{}_itr_{}".format(train_size, i))
-            acc, balanced_acc, f1, precision, recall, training_time = query_person_stands_up(writer, train_size)
+            acc, training_time = query_person_stands_up(writer, data_dir='/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing', train_size=train_size)
             acc_list.append(acc)
-            balanced_acc_list.append(balanced_acc)
-            f1_list.append(f1)
-            precision_list.append(precision)
-            recall_list.append(recall)
             training_time_list.append(training_time)
         print("[acc] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(acc_list), statistics.stdev(acc_list)))
-        print("[balanced_acc] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(balanced_acc_list), statistics.stdev(balanced_acc_list)))
-        print("[f1] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(f1_list), statistics.stdev(f1_list)))
-        print("[precision] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(precision_list), statistics.stdev(precision_list)))
-        print("[recall] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(recall_list), statistics.stdev(recall_list)))
         print("[training_time] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(training_time_list), statistics.stdev(training_time_list)))
-        out_list.append([train_size, statistics.mean(acc_list), statistics.stdev(acc_list), statistics.mean(balanced_acc_list), statistics.stdev(balanced_acc_list), statistics.mean(f1_list), statistics.stdev(f1_list), statistics.mean(precision_list), statistics.stdev(precision_list), statistics.mean(recall_list), statistics.stdev(recall_list), statistics.mean(training_time_list), statistics.stdev(training_time_list)])
+        out_list.append([train_size, statistics.mean(acc_list), statistics.stdev(acc_list), statistics.mean(training_time_list), statistics.stdev(training_time_list)])
 
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/predicates/predicate_objects_person_sitting_and_standing_deep.json", 'w') as f:
             f.write(json.dumps(out_list))
 
+def run_deep_masked():
+    out_list = []
+    for train_size in [10, 20, 50, 100, 150, 200, None]:
+    # for train_size in [None]:
+        print("Train size: ", train_size)
+        acc_list, training_time_list = [], []
+        for i in range(20):
+            print("Iteration: ", i)
+            writer = SummaryWriter(comment="trainSize_{}_itr_{}".format(train_size, i))
+            acc, training_time = query_person_stands_up(writer, data_dir='/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing_masked_norm', train_size=train_size)
+            acc_list.append(acc)
+            training_time_list.append(training_time)
+        print("[acc] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(acc_list), statistics.stdev(acc_list)))
+        print("[training_time] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(training_time_list), statistics.stdev(training_time_list)))
+        out_list.append([train_size, statistics.mean(acc_list), statistics.stdev(acc_list), statistics.mean(training_time_list), statistics.stdev(training_time_list)])
+
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/predicates/predicate_objects_person_sitting_and_standing_deep_masked.json", 'w') as f:
+            f.write(json.dumps(out_list))
+
+
+def run_deep_padded():
+    out_list = []
+    for train_size in [10, 20, 50, 100, 150, 200, None]:
+    # for train_size in [None]:
+        print("Train size: ", train_size)
+        acc_list, training_time_list = [], []
+        for i in range(20):
+            print("Iteration: ", i)
+            writer = SummaryWriter(comment="trainSize_{}_itr_{}".format(train_size, i))
+            acc, training_time = query_person_stands_up(writer, data_dir='/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing', train_size=train_size, padded=True)
+            acc_list.append(acc)
+            training_time_list.append(training_time)
+        print("[acc] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(acc_list), statistics.stdev(acc_list)))
+        print("[training_time] mean: {:.3f}, stdev: {:.3f}".format(statistics.mean(training_time_list), statistics.stdev(training_time_list)))
+        out_list.append([train_size, statistics.mean(acc_list), statistics.stdev(acc_list), statistics.mean(training_time_list), statistics.stdev(training_time_list)])
+
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/predicates/predicate_objects_person_sitting_and_standing_deep_pad.json", 'w') as f:
+            f.write(json.dumps(out_list))
+
+
+def construct_dataset_masked():
+    def prepare_data(train_or_test):
+        current_video_name = "2018-03-05.14-10-00.14-15-00.school.G421"
+        cap = None
+        for i, neg_or_pos in enumerate(["neg", "pos"]):
+            for img_file in os.listdir("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing/{}/{}".format(train_or_test, neg_or_pos)):
+                if img_file[-4:] != ".jpg":
+                    continue
+                # 2018-03-05.14-10-00.14-15-00.school.G421_895_1729_478_1917_976.jpg
+                video_name, fid, x1, y1, x2, y2 = img_file[:-4].split("_")
+                x1 = int(x1)
+                y1 = int(y1)
+                x2 = int(x2)
+                y2 = int(y2)
+                fid = int(fid)
+                if video_name != current_video_name:
+                    current_video_name = video_name
+                    if cap:
+                        cap.release()
+                    cap = cv2.VideoCapture("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva/{}/{}/{}.r13.avi".format(video_name[0:10], video_name[20:22], video_name))
+                cap.set(cv2.CAP_PROP_POS_FRAMES, fid)
+                ret, frame = cap.read()
+                mask = np.zeros(frame.shape, dtype=np.uint8)
+                mask[y1:y2, x1:x2, :] = 255
+                # frame[(mask==255).all(-1)] = [124,117,104]
+                # print(result)
+                # Mask input image with binary mask
+                result = cv2.bitwise_and(frame, mask)
+                # Color background white
+                result[(mask==0).all(-1)] = [124,117,104] # Optional
+                cv2.imwrite(os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/meva_sitting_and_standing_masked_norm", train_or_test, neg_or_pos, img_file), result)
+    prepare_data("train")
+    prepare_data("val")
 
 def update_name():
     """Made a mistake when naming the training files. This function is just for renaming the incorrect filenames. Not core codes.
@@ -398,8 +504,21 @@ def update_name():
             os.rename(old_file, new_file)
 
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("func")
+
+    args = parser.parse_args()
+    print("args.func", args.func)
+    if args.func == 'run_deep_masked':
+        run_deep_masked()
+    elif args.func == 'run_deep_padded':
+        run_deep_padded()
+
+    # construct_dataset_masked()
     # run_vocal()
-    run_deep()
+    # run_deep_masked()
+    # run_deep_padded()
     # prepare_person_stands_up()
     # query_person_stands_up()
     # predicate_objects_vocal()
