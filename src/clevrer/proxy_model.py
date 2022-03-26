@@ -56,5 +56,4 @@ def collision(sub_id, obj_id, fid, collision_list, num_obs, a=1, b=0.99):
     for collision_dict in collision_list:
         if set([sub_id, obj_id]) == set(collision_dict["object_ids"]) and collision_dict["frame_id"] == fid:
             return rnd < accuracy
-        else:
-            return rnd > accuracy
+    return rnd > accuracy
