@@ -45,7 +45,7 @@ def ingest_videos():
 @tools.tik_tok
 def ingest_videos_fast():
     video_input = {}
-    for i in range(0, 10000):
+    for i in range(8000, 9000):
         video_input[i] = list(range(0, 128))
     print("# matching videos: {}, # matching video frames: {}".format(len(video_input), sum(len(lst) for lst in video_input.values())))
     return video_input
@@ -295,9 +295,9 @@ def add_predicate_relationship_proxy(video_input, g1, proxy_list):
             for j, obj_dict in enumerate(annotation_dict["object_property"]):
                 pred = True
                 for proxy_name, proxy_object in target_obj.items():
-                    if proxy_name[0] == 'p':
+                    if proxy_name[:2] == 'p_':
                         pred *= is_subdictionary({proxy_name[2:]: proxy_object}, obj_dict)
-                    elif proxy_name[0] == 'n':
+                    elif proxy_name[:2] == 'n_':
                         pred *= proxy_object(obj_dict, 1000)
                 if pred:
                     video_object_matching_matrix[i, j] = 1
@@ -310,17 +310,23 @@ def add_predicate_relationship_proxy(video_input, g1, proxy_list):
                     if np.linalg.matrix_rank(video_object_matching_matrix[:, collision_dict["object_ids"]]) == 2 and collision_dict["frame_id"] in video_input[vid]:
                         outputs[vid].append(collision_dict["frame_id"])
             elif rel_name == "n_collision":
-                for i in range(len(annotation_dict["object_property"]) - 1):
-                    for j in range(i + 1, len(annotation_dict["object_property"])):
-                        if np.linalg.matrix_rank(video_object_matching_matrix[:, [i, j]]) == 2:
-                            sub_object_id = i
-                            obj_object_id = j
-                            if video_object_matching_matrix[0, i] == 0 or video_object_matching_matrix[1, j] == 0:
-                                sub_object_id = j
-                                obj_object_id = i
-                            for fid in video_input[vid]:
-                                if rel_object(sub_object_id, obj_object_id, fid, annotation_dict["collision"], 100, b=0.999):
+                for fid in video_input[vid]:
+                    res = False
+                    for i in range(len(annotation_dict["object_property"]) - 1):
+                        if res:
+                            continue
+                        for j in range(i + 1, len(annotation_dict["object_property"])):
+                            if res:
+                                continue
+                            if np.linalg.matrix_rank(video_object_matching_matrix[:, [i, j]]) == 2:
+                                sub_object_id = i
+                                obj_object_id = j
+                                if video_object_matching_matrix[0, i] == 0 or video_object_matching_matrix[1, j] == 0:
+                                    sub_object_id = j
+                                    obj_object_id = i
+                                if rel_object(sub_object_id, obj_object_id, fid, annotation_dict["collision"], 100, b=0.99):
                                     outputs[vid].append(fid)
+                                    res = True
 
     print("# matching videos: {}, # matching video frames: {}".format(len(outputs), sum(len(lst) for lst in outputs.values())))
     return outputs, g1
@@ -440,10 +446,10 @@ def test_noisy_model():
     g2 = [Objs, Rels]
 
     outputs, g2 = add_predicate_object(video_input, g2, [{"oid": 2, "shape": "cube"}, {"oid": 3, "shape": "cylinder"}])
-    # outputs, g2 = add_predicate_attribute_proxy(outputs, g2, [(2, "p_color", "red"), (2, "p_material", "metal")])
-    outputs, g2 = add_predicate_attribute_proxy(outputs, g2, [(2, "n_color_red", color_red), (2, "n_material_metal", material_metal)])
-    outputs2, g2 = add_predicate_relationship_proxy(outputs, g2, (1, {"sub_id": 2, "obj_id": 3, "rel_name": "p_collision"}))
-    # outputs2, g2 = add_predicate_relationship_proxy(outputs, g2, (1, {"sub_id": 2, "obj_id": 3, "rel_name": "n_collision", "rel_object": collision}))
+    outputs, g2 = add_predicate_attribute_proxy(outputs, g2, [(2, "p_color", "red"), (2, "p_material", "metal")])
+    # outputs, g2 = add_predicate_attribute_proxy(outputs, g2, [(2, "n_color_red", color_red), (2, "n_material_metal", material_metal)])
+    # outputs2, g2 = add_predicate_relationship_proxy(outputs, g2, (1, {"sub_id": 2, "obj_id": 3, "rel_name": "p_collision"}))
+    outputs2, g2 = add_predicate_relationship_proxy(outputs, g2, (1, {"sub_id": 2, "obj_id": 3, "rel_name": "n_collision", "rel_object": collision}))
     outputs, seq_region_graphs = add_predicate_seq_of_region_graphs(outputs1, g1, outputs2, g2)
     print("outputs:", outputs)
 
