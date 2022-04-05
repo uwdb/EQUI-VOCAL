@@ -35,8 +35,9 @@ print('frame_index', frame['frame_index'])
 objects = frame['objects']
 print(len(objects))
 
-cap = cv2.VideoCapture("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/video_train/video_00000-01000/video_00012.mp4")
-cap.set(cv2.CAP_PROP_POS_FRAMES, 95)
+cap = cv2.VideoCapture("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/video_train/video_{}-{}/video_{}.mp4".format(str((args.idx_video // 1000) * 1000).zfill(5), str((args.idx_video // 1000 + 1) * 1000).zfill(5), str(args.idx_video).zfill(5)))
+
+cap.set(cv2.CAP_PROP_POS_FRAMES, args.idx_frame)
 ret, image = cap.read()
 
 for i in range(len(objects)):
@@ -48,6 +49,6 @@ for i in range(len(objects)):
     box = np.squeeze(box.numpy(), axis=0)
 
     res = cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0,255,0), 1)
-    # cv2.imwrite('mask_%d.png' % i, res)
+    cv2.imwrite('mask_%d.png' % i, res)
 
 

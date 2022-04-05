@@ -4,6 +4,7 @@ import os
 from glob import glob
 import yaml
 import numpy as np
+import json
 
 def construct_spatial_feature(bbox):
     x1, y1, x2, y2 = bbox
@@ -33,8 +34,8 @@ def construct_spatial_feature_two_objects(bbox1, bbox2):
 def construct_spatial_feature_spatial_relationship(car_box, person_box):
     x, y, x2, y2 = car_box
     xp, yp, x4, y4 = person_box
-    w = x2 - x
-    h = y2 - y
+    w = x2 - x + 1e-8
+    h = y2 - y + 1e-8
     wp = x4 - xp
     hp = y4 - yp
     s1 = (x - xp) / w
@@ -464,4 +465,55 @@ def template_spatial_relationship(maskrcnn_bboxes, predicate):
                 spatial_features[frame_id] = construct_spatial_feature_spatial_relationship(random.choice(car_boxes), random.choice(person_boxes))
         else:
             candidates[frame_id] = False
+    return feature_names, spatial_feature_dim, spatial_features, candidates
+
+def clevrer_collision(maskrcnn_bboxes, video_list, pos_frames, cached=False):
+    n_frames =len(maskrcnn_bboxes)
+    spatial_feature_dim = 8
+    feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
+    if cached:
+        return feature_names, spatial_feature_dim
+    spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
+    # Y = []
+    # spatial_features = []
+    # Filtering stage
+    candidates = np.full(n_frames, True, dtype=np.bool)
+
+    for video_basename, frame_offset, _ in video_list:
+        file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/sim_{}.json".format(video_basename)
+        # Read in bbox info
+        with open(file, 'r') as f:
+            data = json.load(f)
+
+        collisions = data["ground_truth"]["collisions"]
+        objects = data["ground_truth"]["objects"]
+
+        for frame_id in range(128):
+            res_per_frame = maskrcnn_bboxes["{}_{}".format(video_basename, frame_id)]
+            obj1_bbox = None
+            obj2_bbox = None
+            if len(res_per_frame) < 2:
+                continue
+            if frame_offset + frame_id in pos_frames:
+                for collision in collisions:
+                    if frame_id == collision["frame"]:
+                        obj_id1 = collision["object"][0]
+                        obj_id2 = collision["object"][1]
+                        for obj in objects:
+                            if obj["id"] == obj_id1:
+                                obj1 = obj
+                            elif obj["id"] == obj_id2:
+                                obj2 = obj
+                        for x1, y1, x2, y2, material, color, shape in res_per_frame:
+                            if material == obj1["material"] and color == obj1["color"] and shape == obj1["shape"]:
+                                obj1_bbox = (x1, y1, x2, y2)
+                            elif material == obj2["material"] and color == obj2["color"] and shape == obj2["shape"]:
+                                obj2_bbox = (x1, y1, x2, y2)
+                        break
+            else:
+                obj1_bbox, obj2_bbox = random.sample(res_per_frame, 2)
+                obj1_bbox = obj1_bbox[:4]
+                obj2_bbox = obj2_bbox[:4]
+            print("video_basename: {}, frame_id: {}.".format(video_basename, frame_id))
+            spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1_bbox, obj2_bbox)
     return feature_names, spatial_feature_dim, spatial_features, candidates

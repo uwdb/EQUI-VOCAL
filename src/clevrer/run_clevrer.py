@@ -15,6 +15,9 @@ from proxy_model import *
 """
 There are three types of models/predicates: perfect model, noisy model and real model.
 """
+# key: video_id + frame_id
+# value: label
+already_labeled = {}
 
 def is_subdictionary(A, B):
    return set(A.items()).issubset(B.items())
@@ -30,7 +33,7 @@ def ingest_videos():
         a dictionary of list, where each key-value pair stores a video_id along with a list of frame_ids of that video.
     """
     video_input = defaultdict(list)
-    annotation_files = [y for x in os.walk("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train") for y in glob(os.path.join(x[0], '*.json'))]
+    annotation_files = [y for x in os.walk("/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train") for y in glob(os.path.join(x[0], '*.json'))]
     for annotation_file in annotation_files:
         # print(annotation_file)
         with open(annotation_file, 'r') as f:
@@ -77,7 +80,7 @@ def add_predicate_object(video_input, g1, object_list):
     for dct in object_list:
         query_object_class_count[dct["shape"]] += 1
     vids = list(video_input.keys())
-    annotation_files = [y for x in os.walk("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train") for y in glob(os.path.join(x[0], '*.json'))]
+    annotation_files = [y for x in os.walk("/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train") for y in glob(os.path.join(x[0], '*.json'))]
     for annotation_file in annotation_files:
         vid = int(os.path.split(annotation_file)[1][11:16])
         if vid in vids:
@@ -122,7 +125,7 @@ def add_predicate_attribute(video_input, g1, attribute_list):
     print("g1:", g1)
     Objs = g1[0]
     for vid in video_input.keys():
-        annotation_file = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train/annotation_{}-{}/annotation_{}.json".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5))
+        annotation_file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train/annotation_{}-{}/annotation_{}.json".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5))
         with open(annotation_file, 'r') as f:
             annotation_dict = json.loads(f.read())
 
@@ -173,7 +176,7 @@ def add_predicate_attribute_proxy(video_input, g1, proxy_list):
     print("g1:", g1)
     Objs = g1[0]
     for vid in video_input.keys():
-        annotation_file = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train/annotation_{}-{}/annotation_{}.json".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5))
+        annotation_file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train/annotation_{}-{}/annotation_{}.json".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5))
         with open(annotation_file, 'r') as f:
             annotation_dict = json.loads(f.read())
 
@@ -232,7 +235,7 @@ def add_predicate_relationship(video_input, g1, rel_dict):
     obj_id = rel_dict[1]["obj_id"]
     rel_name = rel_dict[1]["rel_name"]
     for vid in video_input.keys():
-        annotation_file = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train/annotation_{}-{}/annotation_{}.json".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5))
+        annotation_file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train/annotation_{}-{}/annotation_{}.json".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5))
         with open(annotation_file, 'r') as f:
             annotation_dict = json.loads(f.read())
 
@@ -283,7 +286,7 @@ def add_predicate_relationship_proxy(video_input, g1, proxy_list):
         rel_object = proxy_list[1]["rel_object"]
 
     for vid in video_input.keys():
-        annotation_file = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train/annotation_{}-{}/annotation_{}.json".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5))
+        annotation_file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/annotation_train/annotation_{}-{}/annotation_{}.json".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5))
         with open(annotation_file, 'r') as f:
             annotation_dict = json.loads(f.read())
 
@@ -351,9 +354,9 @@ def add_predicate_seq_of_region_graphs(inputs1, g1, inputs2, g2):
 
 @tools.tik_tok
 def visualize_outputs(outputs, query_name):
-    output_dir = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/tmp/clevrer_{}".format(query_name)
+    output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/tmp/clevrer_{}".format(query_name)
     for vid in outputs.keys():
-        cap = cv2.VideoCapture("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/video_train/video_{}-{}/video_{}.mp4".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5)))
+        cap = cv2.VideoCapture("/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/video_train/video_{}-{}/video_{}.mp4".format(str((vid // 1000) * 1000).zfill(5), str((vid // 1000 + 1) * 1000).zfill(5), str(vid).zfill(5)))
         for start_fid, end_fid in outputs[vid]:
             if not os.path.exists(os.path.join(output_dir, str(vid), "{}_{}".format(start_fid, end_fid))):
                 os.makedirs(os.path.join(output_dir, str(vid), "{}_{}".format(start_fid, end_fid)))

@@ -30,7 +30,6 @@ class UserFeedback:
                             # TODO
                             if stats_per_chunk[chunk_idx][0] > 0:
                                 stats_per_chunk[chunk_idx][0] -= 1
-                        break
                 positive_frames_seen.append(frame_id)
                 plot_data_y_annotated = np.append(plot_data_y_annotated, num_positive_instances_found)
                 # self.get_frames_stats()
