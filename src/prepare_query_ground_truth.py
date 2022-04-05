@@ -4,6 +4,10 @@ from utils.utils import isInsideIntersection, isOverlapping
 import os
 from glob import glob
 import yaml
+import json
+import numpy as np
+import itertools
+from filter import construct_spatial_feature_spatial_relationship
 
 def turning_car_and_pedestrain_at_intersection():
     pos_frames = []
@@ -332,3 +336,76 @@ def template_spatial_relationship(maskrcnn_bboxes, predicate):
             current_frame = frame_id
     pos_frames_per_instance[instance_id] = (start_frame, current_frame+1, 0)
     return pos_frames, pos_frames_per_instance
+
+def clevrer_collision(video_list):
+    pos_frames = set()
+    pos_frames_per_instance = {}
+    num_instance = 0
+    for video_basename, frame_offset, _ in video_list:
+        file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/sim_{}.json".format(video_basename)
+        # Read in bbox info
+        with open(file, 'r') as f:
+            data = json.load(f)
+        collisions = data["ground_truth"]["collisions"]
+        for collision in collisions:
+            # TODO: collision could span multiple frames
+            pos_frames.add(frame_offset + collision["frame"])
+            pos_frames_per_instance[num_instance] = (frame_offset + collision["frame"], frame_offset + collision["frame"] + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
+            num_instance += 1
+    return sorted(pos_frames), pos_frames_per_instance
+
+def clevrer_collision_evaluation(maskrcnn_bboxes_evaluation, video_list_evaluation):
+    n_frames_evaluation = len(maskrcnn_bboxes_evaluation)
+    Y_evaluation = np.zeros(n_frames_evaluation, dtype=int)
+    # spatial_features = np.zeros((n_frames_evaluation, spatial_feature_dim), dtype=np.float64)
+    spatial_features = [] # List of lists. Row count: the total number of pairwaise relationships across all videos. Column count: dimension of spatial features (8)
+    Y_pair_level_evaluation = []
+    feature_index = [] # A video can also have no pairwise relationships. In this case, the feature_index for that vid is empty.
+    for video_basename, frame_offset, _ in video_list_evaluation:
+        file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/sim_{}.json".format(video_basename)
+        # Read in bbox info
+        with open(file, 'r') as f:
+            data = json.load(f)
+        collisions = data["ground_truth"]["collisions"]
+        objects = data["ground_truth"]["objects"]
+
+        for frame_id in range(128):
+            res_per_frame = maskrcnn_bboxes_evaluation["{}_{}".format(video_basename, frame_id)]
+            if len(res_per_frame) < 2:
+                continue
+
+            # find all positive pairs. In most cases it should be only one
+            positive_pairs = []
+            for collision in collisions:
+                if frame_id == collision["frame"]:
+                    Y_evaluation[frame_offset + frame_id] = 1
+                    pos_obj_id1 = collision["object"][0]
+                    pos_obj_id2 = collision["object"][1]
+                    for obj in objects:
+                        if obj["id"] == pos_obj_id1:
+                            pos_obj1 = obj
+                        elif obj["id"] == pos_obj_id2:
+                            pos_obj2 = obj
+                    # obj: (x1, y1, x2, y2, material, color, shape)
+                    for obj in res_per_frame:
+                        if obj[4] == pos_obj1["material"] and obj[5] == pos_obj1["color"] and obj[6] == pos_obj1["shape"]:
+                            obj1 = obj
+                        elif obj[4] == pos_obj2["material"] and obj[5] == pos_obj2["color"] and obj[6] == pos_obj2["shape"]:
+                            obj2 = obj
+                    positive_pairs.append([obj1, obj2])
+                    positive_pairs.append([obj2, obj1])
+            for obj1, obj2 in itertools.combinations(res_per_frame, 2):
+                spatial_features.append(construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4]))
+                feature_index.append(frame_offset + frame_id)
+                # Construct Y_pair_level_evaluation
+                Y_pair_level_evaluation.append(0)
+                if Y_evaluation[frame_offset + frame_id] == 1:
+                    for pos_obj1, pos_obj2 in positive_pairs:
+                        if obj1[4] == pos_obj1[4] and obj1[5] == pos_obj1[5] and obj1[6] == pos_obj1[6] and obj2[4] == pos_obj2[4] and obj2[5] == pos_obj2[5] and obj2[6] == pos_obj2[6]:
+                            Y_pair_level_evaluation[-1] = 1
+                            break
+    spatial_features = np.stack(spatial_features, axis=0)
+    Y_pair_level_evaluation = np.asarray(Y_pair_level_evaluation)
+    feature_index = np.asarray(feature_index)
+    print("length of spatial_features: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(spatial_features), len(Y_pair_level_evaluation), len(feature_index)))
+    return spatial_features, Y_evaluation, Y_pair_level_evaluation, feature_index
