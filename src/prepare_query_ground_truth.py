@@ -349,8 +349,13 @@ def clevrer_collision(video_list):
         collisions = data["ground_truth"]["collisions"]
         for collision in collisions:
             # TODO: collision could span multiple frames
-            pos_frames.add(frame_offset + collision["frame"])
-            pos_frames_per_instance[num_instance] = (frame_offset + collision["frame"], frame_offset + collision["frame"] + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
+            start_frame = max(collision["frame"] - 3, 0)
+            end_frame = min(collision["frame"] + 3, 127)
+            for i in range(start_frame, end_frame+1):
+                pos_frames.add(frame_offset + i)
+            pos_frames_per_instance[num_instance] = (frame_offset + start_frame, frame_offset + end_frame + 1, 0)
+            # pos_frames.add(frame_offset + collision["frame"])
+            # pos_frames_per_instance[num_instance] = (frame_offset + collision["frame"], frame_offset + collision["frame"] + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
             num_instance += 1
     return sorted(pos_frames), pos_frames_per_instance
 
@@ -360,6 +365,7 @@ def clevrer_collision_evaluation(maskrcnn_bboxes_evaluation, video_list_evaluati
     # spatial_features = np.zeros((n_frames_evaluation, spatial_feature_dim), dtype=np.float64)
     spatial_features = [] # List of lists. Row count: the total number of pairwaise relationships across all videos. Column count: dimension of spatial features (8)
     Y_pair_level_evaluation = []
+    raw_data_pair_level_evaluation = []
     feature_index = [] # A video can also have no pairwise relationships. In this case, the feature_index for that vid is empty.
     for video_basename, frame_offset, _ in video_list_evaluation:
         file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/sim_{}.json".format(video_basename)
@@ -377,8 +383,10 @@ def clevrer_collision_evaluation(maskrcnn_bboxes_evaluation, video_list_evaluati
             # find all positive pairs. In most cases it should be only one
             positive_pairs = []
             for collision in collisions:
-                if frame_id == collision["frame"]:
-                    Y_evaluation[frame_offset + frame_id] = 1
+                obj1 = None
+                obj2 = None
+                if frame_id <= collision["frame"] + 3 and frame_id >= collision["frame"] - 3:
+                # if frame_id == collision["frame"]:
                     pos_obj_id1 = collision["object"][0]
                     pos_obj_id2 = collision["object"][1]
                     for obj in objects:
@@ -392,13 +400,16 @@ def clevrer_collision_evaluation(maskrcnn_bboxes_evaluation, video_list_evaluati
                             obj1 = obj
                         elif obj[4] == pos_obj2["material"] and obj[5] == pos_obj2["color"] and obj[6] == pos_obj2["shape"]:
                             obj2 = obj
-                    positive_pairs.append([obj1, obj2])
-                    positive_pairs.append([obj2, obj1])
+                    if obj1 and obj2:
+                        Y_evaluation[frame_offset + frame_id] = 1
+                        positive_pairs.append([obj1, obj2])
+                        positive_pairs.append([obj2, obj1])
             for obj1, obj2 in itertools.combinations(res_per_frame, 2):
                 spatial_features.append(construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4]))
                 feature_index.append(frame_offset + frame_id)
                 # Construct Y_pair_level_evaluation
                 Y_pair_level_evaluation.append(0)
+                raw_data_pair_level_evaluation.append([video_basename, frame_id, obj1, obj2])
                 if Y_evaluation[frame_offset + frame_id] == 1:
                     for pos_obj1, pos_obj2 in positive_pairs:
                         if obj1[4] == pos_obj1[4] and obj1[5] == pos_obj1[5] and obj1[6] == pos_obj1[6] and obj2[4] == pos_obj2[4] and obj2[5] == pos_obj2[5] and obj2[6] == pos_obj2[6]:
@@ -408,4 +419,4 @@ def clevrer_collision_evaluation(maskrcnn_bboxes_evaluation, video_list_evaluati
     Y_pair_level_evaluation = np.asarray(Y_pair_level_evaluation)
     feature_index = np.asarray(feature_index)
     print("length of spatial_features: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(spatial_features), len(Y_pair_level_evaluation), len(feature_index)))
-    return spatial_features, Y_evaluation, Y_pair_level_evaluation, feature_index
+    return spatial_features, Y_evaluation, Y_pair_level_evaluation, feature_index, raw_data_pair_level_evaluation
