@@ -1,6 +1,7 @@
 import ujson as json
 import os
-from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, balanced_accuracy_score
+from imblearn.metrics import geometric_mean_score
 import numpy as np
 import matplotlib.pyplot as plt
 from frame_selection import GreatestConfidenceFrameSelection, LeastConfidenceFrameSelection, RandomFrameSelection
@@ -72,6 +73,11 @@ class ComplexEventVideoDB:
             self.feature_names,
             self.spatial_features
         """
+        self.Y = np.zeros(self.n_frames, dtype=int)
+        for i in range(self.n_frames):
+            if i in self.pos_frames:
+                self.Y[i] = 1
+
         self.filtering_stage()
 
         self.num_positive_instances_found = 0
@@ -79,10 +85,6 @@ class ComplexEventVideoDB:
         self.materialized_frames = np.full(self.n_frames, False, dtype=bool)
         self.iteration = 0
         self.vis_decision_output = []
-        self.Y = np.zeros(self.n_frames, dtype=int)
-        for i in range(self.n_frames):
-            if i in self.pos_frames:
-                self.Y[i] = 1
         self.plot_data_y_annotated = np.array([0])
         self.plot_data_y_materialized = np.array([self.materialized_frames.nonzero()[0].size])
         self.negative_frames_seen = []
@@ -248,10 +250,11 @@ class ComplexEventVideoDB:
                 npzfile = np.load(outfile_name)
                 self.spatial_features = npzfile["spatial_features"]
                 self.candidates = npzfile["candidates"]
+                self.Y = npzfile["Y"]
                 self.feature_names, self.spatial_feature_dim = getattr(filter, self.query)(self.maskrcnn_bboxes, self.video_list, self.pos_frames, cached=True)
             else:
-                self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates = getattr(filter, self.query)(self.maskrcnn_bboxes, self.video_list, self.pos_frames)
-                np.savez(outfile_name, spatial_features=self.spatial_features, candidates=self.candidates)
+                self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates, self.Y = getattr(filter, self.query)(self.maskrcnn_bboxes, self.video_list, self.pos_frames)
+                np.savez(outfile_name, spatial_features=self.spatial_features, candidates=self.candidates, Y=self.Y)
         print("# candidate frames:", self.candidates.sum())
 
     def run(self):
@@ -593,14 +596,22 @@ class RandomProcessing(ComplexEventVideoDB):
 
 
 class TrainAndEvalProxyModel(ComplexEventVideoDB):
-    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL", budget=800):
+    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL", budget=800, frame_selection_method="least_confidence"):
 
         super().__init__(dataset, query, temporal_heuristic, method)
-        self.frame_selection = LeastConfidenceFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
+        self.frame_selection_method = frame_selection_method
+        if frame_selection_method == "least_confidence":
+            self.frame_selection = LeastConfidenceFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
+        elif frame_selection_method == "greatest_confidence":
+            self.frame_selection = GreatestConfidenceFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
+        elif frame_selection_method == "random":
+            self.frame_selection = RandomFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
         self.budget = budget
         if dataset == "clevrer":
             self.ingest_bbox_info_clevrer_evaluation()
         self.ingest_gt_labels_evaluation()
+        self.model_performance_output = []
+        self.sampled_fn_fp = {}
 
     def ingest_bbox_info_clevrer_evaluation(self):
         # check if file exists
@@ -666,15 +677,21 @@ class TrainAndEvalProxyModel(ComplexEventVideoDB):
         # Only this condition is implemented for now.
         elif self.query == "clevrer_collision":
             outfile_name = os.path.join("outputs/intermediate_results", "{}_evaluation_1000.npz".format(self.query))
-            if os.path.exists(outfile_name):
+            raw_data_pair_level_evaluation_outfile_name = "outputs/intermediate_results/{}_raw_data_pair_level_evaluation.json".format(self.query)
+            if os.path.exists(outfile_name) and os.path.exists(raw_data_pair_level_evaluation_outfile_name):
                 npzfile = np.load(outfile_name)
                 self.spatial_features_evaluation = npzfile["spatial_features_evaluation"]
                 self.Y_evaluation = npzfile["Y_evaluation"]
                 self.Y_pair_level_evaluation = npzfile["Y_pair_level_evaluation"]
                 self.feature_index = npzfile["feature_index"]
+                with open(raw_data_pair_level_evaluation_outfile_name, 'r') as f:
+                    self.raw_data_pair_level_evaluation = json.loads(f.read())
             else:
-                self.spatial_features_evaluation, self.Y_evaluation, self.Y_pair_level_evaluation, self.feature_index = eval(self.query + "_evaluation(self.maskrcnn_bboxes_evaluation, self.video_list_evaluation)")
+                self.spatial_features_evaluation, self.Y_evaluation, self.Y_pair_level_evaluation, self.feature_index, self.raw_data_pair_level_evaluation = eval(self.query + "_evaluation(self.maskrcnn_bboxes_evaluation, self.video_list_evaluation)")
                 np.savez(outfile_name, spatial_features_evaluation=self.spatial_features_evaluation, Y_evaluation=self.Y_evaluation, Y_pair_level_evaluation=self.Y_pair_level_evaluation, feature_index=self.feature_index)
+                # save raw_data_pair_level_evaluation to file
+                with open(raw_data_pair_level_evaluation_outfile_name, 'w') as f:
+                    f.write(json.dumps(self.raw_data_pair_level_evaluation))
 
     def run(self):
         self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk = self.query_initialization.run(self.materialized_frames, self.positive_frames_seen, self.negative_frames_seen, self.pos_frames_per_instance, self.num_positive_instances_found, self.plot_data_y_annotated, self.plot_data_y_materialized, self.stats_per_chunk)
@@ -693,12 +710,20 @@ class TrainAndEvalProxyModel(ComplexEventVideoDB):
             self.get_frames_stats()
 
             if (len(self.negative_frames_seen) + len(self.positive_frames_seen)) % 50 == 0:
-                print("training with {} data: ".format(len(self.negative_frames_seen) + len(self.positive_frames_seen)))
+                iteration_str = "training with {} data: ".format(len(self.negative_frames_seen) + len(self.positive_frames_seen))
+                print(iteration_str)
+                self.model_performance_output.append(iteration_str)
                 self.eval_and_save_proxy_model()
 
             self.iteration += 1
 
         print("stats_per_chunk", self.stats_per_chunk)
+        # save model_performance_output to txt file
+        with open("outputs/clevrer_collision/{}-nearby3-random_forest_with_balanced_class_weights{}.txt".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+            f.write(json.dumps(self.model_performance_output))
+        # save self.sampled_fn_fp to json file
+        with open("outputs/clevrer_collision/{}-nearby3-random_forest_with_balanced_class_weights-sampled_fn_fp{}.json".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+            f.write(json.dumps(self.sampled_fn_fp))
 
         return self.plot_data_y_annotated, self.plot_data_y_materialized
 
@@ -706,7 +731,8 @@ class TrainAndEvalProxyModel(ComplexEventVideoDB):
         # Evaluate metrics on evaluation set
         y_pred_pair_level = self.clf.predict(self.spatial_features_evaluation)
         tn, fp, fn, tp = confusion_matrix(self.Y_pair_level_evaluation, y_pred_pair_level).ravel()
-        evaluation_per_pair_str = "[evaluation pair level] accuracy: {}; f1_score: {}; tn, fp, fn, tp: {}, {}, {}, {}".format(accuracy_score(self.Y_pair_level_evaluation, y_pred_pair_level), f1_score(self.Y_pair_level_evaluation, y_pred_pair_level), tn, fp, fn, tp)
+        evaluation_per_pair_str = "[evaluation pair level] balanced_accuracy: {}; f1_score: {}; tn, fp, fn, tp: {}, {}, {}, {}".format(balanced_accuracy_score(self.Y_pair_level_evaluation, y_pred_pair_level), f1_score(self.Y_pair_level_evaluation, y_pred_pair_level), tn, fp, fn, tp)
+        self.model_performance_output.append(evaluation_per_pair_str)
         print(evaluation_per_pair_str)
 
         df = pd.DataFrame({"y_pred_pair_level": y_pred_pair_level, "feature_index": self.feature_index})
@@ -716,14 +742,35 @@ class TrainAndEvalProxyModel(ComplexEventVideoDB):
         Y_pred_frame_level[pos_index] = 1
 
         tn, fp, fn, tp = confusion_matrix(self.Y_evaluation, Y_pred_frame_level).ravel()
-        evaluation_str = "[evaluation frame level] accuracy: {}; f1_score: {}; tn, fp, fn, tp: {}, {}, {}, {}".format(accuracy_score(self.Y_evaluation, Y_pred_frame_level), f1_score(self.Y_evaluation, Y_pred_frame_level), tn, fp, fn, tp)
+        evaluation_str = "[evaluation frame level] balanced_accuracy: {}; f1_score: {}; tn, fp, fn, tp: {}, {}, {}, {}".format(balanced_accuracy_score(self.Y_evaluation, Y_pred_frame_level), f1_score(self.Y_evaluation, Y_pred_frame_level), tn, fp, fn, tp)
+        self.model_performance_output.append(evaluation_str)
         print(evaluation_str)
+
+        # Get indexes for tp, tn, fp, fn
+        unq = np.array([x + 2*y for x, y in zip(y_pred_pair_level, self.Y_pair_level_evaluation)])
+        fp_ind = np.array(np.where(unq == 1)).tolist()[0]
+        fn_ind = np.array(np.where(unq == 2)).tolist()[0]
+
+        # Randomly sample 50 fp and fn to visualize
+        fp_ind = np.random.choice(fp_ind, size=10, replace=False)
+        fn_ind = np.random.choice(fn_ind, size=10, replace=False)
+
+        # each item in self.raw_data_pair_level_evaluation[i] is of form: [video_basename, frame_id, obj1, obj2]
+        sampled_fp = [self.raw_data_pair_level_evaluation[i] for i in fp_ind]
+        sampled_fn = [self.raw_data_pair_level_evaluation[i] for i in fn_ind]
+        self.sampled_fn_fp[len(self.negative_frames_seen) + len(self.positive_frames_seen)] = {"fp": sampled_fp, "fn": sampled_fn}
+
+    def save_data(self, plot_data_y):
+        method =  "{}-nearby3-random_forest_with_balanced_class_weights{}".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else "")
+        with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/instances_found_speed/{}.json".format(method), 'w') as f:
+            f.write(json.dumps(plot_data_y.tolist()))
 
 if __name__ == '__main__':
     # logging.basicConfig(filename="output.log", encoding="utf-8", level=logging.INFO)
-    cevdb = TrainAndEvalProxyModel(dataset="clevrer", query="clevrer_collision", temporal_heuristic=False, budget=128000)
+    cevdb = TrainAndEvalProxyModel(dataset="clevrer", query="clevrer_collision", temporal_heuristic=False, budget=1000, frame_selection_method="least_confidence")
     # cevdb = ComplexEventVideoDB(dataset="clevrer", query="clevrer_collision", temporal_heuristic=False)
     plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
+    cevdb.save_data(plot_data_y_annotated)
     print("plot_data_y_annotated", plot_data_y_annotated)
     print("plot_data_y_materialized", plot_data_y_materialized)
     # plot_data_y_annotated_list = []
