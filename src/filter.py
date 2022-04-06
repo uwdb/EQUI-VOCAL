@@ -474,6 +474,7 @@ def clevrer_collision(maskrcnn_bboxes, video_list, pos_frames, cached=False):
     if cached:
         return feature_names, spatial_feature_dim
     spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
+    Y = np.zeros(n_frames, dtype=int)
     # Y = []
     # spatial_features = []
     # Filtering stage
@@ -496,7 +497,7 @@ def clevrer_collision(maskrcnn_bboxes, video_list, pos_frames, cached=False):
                 continue
             if frame_offset + frame_id in pos_frames:
                 for collision in collisions:
-                    if frame_id == collision["frame"]:
+                    if frame_id <= collision["frame"] + 3 and frame_id >= collision["frame"] - 3:
                         obj_id1 = collision["object"][0]
                         obj_id2 = collision["object"][1]
                         for obj in objects:
@@ -509,11 +510,15 @@ def clevrer_collision(maskrcnn_bboxes, video_list, pos_frames, cached=False):
                                 obj1_bbox = (x1, y1, x2, y2)
                             elif material == obj2["material"] and color == obj2["color"] and shape == obj2["shape"]:
                                 obj2_bbox = (x1, y1, x2, y2)
-                        break
+                        if obj1_bbox and obj2_bbox:
+                            print("video_basename: {}, frame_id: {}.".format(video_basename, frame_id))
+                            spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1_bbox, obj2_bbox)
+                            Y[frame_offset + frame_id] = 1
+                            break
             else:
                 obj1_bbox, obj2_bbox = random.sample(res_per_frame, 2)
                 obj1_bbox = obj1_bbox[:4]
                 obj2_bbox = obj2_bbox[:4]
-            print("video_basename: {}, frame_id: {}.".format(video_basename, frame_id))
-            spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1_bbox, obj2_bbox)
-    return feature_names, spatial_feature_dim, spatial_features, candidates
+                print("video_basename: {}, frame_id: {}.".format(video_basename, frame_id))
+                spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1_bbox, obj2_bbox)
+    return feature_names, spatial_feature_dim, spatial_features, candidates, Y
