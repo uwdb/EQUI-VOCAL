@@ -17,7 +17,8 @@ class UserFeedback:
             chunk_idx = int(frame_id / (1.0 * self.n_frames / len(stats_per_chunk)))
             stats_per_chunk[chunk_idx][1] += 1
             if frame_id in self.pos_frames:
-                for key, (start_frame, end_frame, flag) in pos_frames_per_instance.items():
+                for key in list(pos_frames_per_instance):
+                    start_frame, end_frame, flag = pos_frames_per_instance[key]
                     if start_frame <= frame_id and frame_id < end_frame:
                         if flag == 0:
                             num_positive_instances_found += 1

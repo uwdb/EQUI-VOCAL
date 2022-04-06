@@ -1,4 +1,5 @@
 from sklearn.ensemble import RandomForestClassifier
+from imblearn.ensemble import BalancedRandomForestClassifier
 import numpy as np
 
 class ProxyModelTraining:
@@ -13,11 +14,12 @@ class ProxyModelTraining:
         clf = RandomForestClassifier(
             # criterion="entropy",
             # max_depth=10,
-            n_estimators=10,
+            n_estimators=50,
             # min_samples_split=32,
             class_weight="balanced",
             # min_impurity_decrease=0.1
         )
+        # clf = BalancedRandomForestClassifier(n_estimators=50, random_state=42)
         train_x = self.spatial_features[~(raw_frames | materialized_frames)]
         train_y = self.Y[~(raw_frames | materialized_frames)]
         clf = clf.fit(train_x, train_y)
