@@ -16,7 +16,6 @@ import os
 import csv
 from tqdm import tqdm
 from sklearn import tree, metrics
-from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 import graphviz
 import random
@@ -39,7 +38,7 @@ class BaseQueryInitialization:
 
 
 class RandomInitialization(BaseQueryInitialization):
-    def run(self, materialized_frames: np.ndarray, positive_frames_seen: List[int], negative_frames_seen: List[int], pos_frames_per_instance, num_positive_instances_found, plot_data_y_annotated, plot_data_y_materialized, stats_per_chunk) -> Tuple[np.ndarray, np.ndarray, np.ndarray, RandomForestClassifier]:
+    def run(self, materialized_frames: np.ndarray, positive_frames_seen: List[int], negative_frames_seen: List[int], pos_frames_per_instance, num_positive_instances_found, plot_data_y_annotated, plot_data_y_materialized, stats_per_chunk) -> Tuple[np.ndarray, List[int], List[int], dict, int, np.ndarray, np.ndarray, List[int]]:
         """Input: raw frames Fr
         Output: n_0 materialized frames Fm_0, updated raw frames Fr_0, initial proxy model m_0
         """
@@ -53,7 +52,8 @@ class RandomInitialization(BaseQueryInitialization):
             chunk_idx = int(frame_id / (1.0 * materialized_frames.size / len(stats_per_chunk)))
             stats_per_chunk[chunk_idx][1] += 1
             if frame_id in self.pos_frames:
-                for key, (start_frame, end_frame, flag) in pos_frames_per_instance.items():
+                for key in list(pos_frames_per_instance):
+                    start_frame, end_frame, flag = pos_frames_per_instance[key]
                     if start_frame <= frame_id and frame_id < end_frame:
                         if flag == 0:
                             num_positive_instances_found += 1
