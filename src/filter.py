@@ -497,7 +497,8 @@ def clevrer_collision(maskrcnn_bboxes, video_list, pos_frames, cached=False):
                 continue
             if frame_offset + frame_id in pos_frames:
                 for collision in collisions:
-                    if frame_id <= collision["frame"] + 3 and frame_id >= collision["frame"] - 3:
+                    # if frame_id <= collision["frame"] + 3 and frame_id >= collision["frame"] - 3:
+                    if frame_id == collision["frame"]:
                         obj_id1 = collision["object"][0]
                         obj_id2 = collision["object"][1]
                         for obj in objects:
