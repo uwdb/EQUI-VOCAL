@@ -348,14 +348,16 @@ def clevrer_collision(video_list):
             data = json.load(f)
         collisions = data["ground_truth"]["collisions"]
         for collision in collisions:
-            # TODO: collision could span multiple frames
-            start_frame = max(collision["frame"] - 3, 0)
-            end_frame = min(collision["frame"] + 3, 127)
-            for i in range(start_frame, end_frame+1):
-                pos_frames.add(frame_offset + i)
-            pos_frames_per_instance[num_instance] = (frame_offset + start_frame, frame_offset + end_frame + 1, 0)
-            # pos_frames.add(frame_offset + collision["frame"])
-            # pos_frames_per_instance[num_instance] = (frame_offset + collision["frame"], frame_offset + collision["frame"] + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
+            # Option 1: collision could span multiple frames
+            # start_frame = max(collision["frame"] - 3, 0)
+            # end_frame = min(collision["frame"] + 3, 127)
+            # for i in range(start_frame, end_frame+1):
+            #     pos_frames.add(frame_offset + i)
+            # pos_frames_per_instance[num_instance] = (frame_offset + start_frame, frame_offset + end_frame + 1, 0)
+
+            # Option 2: collision is 1 frame
+            pos_frames.add(frame_offset + collision["frame"])
+            pos_frames_per_instance[num_instance] = (frame_offset + collision["frame"], frame_offset + collision["frame"] + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
             num_instance += 1
     return sorted(pos_frames), pos_frames_per_instance
 
@@ -385,8 +387,8 @@ def clevrer_collision_evaluation(maskrcnn_bboxes_evaluation, video_list_evaluati
             for collision in collisions:
                 obj1 = None
                 obj2 = None
-                if frame_id <= collision["frame"] + 3 and frame_id >= collision["frame"] - 3:
-                # if frame_id == collision["frame"]:
+                # if frame_id <= collision["frame"] + 3 and frame_id >= collision["frame"] - 3:
+                if frame_id == collision["frame"]:
                     pos_obj_id1 = collision["object"][0]
                     pos_obj_id2 = collision["object"][1]
                     for obj in objects:
