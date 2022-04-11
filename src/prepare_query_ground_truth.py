@@ -4,9 +4,11 @@ from utils.utils import isInsideIntersection, isOverlapping
 import os
 from glob import glob
 import yaml
+import math
 import json
 import numpy as np
 import itertools
+import random
 from filter import construct_spatial_feature_spatial_relationship
 
 def turning_car_and_pedestrain_at_intersection():
@@ -422,3 +424,101 @@ def clevrer_collision_evaluation(maskrcnn_bboxes_evaluation, video_list_evaluati
     feature_index = np.asarray(feature_index)
     print("length of spatial_features: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(spatial_features), len(Y_pair_level_evaluation), len(feature_index)))
     return spatial_features, Y_evaluation, Y_pair_level_evaluation, feature_index, raw_data_pair_level_evaluation
+
+def clevrer_far(maskrcnn_bboxes, video_list, cached=False, thresh=1.0):
+    pos_frames = []
+    pos_frames_per_instance = {}
+    num_instance = 0
+    n_frames = len(maskrcnn_bboxes)
+    spatial_feature_dim = 8
+    feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
+    if cached:
+        return feature_names, spatial_feature_dim
+    spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
+    Y = np.zeros(n_frames, dtype=int)
+    # Filtering stage
+    candidates = np.full(n_frames, True, dtype=np.bool)
+
+    for video_basename, frame_offset, _ in video_list:
+        file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/sim_{}.json".format(video_basename)
+        # Read in bbox info
+        with open(file, 'r') as f:
+            data = json.load(f)
+
+        objects = data["ground_truth"]["objects"]
+
+        for frame_id in range(128):
+            res_per_frame = maskrcnn_bboxes["{}_{}".format(video_basename, frame_id)]
+            if len(res_per_frame) < 2:
+                continue
+            # find all positive pairs. In most cases it should be only one
+            positive_pairs = []
+
+            for obj1, obj2 in itertools.combinations(res_per_frame, 2):
+                if obj_distance(obj1[:4], obj2[:4]) <= thresh:
+                    positive_pairs.append([obj1, obj2])
+            if len(positive_pairs) > 0:
+                obj1, obj2 = random.choice(positive_pairs)
+                spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4])
+                Y[frame_offset + frame_id] = 1
+                pos_frames.append(frame_offset + frame_id)
+                pos_frames_per_instance[num_instance] = (frame_offset + frame_id, frame_offset + frame_id + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
+                num_instance += 1
+            else:
+                obj1, obj2 = random.sample(res_per_frame, 2)
+                spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4])
+
+    return feature_names, spatial_feature_dim, spatial_features, candidates, Y, pos_frames, pos_frames_per_instance
+
+
+def clevrer_far_evaluation(maskrcnn_bboxes_evaluation, video_list_evaluation, thresh):
+    n_frames_evaluation = len(maskrcnn_bboxes_evaluation)
+    Y_evaluation = np.zeros(n_frames_evaluation, dtype=int)
+    spatial_features = [] # List of lists. Row count: the total number of pairwaise relationships across all videos. Column count: dimension of spatial features (8)
+    Y_pair_level_evaluation = []
+    raw_data_pair_level_evaluation = []
+    feature_index = [] # A video can also have no pairwise relationships. In this case, the feature_index for that vid is empty.
+    for video_basename, frame_offset, _ in video_list_evaluation:
+        file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/sim_{}.json".format(video_basename)
+        # Read in bbox info
+        with open(file, 'r') as f:
+            data = json.load(f)
+        objects = data["ground_truth"]["objects"]
+
+        for frame_id in range(128):
+            res_per_frame = maskrcnn_bboxes_evaluation["{}_{}".format(video_basename, frame_id)]
+            if len(res_per_frame) < 2:
+                continue
+
+            # find all positive pairs. In most cases it should be only one
+            positive_pairs = []
+            for obj1, obj2 in itertools.combinations(res_per_frame, 2):
+                if obj_distance(obj1[:4], obj2[:4]) <= thresh:
+                    Y_evaluation[frame_offset + frame_id] = 1
+                    positive_pairs.append([obj1, obj2])
+            for obj1, obj2 in itertools.combinations(res_per_frame, 2):
+                spatial_features.append(construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4]))
+                feature_index.append(frame_offset + frame_id)
+                # Construct Y_pair_level_evaluation
+                Y_pair_level_evaluation.append(0)
+                raw_data_pair_level_evaluation.append([video_basename, frame_id, obj1, obj2])
+                if Y_evaluation[frame_offset + frame_id] == 1:
+                    for pos_obj1, pos_obj2 in positive_pairs:
+                        if obj1[4] == pos_obj1[4] and obj1[5] == pos_obj1[5] and obj1[6] == pos_obj1[6] and obj2[4] == pos_obj2[4] and obj2[5] == pos_obj2[5] and obj2[6] == pos_obj2[6]:
+                            Y_pair_level_evaluation[-1] = 1
+                            break
+    spatial_features = np.stack(spatial_features, axis=0)
+    Y_pair_level_evaluation = np.asarray(Y_pair_level_evaluation)
+    feature_index = np.asarray(feature_index)
+    print("length of spatial_features: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(spatial_features), len(Y_pair_level_evaluation), len(feature_index)))
+    return spatial_features, Y_evaluation, Y_pair_level_evaluation, feature_index, raw_data_pair_level_evaluation
+
+
+def obj_distance(bbox1, bbox2):
+    x1, y1, x2, y2 = bbox1
+    x3, y3, x4, y4 = bbox2
+    cx1 = (x1 + x2) / 2
+    cy1 = (y1 + y2) / 2
+    cx2 = (x3 + x4) / 2
+    cy2 = (y3 + y4) / 2
+    return math.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2) / ((x2 - x1 + y2 - y1 + x4 - x3 + y4 - y3) / 4)

@@ -37,11 +37,12 @@ def decode(rleObjs):
 
 
 class ComplexEventVideoDB:
-    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL"):
+    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL", thresh=1.0):
         self.dataset = dataset
         self.query = query
         self.temporal_heuristic = temporal_heuristic
         self.method = method
+        self.thresh = thresh
         # self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
 
         """Read in object detection bounding box information
@@ -73,12 +74,13 @@ class ComplexEventVideoDB:
             self.feature_names,
             self.spatial_features
         """
-        self.Y = np.zeros(self.n_frames, dtype=int)
-        for i in range(self.n_frames):
-            if i in self.pos_frames:
-                self.Y[i] = 1
+        if self.query != "clevrer_far":
+            self.Y = np.zeros(self.n_frames, dtype=int)
+            for i in range(self.n_frames):
+                if i in self.pos_frames:
+                    self.Y[i] = 1
 
-        self.filtering_stage()
+            self.filtering_stage()
 
         self.num_positive_instances_found = 0
         self.raw_frames = np.full(self.n_frames, True, dtype=bool)
@@ -223,6 +225,24 @@ class ComplexEventVideoDB:
             self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.video_list)")
         elif self.query == "clevrer_collision":
             self.pos_frames, self.pos_frames_per_instance = clevrer_collision(self.video_list)
+        elif self.query == "clevrer_far":
+            outfile_name = os.path.join("outputs/intermediate_results", "{}-{}.npz".format(self.query, self.thresh))
+            pos_frames_per_instance_outfile_name = os.path.join("outputs/intermediate_results", "{}-{}-pos_frames_per_instance.json".format(self.query, self.thresh))
+            if os.path.exists(outfile_name) and os.path.exists(pos_frames_per_instance_outfile_name):
+                npzfile = np.load(outfile_name)
+                self.spatial_features = npzfile["spatial_features"]
+                self.candidates = npzfile["candidates"]
+                self.Y = npzfile["Y"]
+                self.pos_frames = npzfile["pos_frames"]
+                self.feature_names, self.spatial_feature_dim = clevrer_far(self.maskrcnn_bboxes, self.video_list, cached=True)
+                with open(pos_frames_per_instance_outfile_name, 'r') as f:
+                    self.pos_frames_per_instance = json.loads(f.read())
+            else:
+                self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates, self.Y, self.pos_frames, self.pos_frames_per_instance = clevrer_far(self.maskrcnn_bboxes, self.video_list, thresh=1.0)
+                np.savez(outfile_name, spatial_features=self.spatial_features, candidates=self.candidates, Y=self.Y, pos_frames=self.pos_frames)
+                # save raw_data_pair_level_evaluation to file
+                with open(pos_frames_per_instance_outfile_name, 'w') as f:
+                    f.write(json.dumps(self.pos_frames_per_instance))
         self.n_positive_instances = len(self.pos_frames_per_instance)
         self.avg_duration = 1.0 * len(self.pos_frames) / self.n_positive_instances
         print("# positive frames: ", len(self.pos_frames), "; # distinct instances: ", self.n_positive_instances, "; average duration: ", self.avg_duration)
@@ -244,7 +264,7 @@ class ComplexEventVideoDB:
                 np.savez(outfile_name, spatial_features=self.spatial_features, candidates=self.candidates)
         elif self.dataset == "visualroad_traffic2":
             self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates = getattr(filter, self.query)(self.maskrcnn_bboxes)
-        elif self.dataset == "clevrer":
+        elif self.dataset == "clevrer" and self.query == "clevrer_collision":
             outfile_name = os.path.join("outputs/intermediate_results", "{}-original-1000.npz".format(self.query))
             if os.path.exists(outfile_name):
                 npzfile = np.load(outfile_name)
@@ -596,17 +616,17 @@ class RandomProcessing(ComplexEventVideoDB):
 
 
 class TrainAndEvalProxyModel(ComplexEventVideoDB):
-    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL", budget=800, frame_selection_method="least_confidence"):
+    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL", budget=800, frame_selection_method="least_confidence", thresh=1.0):
 
-        super().__init__(dataset, query, temporal_heuristic, method)
+        super().__init__(dataset, query, temporal_heuristic, method, thresh)
         self.frame_selection_method = frame_selection_method
+        self.budget = budget
         if frame_selection_method == "least_confidence":
             self.frame_selection = LeastConfidenceFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
         elif frame_selection_method == "greatest_confidence":
             self.frame_selection = GreatestConfidenceFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
         elif frame_selection_method == "random":
             self.frame_selection = RandomFrameSelection(self.spatial_features, self.Y, materialized_batch_size, annotated_batch_size, self.avg_duration, self.candidates)
-        self.budget = budget
         if dataset == "clevrer":
             self.ingest_bbox_info_clevrer_evaluation()
         self.ingest_gt_labels_evaluation()
@@ -667,15 +687,7 @@ class TrainAndEvalProxyModel(ComplexEventVideoDB):
                 f.write(json.dumps(self.video_list_evaluation))
 
     def ingest_gt_labels_evaluation(self):
-        if self.query.startswith("test"):
-            self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.maskrcnn_bboxes)")
-        elif self.query == "turning_car_and_pedestrain_at_intersection":
-            self.pos_frames, self.pos_frames_per_instance = turning_car_and_pedestrain_at_intersection()
-        elif self.query.startswith("meva"):
-            self.pos_frames, self.pos_frames_per_instance = eval(self.query + "(self.video_list)")
-
-        # Only this condition is implemented for now.
-        elif self.query == "clevrer_collision":
+        if self.query == "clevrer_collision":
             outfile_name = os.path.join("outputs/intermediate_results", "{}-original-evaluation_1000.npz".format(self.query))
             raw_data_pair_level_evaluation_outfile_name = "outputs/intermediate_results/{}-original-raw_data_pair_level_evaluation.json".format(self.query)
             if os.path.exists(outfile_name) and os.path.exists(raw_data_pair_level_evaluation_outfile_name):
@@ -687,7 +699,24 @@ class TrainAndEvalProxyModel(ComplexEventVideoDB):
                 with open(raw_data_pair_level_evaluation_outfile_name, 'r') as f:
                     self.raw_data_pair_level_evaluation = json.loads(f.read())
             else:
-                self.spatial_features_evaluation, self.Y_evaluation, self.Y_pair_level_evaluation, self.feature_index, self.raw_data_pair_level_evaluation = eval(self.query + "_evaluation(self.maskrcnn_bboxes_evaluation, self.video_list_evaluation)")
+                self.spatial_features_evaluation, self.Y_evaluation, self.Y_pair_level_evaluation, self.feature_index, self.raw_data_pair_level_evaluation = eval(self.query + "_evaluation(self.maskrcnn_bboxes_evaluation, self.video_list_evaluation, self.thresh)")
+                np.savez(outfile_name, spatial_features_evaluation=self.spatial_features_evaluation, Y_evaluation=self.Y_evaluation, Y_pair_level_evaluation=self.Y_pair_level_evaluation, feature_index=self.feature_index)
+                # save raw_data_pair_level_evaluation to file
+                with open(raw_data_pair_level_evaluation_outfile_name, 'w') as f:
+                    f.write(json.dumps(self.raw_data_pair_level_evaluation))
+        elif self.query == "clevrer_far":
+            outfile_name = os.path.join("outputs/intermediate_results", "{}-{}-evaluation.npz".format(self.query, self.thresh))
+            raw_data_pair_level_evaluation_outfile_name = "outputs/intermediate_results/{}-{}-raw_data_pair_level_evaluation.json".format(self.query, self.thresh)
+            if os.path.exists(outfile_name) and os.path.exists(raw_data_pair_level_evaluation_outfile_name):
+                npzfile = np.load(outfile_name)
+                self.spatial_features_evaluation = npzfile["spatial_features_evaluation"]
+                self.Y_evaluation = npzfile["Y_evaluation"]
+                self.Y_pair_level_evaluation = npzfile["Y_pair_level_evaluation"]
+                self.feature_index = npzfile["feature_index"]
+                with open(raw_data_pair_level_evaluation_outfile_name, 'r') as f:
+                    self.raw_data_pair_level_evaluation = json.loads(f.read())
+            else:
+                self.spatial_features_evaluation, self.Y_evaluation, self.Y_pair_level_evaluation, self.feature_index, self.raw_data_pair_level_evaluation = eval(self.query + "_evaluation(self.maskrcnn_bboxes_evaluation, self.video_list_evaluation, self.thresh)")
                 np.savez(outfile_name, spatial_features_evaluation=self.spatial_features_evaluation, Y_evaluation=self.Y_evaluation, Y_pair_level_evaluation=self.Y_pair_level_evaluation, feature_index=self.feature_index)
                 # save raw_data_pair_level_evaluation to file
                 with open(raw_data_pair_level_evaluation_outfile_name, 'w') as f:
@@ -716,18 +745,25 @@ class TrainAndEvalProxyModel(ComplexEventVideoDB):
                 self.model_performance_output.append(iteration_str)
                 self.eval_and_save_proxy_model()
                 # Save the random forest model
-                joblib.dump(self.clf, "/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/models/random_forest_with_balanced_class_weights-{}-{}-original{}.joblib".format(num_trained, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""))
+                # joblib.dump(self.clf, "/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/models/random_forest_with_balanced_class_weights-{}-{}-original{}.joblib".format(num_trained, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""))
                 # loaded_rf = joblib.load("./random_forest.joblib")
             self.iteration += 1
 
         print("stats_per_chunk", self.stats_per_chunk)
-        # save model_performance_output to txt file
-        with open("outputs/clevrer_collision/{}-original-random_forest_with_balanced_class_weights{}.txt".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
-            f.write(json.dumps(self.model_performance_output))
-        # save self.sampled_fn_fp to json file
-        with open("outputs/clevrer_collision/{}-original-random_forest_with_balanced_class_weights-sampled_fn_fp{}.json".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
-            f.write(json.dumps(self.sampled_fn_fp))
-
+        if self.query == "clevrer_collision":
+            # save model_performance_output to txt file
+            with open("outputs/clevrer_collision/{}-original-random_forest_with_balanced_class_weights{}.txt".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+                f.write(json.dumps(self.model_performance_output))
+            # save self.sampled_fn_fp to json file
+            with open("outputs/clevrer_collision/{}-original-random_forest_with_balanced_class_weights-sampled_fn_fp{}.json".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+                f.write(json.dumps(self.sampled_fn_fp))
+        elif self.query == "clevrer_far":
+            # save model_performance_output to txt file
+            with open("outputs/{}/{}-{}-original-random_forest_with_balanced_class_weights{}.txt".format(self.query, self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+                f.write(json.dumps(self.model_performance_output))
+            # save self.sampled_fn_fp to json file
+            with open("outputs/{}/{}-{}-original-random_forest_with_balanced_class_weights-sampled_fn_fp{}.json".format(self.query, self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+                f.write(json.dumps(self.sampled_fn_fp))
         return self.plot_data_y_annotated, self.plot_data_y_materialized
 
     def eval_and_save_proxy_model(self):
@@ -766,13 +802,18 @@ class TrainAndEvalProxyModel(ComplexEventVideoDB):
         self.sampled_fn_fp[len(self.negative_frames_seen) + len(self.positive_frames_seen)] = {"fp": sampled_fp, "fn": sampled_fn}
 
     def save_data(self, plot_data_y):
-        method =  "{}-original-random_forest_with_balanced_class_weights{}".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else "")
-        with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/instances_found_speed/{}.json".format(method), 'w') as f:
-            f.write(json.dumps(plot_data_y.tolist()))
+        if self.query == "clevrer_collision":
+            method =  "{}-original-random_forest_with_balanced_class_weights{}".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else "")
+            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/instances_found_speed/{}.json".format(method), 'w') as f:
+                f.write(json.dumps(plot_data_y.tolist()))
+        elif self.query == "clevrer_far":
+            method =  "{}-{}-original-random_forest_with_balanced_class_weights{}".format(self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else "")
+            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/{}/instances_found_speed/{}.json".format(self.query, method), 'w') as f:
+                f.write(json.dumps(plot_data_y.tolist()))
 
 if __name__ == '__main__':
     # logging.basicConfig(filename="output.log", encoding="utf-8", level=logging.INFO)
-    cevdb = TrainAndEvalProxyModel(dataset="clevrer", query="clevrer_collision", temporal_heuristic=False, budget=1000, frame_selection_method="least_confidence")
+    cevdb = TrainAndEvalProxyModel(dataset="clevrer", query="clevrer_far", temporal_heuristic=False, budget=1000, frame_selection_method="least_confidence", thresh=1.0)
     # cevdb = ComplexEventVideoDB(dataset="clevrer", query="clevrer_collision", temporal_heuristic=False)
     plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
     cevdb.save_data(plot_data_y_annotated)
