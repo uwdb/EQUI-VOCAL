@@ -1,5 +1,4 @@
 import csv
-from pandas.core import frame
 from utils.utils import isInsideIntersection, isOverlapping
 import os
 from glob import glob
@@ -426,28 +425,24 @@ class PrepareGroundTruthMixin:
         print("length of spatial_features: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(spatial_features), len(Y_pair_level_evaluation), len(feature_index)))
         return spatial_features, Y_evaluation, Y_pair_level_evaluation, feature_index, raw_data_pair_level_evaluation
 
-    def clevrer_far(self, cached=False):
-        pos_frames = []
-        pos_frames_per_instance = {}
+    def clevrer_far(self):
+        self._clevrer_far_or_near(is_far=True)
+
+    def clevrer_near(self):
+        self._clevrer_far_or_near(is_far=False)
+
+    def _clevrer_far_or_near(self, is_far):
+        self.pos_frames = []
+        self.pos_frames_per_instance = {}
         num_instance = 0
         n_frames = len(self.maskrcnn_bboxes)
-        spatial_feature_dim = 8
-        feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
-        if cached:
-            return feature_names, spatial_feature_dim
-        spatial_features = np.zeros((n_frames, spatial_feature_dim), dtype=np.float64)
-        Y = np.zeros(n_frames, dtype=int)
-        # Filtering stage
-        candidates = np.full(n_frames, True, dtype=np.bool)
+        self.spatial_feature_dim = 8
+        self.feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
+        self.spatial_features = np.zeros((n_frames, self.spatial_feature_dim), dtype=np.float64)
+        self.Y = np.zeros(n_frames, dtype=int)
+        self.candidates = np.full(n_frames, True, dtype=np.bool)
 
         for video_basename, frame_offset, _ in self.video_list:
-            file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/sim_{}.json".format(video_basename)
-            # Read in bbox info
-            with open(file, 'r') as f:
-                data = json.load(f)
-
-            objects = data["ground_truth"]["objects"]
-
             for frame_id in range(128):
                 res_per_frame = self.maskrcnn_bboxes["{}_{}".format(video_basename, frame_id)]
                 if len(res_per_frame) < 2:
@@ -456,36 +451,38 @@ class PrepareGroundTruthMixin:
                 positive_pairs = []
 
                 for obj1, obj2 in itertools.combinations(res_per_frame, 2):
-                    if self.obj_distance(obj1[:4], obj2[:4]) <= self.thresh:
+                    # target event is objects_near:
+                    if not is_far and self.obj_distance(obj1[:4], obj2[:4]) <= self.thresh:
                         positive_pairs.append([obj1, obj2])
+                    # target event is objects_far:
+                    elif is_far and self.obj_distance(obj1[:4], obj2[:4]) > self.thresh:
+                        positive_pairs.append([obj1, obj2])
+
                 if len(positive_pairs) > 0:
                     obj1, obj2 = random.choice(positive_pairs)
-                    spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4])
-                    Y[frame_offset + frame_id] = 1
-                    pos_frames.append(frame_offset + frame_id)
-                    pos_frames_per_instance[num_instance] = (frame_offset + frame_id, frame_offset + frame_id + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
+                    self.spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4])
+                    self.Y[frame_offset + frame_id] = 1
+                    self.pos_frames.append(frame_offset + frame_id)
+                    self.pos_frames_per_instance[num_instance] = (frame_offset + frame_id, frame_offset + frame_id + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
                     num_instance += 1
                 else:
                     obj1, obj2 = random.sample(res_per_frame, 2)
-                    spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4])
-
-        return feature_names, spatial_feature_dim, spatial_features, candidates, Y, pos_frames, pos_frames_per_instance
-
+                    self.spatial_features[frame_offset + frame_id] = construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4])
 
     def clevrer_far_evaluation(self):
-        n_frames_evaluation = len(self.maskrcnn_bboxes_evaluation)
-        Y_evaluation = np.zeros(n_frames_evaluation, dtype=int)
-        spatial_features = [] # List of lists. Row count: the total number of pairwaise relationships across all videos. Column count: dimension of spatial features (8)
-        Y_pair_level_evaluation = []
-        raw_data_pair_level_evaluation = []
-        feature_index = [] # A video can also have no pairwise relationships. In this case, the feature_index for that vid is empty.
-        for video_basename, frame_offset, _ in self.video_list_evaluation:
-            file = "/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/sim_{}.json".format(video_basename)
-            # Read in bbox info
-            with open(file, 'r') as f:
-                data = json.load(f)
-            objects = data["ground_truth"]["objects"]
+        self._clevrer_far_or_near_evaluation(is_far=True)
 
+    def clevrer_near_evaluation(self):
+        self._clevrer_far_or_near_evaluation(is_far=False)
+
+    def _clevrer_far_or_near_evaluation(self, is_far):
+        n_frames_evaluation = len(self.maskrcnn_bboxes_evaluation)
+        self.Y_evaluation = np.zeros(n_frames_evaluation, dtype=int)
+        self.spatial_features_evaluation = [] # List of lists. Row count: the total number of pairwaise relationships across all videos. Column count: dimension of spatial features (8)
+        self.Y_pair_level_evaluation = []
+        self.raw_data_pair_level_evaluation = []
+        self.feature_index = [] # A video can also have no pairwise relationships. In this case, the feature_index for that vid is empty.
+        for video_basename, frame_offset, _ in self.video_list_evaluation:
             for frame_id in range(128):
                 res_per_frame = self.maskrcnn_bboxes_evaluation["{}_{}".format(video_basename, frame_id)]
                 if len(res_per_frame) < 2:
@@ -494,25 +491,28 @@ class PrepareGroundTruthMixin:
                 # find all positive pairs. In most cases it should be only one
                 positive_pairs = []
                 for obj1, obj2 in itertools.combinations(res_per_frame, 2):
-                    if self.obj_distance(obj1[:4], obj2[:4]) <= self.thresh:
-                        Y_evaluation[frame_offset + frame_id] = 1
+                    if not is_far and self.obj_distance(obj1[:4], obj2[:4]) <= self.thresh:
+                        self.Y_evaluation[frame_offset + frame_id] = 1
+                        positive_pairs.append([obj1, obj2])
+                    elif is_far and self.obj_distance(obj1[:4], obj2[:4]) > self.thresh:
+                        self.Y_evaluation[frame_offset + frame_id] = 1
                         positive_pairs.append([obj1, obj2])
                 for obj1, obj2 in itertools.combinations(res_per_frame, 2):
-                    spatial_features.append(construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4]))
-                    feature_index.append(frame_offset + frame_id)
+                    self.spatial_features_evaluation.append(construct_spatial_feature_spatial_relationship(obj1[:4], obj2[:4]))
+                    self.feature_index.append(frame_offset + frame_id)
                     # Construct Y_pair_level_evaluation
-                    Y_pair_level_evaluation.append(0)
-                    raw_data_pair_level_evaluation.append([video_basename, frame_id, obj1, obj2])
-                    if Y_evaluation[frame_offset + frame_id] == 1:
+                    self.Y_pair_level_evaluation.append(0)
+                    self.raw_data_pair_level_evaluation.append([video_basename, frame_id, obj1, obj2])
+                    if self.Y_evaluation[frame_offset + frame_id] == 1:
                         for pos_obj1, pos_obj2 in positive_pairs:
                             if obj1[4] == pos_obj1[4] and obj1[5] == pos_obj1[5] and obj1[6] == pos_obj1[6] and obj2[4] == pos_obj2[4] and obj2[5] == pos_obj2[5] and obj2[6] == pos_obj2[6]:
-                                Y_pair_level_evaluation[-1] = 1
+                                self.Y_pair_level_evaluation[-1] = 1
                                 break
-        spatial_features = np.stack(spatial_features, axis=0)
-        Y_pair_level_evaluation = np.asarray(Y_pair_level_evaluation)
-        feature_index = np.asarray(feature_index)
-        print("length of spatial_features: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(spatial_features), len(Y_pair_level_evaluation), len(feature_index)))
-        return spatial_features, Y_evaluation, Y_pair_level_evaluation, feature_index, raw_data_pair_level_evaluation
+        self.spatial_features_evaluation = np.stack(self.spatial_features_evaluation, axis=0)
+        self.Y_pair_level_evaluation = np.asarray(self.Y_pair_level_evaluation)
+        self.feature_index = np.asarray(self.feature_index)
+        print("length of spatial_features_evaluation: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(self.spatial_features_evaluation), len(self.Y_pair_level_evaluation), len(self.feature_index)))
+
 
     @staticmethod
     def obj_distance(bbox1, bbox2):
