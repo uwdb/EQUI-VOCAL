@@ -6,15 +6,11 @@ from copy import deepcopy
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
-import pycocotools._mask as _mask
-import torch
 import ujson as json
-from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, balanced_accuracy_score
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.tree._tree import TREE_LEAF, TREE_UNDEFINED
 from shapely.geometry import Polygon
 from sklearn.manifold import TSNE
-from torchvision.ops import masks_to_boxes
 
 # Local imports
 from preprocess.ingest_bbox import IngestBboxMixin
@@ -23,19 +19,12 @@ from interaction.frame_selection import FrameSelectionMixin
 from interaction.proxy_model_training import ProxyModelTrainingMixin
 from interaction.user_feedback import UserFeedbackMixin
 from interaction.query_initialization import QueryInitializationMixin
+import filter
 
 annotated_batch_size = 1
 materialized_batch_size = 16
 # init_sampling_step = 100
 init_sampling_step = 1
-
-
-def decode(rleObjs):
-    if type(rleObjs) == list:
-        return _mask.decode(rleObjs)
-    else:
-        return _mask.decode([rleObjs])[:,:,0]
-
 
 class Vocal(IngestBboxMixin, PrepareGroundTruthMixin, FrameSelectionMixin, ProxyModelTrainingMixin, UserFeedbackMixin, QueryInitializationMixin):
     def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL", thresh=1.0):
@@ -78,7 +67,7 @@ class Vocal(IngestBboxMixin, PrepareGroundTruthMixin, FrameSelectionMixin, Proxy
             self.feature_names,
             self.spatial_features
         """
-        if self.query != "clevrer_far":
+        if self.query != "clevrer_far" and self.query != "clevrer_near":
             self.Y = np.zeros(self.n_frames, dtype=int)
             for i in range(self.n_frames):
                 if i in self.pos_frames:
@@ -119,26 +108,7 @@ class Vocal(IngestBboxMixin, PrepareGroundTruthMixin, FrameSelectionMixin, Proxy
             self.pos_frames, self.pos_frames_per_instance = self.turning_car_and_pedestrain_at_intersection()
         elif self.query.startswith("meva"):
             self.pos_frames, self.pos_frames_per_instance = eval("self." + self.query + "()")
-        elif self.query == "clevrer_collision":
-            self.pos_frames, self.pos_frames_per_instance = self.clevrer_collision()
-        elif self.query == "clevrer_far":
-            outfile_name = os.path.join("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/intermediate_results", "{}-{}.npz".format(self.query, self.thresh))
-            pos_frames_per_instance_outfile_name = os.path.join("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/intermediate_results", "{}-{}-pos_frames_per_instance.json".format(self.query, self.thresh))
-            if os.path.exists(outfile_name) and os.path.exists(pos_frames_per_instance_outfile_name):
-                npzfile = np.load(outfile_name)
-                self.spatial_features = npzfile["spatial_features"]
-                self.candidates = npzfile["candidates"]
-                self.Y = npzfile["Y"]
-                self.pos_frames = npzfile["pos_frames"]
-                self.feature_names, self.spatial_feature_dim = self.clevrer_far(cached=True)
-                with open(pos_frames_per_instance_outfile_name, 'r') as f:
-                    self.pos_frames_per_instance = json.loads(f.read())
-            else:
-                self.feature_names, self.spatial_feature_dim, self.spatial_features, self.candidates, self.Y, self.pos_frames, self.pos_frames_per_instance = self.clevrer_far()
-                np.savez(outfile_name, spatial_features=self.spatial_features, candidates=self.candidates, Y=self.Y, pos_frames=self.pos_frames)
-                # save raw_data_pair_level_evaluation to file
-                with open(pos_frames_per_instance_outfile_name, 'w') as f:
-                    f.write(json.dumps(self.pos_frames_per_instance))
+
         self.n_positive_instances = len(self.pos_frames_per_instance)
         self.avg_duration = 1.0 * len(self.pos_frames) / self.n_positive_instances
         print("# positive frames: ", len(self.pos_frames), "; # distinct instances: ", self.n_positive_instances, "; average duration: ", self.avg_duration)
