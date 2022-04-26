@@ -6,14 +6,14 @@ import json
 import random
 
 sampling_method = "least_confidence"
-thresh = 1.0
+thresh = 2.0
 output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_far"
 
 # if misclassified/least_confidence doesn't exist, create it
 if not os.path.exists(os.path.join(output_dir, "misclassified", sampling_method)):
     os.makedirs(os.path.join(output_dir, "misclassified", sampling_method))
 
-with open(os.path.join(output_dir, "{}-{}-original-random_forest_with_balanced_class_weights-sampled_fn_fp.json".format(thresh, sampling_method)), "r") as f:
+with open(os.path.join(output_dir, "{}-{}-original-random_forest-sampled_fn_fp.json".format(thresh, sampling_method)), "r") as f:
     sampled_fn_fp = json.loads(f.read())
 
 for num_train in sampled_fn_fp:
