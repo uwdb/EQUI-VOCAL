@@ -10,15 +10,38 @@ import numpy as np
 from utils import tools
 from proxy_model import *
 
+
 """
 There are three types of models/predicates: perfect model, noisy model and real model.
+
+Specifically for the Clevrer dataset:
+    The shape, color and material uniquely identify an object in a video.
+    Thus, data_oid = "video_id-shape-color-material".
+
+Query region graph:
+    g1 = [Objs, Rels]
+    Objs = {oid : {'shape': shape, 'color': color, 'material': material}, ...}
+    Rels = {rid : {'sub_id': sub_id, 'obj_id': obj_id, 'rel_name': rel_name}, ...}
+
+Outputs:
+    outputs = {'video_id': [[frame_id, [data_region_graph, ...]], ...], ...}
+    where data_region_graph = [data_Objs, data_Rels],
+          data_Objs = [data_oid, ...],
+          data_Rels = {rid : {'sub_id': sub_id, 'obj_id': obj_id, 'rel_name': rel_name}, ...}
 """
-# key: video_id + frame_id
-# value: label
-already_labeled = {}
 
 def is_subdictionary(A, B):
    return set(A.items()).issubset(B.items())
+
+def print_stats(outputs):
+    # num_matching_frames = 0
+    # num_matching_instances = 0
+    # for v_lst in outputs.values():
+    #     num_matching_frames += len(v_lst)
+    #     for f_lst in v_lst:
+    #         num_matching_instances += len(f_lst[1])
+    # print("# matching videos: {}, # matching video frames: {}, # matching instances: {}".format(len(outputs), num_matching_frames, num_matching_instances))
+    print("# matching videos: {}, # matching video frames: {}".format(len(outputs), sum(len(v_lst) for v_lst in outputs.values())))
 
 @tools.tik_tok
 def ingest_videos():
@@ -39,16 +62,18 @@ def ingest_videos():
         vid = annotation_dict["scene_index"]
         for motion_trajectory_dict in annotation_dict["motion_trajectory"]:
             fid = motion_trajectory_dict["frame_id"]
+            # video_input[vid].append([fid, []])
             video_input[vid].append(fid)
-    print("# matching videos: {}, # matching video frames: {}".format(len(video_input), sum(len(lst) for lst in video_input.values())))
+
     return video_input
 
 @tools.tik_tok
 def ingest_videos_fast():
     video_input = {}
     for i in range(8000, 9000):
+        # video_input[i] = [ {i: []} for i in range(0, 128) ]
         video_input[i] = list(range(0, 128))
-    print("# matching videos: {}, # matching video frames: {}".format(len(video_input), sum(len(lst) for lst in video_input.values())))
+    print_stats(video_input)
     return video_input
 
 @tools.tik_tok
@@ -62,7 +87,7 @@ def add_predicate_object(video_input, g1, object_list):
         video frames to work on
     object_list: list[dict]
         each dict specifies an object of interest.
-        Example: [{"cid": "cube"}, {"cid": "sphere"}, {"cid": "sphere"}]
+        Example: [{"oid": 0, "shape": "cube"}, {"oid": 1, "shape": "sphere"}]
 
     Returns
     -------
@@ -72,7 +97,6 @@ def add_predicate_object(video_input, g1, object_list):
     for dct in object_list:
         g1[0][dct["oid"]]["p_shape"] = dct["shape"]
     print("region graph:", g1)
-    Objs = g1[0]
     outputs = defaultdict(list)
     query_object_class_count = {"cube": 0, "sphere": 0, "cylinder": 0}
     for dct in object_list:
@@ -98,7 +122,7 @@ def add_predicate_object(video_input, g1, object_list):
                     if frame_object_class_count["cube"] >= query_object_class_count["cube"] and frame_object_class_count["sphere"] >= query_object_class_count["sphere"] and frame_object_class_count["cylinder"] >= query_object_class_count["cylinder"]:
                         outputs[vid].append(fid)
 
-    print("# matching videos: {}, # matching video frames: {}".format(len(outputs), sum(len(lst) for lst in outputs.values())))
+    print_stats(outputs)
     return outputs, g1
 
 @tools.tik_tok
@@ -148,7 +172,7 @@ def add_predicate_attribute(video_input, g1, attribute_list):
                     if np.linalg.matrix_rank(frame_object_matching_matrix) == len(Objs):
                         outputs[vid].append(fid)
 
-    print("# matching videos: {}, # matching video frames: {}".format(len(outputs), sum(len(lst) for lst in outputs.values())))
+    print_stats(outputs)
     return outputs, g1
 
 
@@ -205,7 +229,7 @@ def add_predicate_attribute_proxy(video_input, g1, proxy_list):
                     if np.linalg.matrix_rank(frame_object_matching_matrix) == len(Objs):
                         outputs[vid].append(fid)
 
-    print("# matching videos: {}, # matching video frames: {}".format(len(outputs), sum(len(lst) for lst in outputs.values())))
+    print_stats(outputs)
     return outputs, g1
 
 
@@ -252,7 +276,7 @@ def add_predicate_relationship(video_input, g1, rel_dict):
                 if np.linalg.matrix_rank(video_object_matching_matrix[:, collision_dict["object_ids"]]) == 2:
                     outputs[vid].append(collision_dict["frame_id"])
 
-    print("# matching videos: {}, # matching video frames: {}".format(len(outputs), sum(len(lst) for lst in outputs.values())))
+    print_stats(outputs)
     return outputs, g1
 
 
@@ -329,7 +353,7 @@ def add_predicate_relationship_proxy(video_input, g1, proxy_list):
                                     outputs[vid].append(fid)
                                     res = True
 
-    print("# matching videos: {}, # matching video frames: {}".format(len(outputs), sum(len(lst) for lst in outputs.values())))
+    print_stats(outputs)
     return outputs, g1
 
 
@@ -347,7 +371,7 @@ def add_predicate_seq_of_region_graphs(inputs1, g1, inputs2, g2):
                     if fid1 < fid2:
                         outputs[vid].append([fid1, fid2])
 
-    print("# matching videos: {}, # matching video segments: {}".format(len(outputs), sum(len(lst) for lst in outputs.values())))
+    print_stats(outputs)
     return outputs, seq_region_graphs
 
 @tools.tik_tok
