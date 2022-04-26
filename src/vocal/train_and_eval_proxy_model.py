@@ -1,8 +1,21 @@
 import os
-import sys
 from glob import glob
-
+import ujson as json
+import pycocotools._mask as _mask
+from torchvision.ops import masks_to_boxes
 from .vocal import Vocal
+import torch
+import numpy as np
+import pandas as pd
+from sklearn.metrics import f1_score, confusion_matrix, balanced_accuracy_score
+import joblib
+
+def decode(rleObjs):
+    if type(rleObjs) == list:
+        return _mask.decode(rleObjs)
+    else:
+        return _mask.decode([rleObjs])[:,:,0]
+
 
 class TrainAndEvalProxyModel(Vocal):
     def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL", budget=800, frame_selection_method="least_confidence", thresh=1.0):
@@ -21,6 +34,40 @@ class TrainAndEvalProxyModel(Vocal):
         self.ingest_gt_labels_evaluation()
         self.model_performance_output = []
         self.sampled_fn_fp = {}
+
+    def ingest_gt_labels(self):
+        if self.query == "clevrer_collision":
+            self.pos_frames, self.pos_frames_per_instance = self.clevrer_collision()
+        elif self.query in ["clevrer_far", "clevrer_near"]:
+            outfile_name = os.path.join("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/intermediate_results", "{}-{}.npz".format(self.query, self.thresh))
+            pos_frames_per_instance_outfile_name = os.path.join("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/intermediate_results", "{}-{}-pos_frames_per_instance.json".format(self.query, self.thresh))
+            if os.path.exists(outfile_name) and os.path.exists(pos_frames_per_instance_outfile_name):
+                npzfile = np.load(outfile_name)
+                self.spatial_features = npzfile["spatial_features"]
+                self.candidates = npzfile["candidates"]
+                self.Y = npzfile["Y"]
+                self.pos_frames = npzfile["pos_frames"]
+                self.spatial_feature_dim = 8
+                self.feature_names = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"]
+                with open(pos_frames_per_instance_outfile_name, 'r') as f:
+                    self.pos_frames_per_instance = json.loads(f.read())
+            else:
+                if self.query == "clevrer_far":
+                    self.clevrer_far()
+                elif self.query == "clevrer_near":
+                    self.clevrer_near()
+                np.savez(outfile_name, spatial_features=self.spatial_features, candidates=self.candidates, Y=self.Y, pos_frames=self.pos_frames)
+                # save raw_data_pair_level_evaluation to file
+                with open(pos_frames_per_instance_outfile_name, 'w') as f:
+                    f.write(json.dumps(self.pos_frames_per_instance))
+        self.n_positive_instances = len(self.pos_frames_per_instance)
+        self.avg_duration = 1.0 * len(self.pos_frames) / self.n_positive_instances
+        print("# positive frames: ", len(self.pos_frames), "; # distinct instances: ", self.n_positive_instances, "; average duration: ", self.avg_duration)
+        print("Durations of all instances: ")
+        print(" ".join([str(v[1]- v[0]) for _, v in self.pos_frames_per_instance.items()]))
+        temp = np.array([(v[1]- v[0]) for _, v in self.pos_frames_per_instance.items()])
+        print("duration std: ", temp.std())
+
 
     def ingest_bbox_info_clevrer_evaluation(self):
         # check if file exists
@@ -93,7 +140,7 @@ class TrainAndEvalProxyModel(Vocal):
                 # save raw_data_pair_level_evaluation to file
                 with open(raw_data_pair_level_evaluation_outfile_name, 'w') as f:
                     f.write(json.dumps(self.raw_data_pair_level_evaluation))
-        elif self.query == "clevrer_far":
+        elif self.query in ["clevrer_far", "clevrer_near"]:
             outfile_name = os.path.join("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/intermediate_results", "{}-{}-evaluation.npz".format(self.query, self.thresh))
             raw_data_pair_level_evaluation_outfile_name = "/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/intermediate_results/{}-{}-raw_data_pair_level_evaluation.json".format(self.query, self.thresh)
             if os.path.exists(outfile_name) and os.path.exists(raw_data_pair_level_evaluation_outfile_name):
@@ -105,7 +152,10 @@ class TrainAndEvalProxyModel(Vocal):
                 with open(raw_data_pair_level_evaluation_outfile_name, 'r') as f:
                     self.raw_data_pair_level_evaluation = json.loads(f.read())
             else:
-                self.spatial_features_evaluation, self.Y_evaluation, self.Y_pair_level_evaluation, self.feature_index, self.raw_data_pair_level_evaluation = eval("self." + self.query + "_evaluation()")
+                if self.query == "clevrer_near":
+                    self.clevrer_near_evaluation()
+                elif self.query == "clevrer_far":
+                    self.clevrer_far_evaluation()
                 np.savez(outfile_name, spatial_features_evaluation=self.spatial_features_evaluation, Y_evaluation=self.Y_evaluation, Y_pair_level_evaluation=self.Y_pair_level_evaluation, feature_index=self.feature_index)
                 # save raw_data_pair_level_evaluation to file
                 with open(raw_data_pair_level_evaluation_outfile_name, 'w') as f:
@@ -131,24 +181,24 @@ class TrainAndEvalProxyModel(Vocal):
                 self.model_performance_output.append(iteration_str)
                 self.eval_and_save_proxy_model()
                 # Save the random forest model
-                # joblib.dump(self.clf, "/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/models/random_forest_with_balanced_class_weights-{}-{}-original{}.joblib".format(num_trained, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""))
+                joblib.dump(self.clf, "/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/{}/models/random_forest-{}-{}-{}-original{}.joblib".format(self.query, self.thresh, num_trained, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""))
                 # loaded_rf = joblib.load("./random_forest.joblib")
             self.iteration += 1
 
         print("stats_per_chunk", self.stats_per_chunk)
         if self.query == "clevrer_collision":
             # save model_performance_output to txt file
-            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/{}-original-random_forest_with_balanced_class_weights{}.txt".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/{}-original-random_forest{}.txt".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
                 f.write(json.dumps(self.model_performance_output))
             # save self.sampled_fn_fp to json file
-            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/{}-original-random_forest_with_balanced_class_weights-sampled_fn_fp{}.json".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/{}-original-random_forest-sampled_fn_fp{}.json".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
                 f.write(json.dumps(self.sampled_fn_fp))
-        elif self.query == "clevrer_far":
+        elif self.query in ["clevrer_far", "clevrer_near"]:
             # save model_performance_output to txt file
-            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/{}/{}-{}-original-random_forest_with_balanced_class_weights{}.txt".format(self.query, self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/{}/{}-{}-original-random_forest{}.txt".format(self.query, self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
                 f.write(json.dumps(self.model_performance_output))
             # save self.sampled_fn_fp to json file
-            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/{}/{}-{}-original-random_forest_with_balanced_class_weights-sampled_fn_fp{}.json".format(self.query, self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
+            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/{}/{}-{}-original-random_forest-sampled_fn_fp{}.json".format(self.query, self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else ""), 'w') as f:
                 f.write(json.dumps(self.sampled_fn_fp))
         return self.plot_data_y_annotated, self.plot_data_y_materialized
 
@@ -189,10 +239,9 @@ class TrainAndEvalProxyModel(Vocal):
 
     def save_data(self, plot_data_y):
         if self.query == "clevrer_collision":
-            method =  "{}-original-random_forest_with_balanced_class_weights{}".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else "")
-            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/clevrer_collision/instances_found_speed/{}.json".format(method), 'w') as f:
-                f.write(json.dumps(plot_data_y.tolist()))
-        elif self.query == "clevrer_far":
-            method =  "{}-{}-original-random_forest_with_balanced_class_weights{}".format(self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else "")
-            with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/{}/instances_found_speed/{}.json".format(self.query, method), 'w') as f:
-                f.write(json.dumps(plot_data_y.tolist()))
+            method =  "{}-original-random_forest{}".format(self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else "")
+        elif self.query in ["clevrer_far", "clevrer_near"]:
+            method =  "{}-{}-original-random_forest{}".format(self.thresh, self.frame_selection_method, "-with_heuristic" if self.temporal_heuristic else "")
+
+        with open("/gscratch/balazinska/enhaoz/complex_event_video/src/outputs/{}/instances_found_speed/{}.json".format(self.query, method), 'w') as f:
+            f.write(json.dumps(plot_data_y.tolist()))
