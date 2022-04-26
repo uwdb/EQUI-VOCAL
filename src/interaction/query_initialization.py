@@ -15,6 +15,7 @@ class QueryInitializationMixin:
         """Input: raw frames Fr
         Output: n_0 materialized frames Fm_0, updated raw frames Fr_0, initial proxy model m_0
         """
+        print("self.pos_frames", self.pos_frames)
         while not (self.positive_frames_seen and self.negative_frames_seen):
             arr = self.materialized_frames * self.candidates
             frame_id = np.random.choice(arr.nonzero()[0])
