@@ -1,11 +1,12 @@
 from vocal.vocal import Vocal
-from vocal.train_and_eval_proxy_model import TrainAndEvalProxyModel
+from vocal.train_and_eval_proxy_model import TrainAndEvalProxyModel, ClevrerEdge
 
 
 if __name__ == '__main__':
     # logging.basicConfig(filename="output.log", encoding="utf-8", level=logging.INFO)
     # cevdb = TrainAndEvalProxyModel(dataset="clevrer", query="clevrer_near", temporal_heuristic=False, budget=1000, frame_selection_method="random", thresh=1.0)
     cevdb = TrainAndEvalProxyModel(dataset="clevrer", query="clevrer_far", temporal_heuristic=False, budget=1000, frame_selection_method="random", thresh=2.0)
+    cevdb = ClevrerEdge(dataset="clevrer", query="clevrer_edge", temporal_heuristic=False, budget=1000, frame_selection_method="least_confidence", thresh=20)
     # cevdb = ComplexEventVideoDB(dataset="clevrer", query="clevrer_collision", temporal_heuristic=False)
     plot_data_y_annotated, plot_data_y_materialized = cevdb.run()
     cevdb.save_data(plot_data_y_annotated)

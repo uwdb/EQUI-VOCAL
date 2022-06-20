@@ -27,7 +27,7 @@ materialized_batch_size = 16
 init_sampling_step = 1
 
 class Vocal(IngestBboxMixin, PrepareGroundTruthMixin, FrameSelectionMixin, ProxyModelTrainingMixin, UserFeedbackMixin, QueryInitializationMixin):
-    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL", thresh=1.0):
+    def __init__(self, dataset="visualroad_traffic2", query="test_b", temporal_heuristic=True, method="VOCAL"):
         self.annotated_batch_size = annotated_batch_size
         self.materialized_batch_size = materialized_batch_size
         self.init_sampling_step = init_sampling_step
@@ -35,7 +35,6 @@ class Vocal(IngestBboxMixin, PrepareGroundTruthMixin, FrameSelectionMixin, Proxy
         self.query = query
         self.temporal_heuristic = temporal_heuristic
         self.method = method
-        self.thresh = thresh
         # self.base_image_path = "/home/ubuntu/complex_event_video/data/car_turning_traffic2/neg/frame_0.jpg"
 
         """Read in object detection bounding box information
@@ -67,12 +66,12 @@ class Vocal(IngestBboxMixin, PrepareGroundTruthMixin, FrameSelectionMixin, Proxy
             self.feature_names,
             self.spatial_features
         """
-        if self.query != "clevrer_far" and self.query != "clevrer_near":
+        # TODO: check: commenting out this block should not affect the result
+        if self.query not in ["clevrer_far", "clevrer_near", "clevrer_edge", "clevrer_center"]:
             self.Y = np.zeros(self.n_frames, dtype=int)
             for i in range(self.n_frames):
                 if i in self.pos_frames:
                     self.Y[i] = 1
-
             self.filtering_stage()
 
         self.num_positive_instances_found = 0

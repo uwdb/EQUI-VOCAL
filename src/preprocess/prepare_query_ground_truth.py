@@ -8,7 +8,7 @@ import json
 import numpy as np
 import itertools
 import random
-from filter import construct_spatial_feature_spatial_relationship
+from filter import construct_spatial_feature_spatial_relationship, construct_spatial_feature
 
 class PrepareGroundTruthMixin:
     def turning_car_and_pedestrain_at_intersection(self):
@@ -513,6 +513,93 @@ class PrepareGroundTruthMixin:
         self.feature_index = np.asarray(self.feature_index)
         print("length of spatial_features_evaluation: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(self.spatial_features_evaluation), len(self.Y_pair_level_evaluation), len(self.feature_index)))
 
+    def clevrer_edge(self):
+        self._clevrer_center_or_edge(is_edge=True)
+
+    def clevrer_center(self):
+        self._clevrer_center_or_edge(is_edge=False)
+
+    def _clevrer_center_or_edge(self, is_edge):
+        self.pos_frames = []
+        self.pos_frames_per_instance = {}
+        num_instance = 0
+        n_frames = len(self.maskrcnn_bboxes)
+        self.spatial_feature_dim = 5
+        self.feature_names = ["x", "y", "w", "h", "r"]
+        self.spatial_features = np.zeros((n_frames, self.spatial_feature_dim), dtype=np.float64)
+        self.Y = np.zeros(n_frames, dtype=int)
+        self.candidates = np.full(n_frames, True, dtype=np.bool)
+
+        for video_basename, frame_offset, _ in self.video_list:
+            for frame_id in range(128):
+                res_per_frame = self.maskrcnn_bboxes["{}_{}".format(video_basename, frame_id)]
+                if len(res_per_frame) == 0:
+                    continue
+
+                positive_objects = []
+                for obj in res_per_frame:
+                    # e.g. thresh = 20
+                    if is_edge and self.distance_to_boundary(obj[:4]) <= self.thresh:
+                        positive_objects.append(obj)
+                    # e.g. thresh > 60
+                    elif not is_edge and self.distance_to_boundary(obj[:4]) > self.thresh:
+                        positive_objects.append(obj)
+
+                if len(positive_objects) > 0:
+                    obj = random.choice(positive_objects)
+                    self.spatial_features[frame_offset + frame_id] = construct_spatial_feature(obj[:4])
+                    self.Y[frame_offset + frame_id] = 1
+                    self.pos_frames.append(frame_offset + frame_id)
+                    self.pos_frames_per_instance[num_instance] = (frame_offset + frame_id, frame_offset + frame_id + 1, 0) # The third value is a flag: 0 represents no detections have been found; 1 represents detection with only one match
+                    num_instance += 1
+                else:
+                    obj = random.choice(res_per_frame, 1)
+                    self.spatial_features[frame_offset + frame_id] = construct_spatial_feature(obj[:4])
+
+    def clevrer_edge_evaluation(self):
+        self._clevrer_center_or_edge_evaluation(is_edge=True)
+
+    def clevrer_center_evaluation(self):
+        self._clevrer_center_or_edge_evaluation(is_edge=False)
+
+    def _clevrer_center_or_edge_evaluation(self, is_edge):
+        n_frames_evaluation = len(self.maskrcnn_bboxes_evaluation)
+        self.Y_evaluation = np.zeros(n_frames_evaluation, dtype=int)
+        self.spatial_features_evaluation = [] # List of lists. Row count: the total number of objects across all videos. Column count: dimension of spatial features (5)
+        self.Y_pair_level_evaluation = []
+        self.raw_data_pair_level_evaluation = []
+        self.feature_index = [] # A video can also have no pairwise relationships. In this case, the feature_index for that vid is empty.
+        for video_basename, frame_offset, _ in self.video_list_evaluation:
+            for frame_id in range(128):
+                res_per_frame = self.maskrcnn_bboxes_evaluation["{}_{}".format(video_basename, frame_id)]
+                if len(res_per_frame) == 0:
+                    continue
+
+                for obj in res_per_frame:
+                    # e.g. thresh = 20
+                    if is_edge and self.distance_to_boundary(obj[:4]) <= self.thresh:
+                        self.Y_evaluation[frame_offset + frame_id] = 1
+                        self.spatial_features_evaluation.append(construct_spatial_feature(obj[:4]))
+                        self.Y_pair_level_evaluation.append(1)
+                        self.raw_data_pair_level_evaluation.append([video_basename, frame_id, obj])
+                        self.feature_index.append(frame_offset + frame_id)
+                    # e.g. thresh > 60
+                    elif not is_edge and self.distance_to_boundary(obj[:4]) > self.thresh:
+                        self.Y_evaluation[frame_offset + frame_id] = 1
+                        self.spatial_features_evaluation.append(construct_spatial_feature(obj[:4]))
+                        self.Y_pair_level_evaluation.append(1)
+                        self.raw_data_pair_level_evaluation.append([video_basename, frame_id, obj])
+                        self.feature_index.append(frame_offset + frame_id)
+                    else:
+                        self.spatial_features_evaluation.append(construct_spatial_feature(obj[:4]))
+                        self.Y_pair_level_evaluation.append(0)
+                        self.raw_data_pair_level_evaluation.append([video_basename, frame_id, obj])
+                        self.feature_index.append(frame_offset + frame_id)
+
+        self.spatial_features_evaluation = np.stack(self.spatial_features_evaluation, axis=0)
+        self.Y_pair_level_evaluation = np.asarray(self.Y_pair_level_evaluation)
+        self.feature_index = np.asarray(self.feature_index)
+        print("length of spatial_features_evaluation: {}; Y_pair_level_evaluation : {}; feature_index: {}".format(len(self.spatial_features_evaluation), len(self.Y_pair_level_evaluation), len(self.feature_index)))
 
     @staticmethod
     def obj_distance(bbox1, bbox2):
@@ -523,3 +610,10 @@ class PrepareGroundTruthMixin:
         cx2 = (x3 + x4) / 2
         cy2 = (y3 + y4) / 2
         return math.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2) / ((x2 - x1 + y2 - y1 + x4 - x3 + y4 - y3) / 4)
+
+    @staticmethod
+    def distance_to_boundary(bbox):
+        x1, y1, x2, y2 = bbox
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+        return min(cx, 480 - cx, cy, 320 - cy)
