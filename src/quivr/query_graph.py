@@ -1,19 +1,6 @@
 import copy
 import dsl
 
-
-# class QueryNode(object):
-
-#     def __init__(self, program, score, parent, depth, cost, order):
-#         self.score = score
-#         self.program = program
-#         self.children = []
-#         self.parent = parent
-#         self.depth = depth
-#         self.cost = cost
-#         self.order = order
-
-
 class QueryGraph(object):
 
     def __init__(self, max_num_atomic_predicates, max_depth):
@@ -22,14 +9,12 @@ class QueryGraph(object):
         self.max_num_atomic_predicates = 0
 
         start = dsl.StartOperator()
-        # self.root_node = QueryNode(start, 0, None, 0, 0, 0)
-        # self.score = score
         self.program = start
-        # self.children = []
-        # self.parent = parent
         self.depth = 0
-        # self.cost = cost
-        # self.order = order
+        self.num_atomic_predicates = 0
+
+        # Memoize the results of sub-queries across all queries encountered during synthesis.
+        self.memoize = {}
 
     def get_parameter_holes_and_value_space(self):
         parameter_holes = []
@@ -88,6 +73,8 @@ class QueryGraph(object):
 
 
     def get_all_children(self):
+        """ Each child of Q is obtained by filling in one predicate hole using an applicable operator.
+        """
         # Fill the predicate hole that is found first (BFS).
         all_children = []
         # child_depth = self.depth + 1
@@ -101,16 +88,18 @@ class QueryGraph(object):
                 if issubclass(type(functionclass), dsl.Predicate):
                     continue
                 if isinstance(functionclass, dsl.PredicateHole):
-                    replacement_candidates = self.construct_candidates()
+                    replacement_candidates = self.construct_candidates(current, submod)
                     orig_fclass = copy.deepcopy(current.submodules[submod])
                     for child_candidate, inc_depth in replacement_candidates:
                         # replace the neural function with a candidate
                         current.submodules[submod] = child_candidate
                         # create the correct child node
                         new_query_graph = copy.deepcopy(self)
+                        if (issubclass(type(functionclass), dsl.Predicate) and not isinstance(functionclass, dsl.TrueStar)) or isinstance(functionclass, dsl.ParameterHole):
+                            new_query_graph.num_atomic_predicates += 1
                         new_query_graph.depth = self.depth + inc_depth
                         # check if child program can be completed within max_depth
-                        if new_query_graph.depth > self.max_depth:
+                        if new_query_graph.depth > new_query_graph.max_depth or new_query_graph.num_atomic_predicates > new_query_graph.max_num_atomic_predicates:
                             continue
                         # if yes, compute costs and add to list of children
                         all_children.append(new_query_graph)
@@ -122,9 +111,49 @@ class QueryGraph(object):
                     queue.append(functionclass)
         return all_children
 
-    def construct_candidates(self):
+    def construct_candidates(self, parent_functionclass, submod):
         candidates = []
-        replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength, dsl.TrueStar]
+        if isinstance(parent_functionclass, dsl.KleeneOperator):
+            # omit nested Kleene star operators and Kleene star around sequencing; also Kleene star around <True>* or MinLength doesn't make sense
+            replacement_candidates = [dsl.ConjunctionOperator, dsl.Near, dsl.Far]
+        elif isinstance(parent_functionclass, dsl.SequencingOperator):
+            if submod == "function1":
+                # MinLength shouldn't appear in sequencing
+                replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.TrueStar]
+            else:
+                # Remove sequencing MinLength; remove semantically equivalent duplicates: associativity of sequencing
+                replacement_candidates = [dsl.ConjunctionOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.TrueStar]
+        elif isinstance(parent_functionclass, dsl.ConjunctionOperator):
+            if submod == "function1":
+                replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength]
+            else:
+                left_child = parent_functionclass.submodules["function1"]
+                # remove semantically equivalent duplicates: associativity of conjunction and commutativity of conjunction
+                if isinstance(left_child, dsl.ConjunctionOperator):
+                    replacement_candidates = [dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength]
+                elif isinstance(left_child, dsl.SequencingOperator):
+                    replacement_candidates = [dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength]
+                elif isinstance(left_child, dsl.KleeneOperator):
+                    replacement_candidates = [dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength]
+                elif isinstance(left_child, dsl.TrueStar):
+                    replacement_candidates = [dsl.Near, dsl.Far, dsl.MinLength]
+                elif isinstance(left_child, dsl.ParameterHole):
+                    if isinstance(left_child.get_predicate(), dsl.Near):
+                        replacement_candidates = [dsl.Far, dsl.MinLength]
+                    elif isinstance(left_child.get_predicate(), dsl.Far):
+                        replacement_candidates = [dsl.MinLength]
+                    elif isinstance(left_child.get_predicate(), dsl.MinLength):
+                        replacement_candidates = []
+                else:
+                    raise ValueError
+                # elif isinstance(left_child, dsl.Near):
+                #     replacement_candidates = [dsl.Far, dsl.MinLength]
+                # elif isinstance(left_child, dsl.Far):
+                #     replacement_candidates = [dsl.MinLength]
+                # elif isinstance(left_child, dsl.MinLength):
+                #     replacement_candidates = []
+        else:
+            replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength, dsl.TrueStar]
         for functionclass in replacement_candidates:
             if issubclass(functionclass, dsl.Predicate):
                 if functionclass.has_theta:
