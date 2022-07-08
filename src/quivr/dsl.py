@@ -7,7 +7,7 @@ from pprint import pprint
 import math
 import copy
 import numpy as np
-from quivr.logging import print_program
+import utils
 
 # (predicate), conjunction, sequencing, Kleene star, finite k iteration
 # Omit nested Kleene star operators, as well as Kleene star around sequencing.
@@ -54,7 +54,7 @@ class ConjunctionOperator(BaseOperator):
         super().__init__(submodules, name="Conjunction")
 
     def execute(self, input, label, memoize):
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         res1, memoize = self.submodules["function1"].execute(input, label, memoize)
@@ -74,7 +74,7 @@ class SequencingOperator(BaseOperator):
 
     def execute(self, input, label, memoize):
         # TODO: Make sure when len(input) > 2, all trajectories have the same length
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         result = np.amax(np.minimum(self.submodules["function1"].execute(input, label, memoize)[0][..., np.newaxis], self.submodules["function2"].execute(input, label, memoize)[0][np.newaxis, ...]), axis=1)
@@ -90,7 +90,7 @@ class IterationOperator(BaseOperator):
         super().__init__(submodules, name="Iteration")
 
     def execute(self, input, label, memoize):
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         result = self.execute_helper(self.k, input, label, memoize)
@@ -120,7 +120,7 @@ class KleeneOperator(BaseOperator):
         super().__init__(submodules, name="Kleene")
 
     def execute(self, input, label, memoize):
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         identity_mtx = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
@@ -165,7 +165,7 @@ class Near(Predicate):
 
     def execute_with_hole(self, input, label, memoize):
         assert len(input) == 2
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
@@ -180,7 +180,7 @@ class Near(Predicate):
 
         assert len(input) == 2
 
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
@@ -204,7 +204,7 @@ class Far(Predicate):
 
     def execute_with_hole(self, input, label, memoize):
         assert len(input) == 2
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
@@ -218,7 +218,7 @@ class Far(Predicate):
             return self.execute_with_hole(input, label, memoize)
 
         assert len(input) == 2
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
@@ -235,7 +235,7 @@ class TrueStar(Predicate):
         super().__init__("True*")
 
     def execute(self, input, label, memoize):
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
 
@@ -259,7 +259,7 @@ class MinLength(Predicate):
         return [1, 10]
 
     def execute_with_hole(self, input, label, memoize):
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
 
@@ -274,7 +274,7 @@ class MinLength(Predicate):
         if self.with_hole:
             return self.execute_with_hole(input, label, memoize)
 
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
 
@@ -306,7 +306,7 @@ class PredicateHole(Hole):
         super().__init__("PredicateHole")
 
     def execute(self, input, label, memoize):
-        subquery_str = print_program(self)
+        subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         if label == 1:
