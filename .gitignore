@@ -18,3 +18,4 @@ __pycache__/
 src/datalog/souffle/*
 *.deb
 *.npz
+*.log
