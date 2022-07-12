@@ -6,7 +6,6 @@ class QueryGraph(object):
     def __init__(self, max_num_atomic_predicates, max_depth):
         self.max_num_atomic_predicates = max_num_atomic_predicates
         self.max_depth = max_depth
-        self.max_num_atomic_predicates = 0
 
         start = dsl.StartOperator()
         self.program = start
@@ -97,7 +96,7 @@ class QueryGraph(object):
                         current.submodules[submod] = child_candidate
                         # create the correct child node
                         new_query_graph = copy.deepcopy(self)
-                        if (issubclass(type(functionclass), dsl.Predicate) and not isinstance(functionclass, dsl.TrueStar)) or isinstance(functionclass, dsl.ParameterHole):
+                        if (issubclass(type(child_candidate), dsl.Predicate) and not isinstance(child_candidate, dsl.TrueStar)) or isinstance(child_candidate, dsl.ParameterHole):
                             new_query_graph.num_atomic_predicates += 1
                         new_query_graph.depth = self.depth + inc_depth
                         # check if child program can be completed within max_depth
