@@ -157,6 +157,7 @@ class QUIVR:
         if QueryGraph.is_complete(current_query):
             # print("here3")
             self.consistent_queries.append(current_query)
+            return
         queue = [current_query]
         while len(queue) != 0:
             current = queue.pop(0)
