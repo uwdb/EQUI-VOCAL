@@ -201,6 +201,7 @@ class VOCAL:
                 query_graph.program = current_query
                 print("add complete query", print_program(current_query))
                 self.candidate_list.append([query_graph, score])
+            return
         queue = [current_query]
         while len(queue) != 0:
             current = queue.pop(0)
