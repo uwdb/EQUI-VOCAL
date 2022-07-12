@@ -1,22 +1,21 @@
 """
-queue = [??]
-candidates_list = []
+candidates_list = [(??, 1, 0, 0)]  // (query_graph, f1_score, npred, depth)
 answer_list = []
 
-while queue not empty:
-    Q = queue.pop()
-    score = compute_f1_score(Q) // using over-/under-approximation
-    if score < 0.5:
-        continue
-    else if Q is a sketch:
-        Computes all parameters for Q that give f1 score > 0.5 over the inputs (for each parameter in Q,
-        compute its largest/smallest possible value when over-/under-approximating all other parameters).
-        Add them to candidates_list
-    else:
-        Add all the children of Q to queue
+while candidates_list not empty:
+    new_candidates_list = []
+    for Q, s in candidates_list:
+        Compute all the children of Q and their scores.
+        if child is a sketch:
+            Compute all parameters for Q and their scores.
+            Add them to answer_list
+        else:
+            Add (child, score, npred, depth) to new_candidates_list.
+    Keep the top k queries based on F1 score in new_candidates_list and prune the rest.
+    candidates_list = new_candidates_list
 
-for Q in candidates_list:
-    if compute_f1_score(Q) > 0.5, add it to answer_list
+for Q, s in answer_list:
+    Recompute f1 score for Q.
 
 return sorted answer_list
 """
@@ -34,21 +33,18 @@ from scipy import stats
 class QUIVRSoft:
 
     def __init__(self, max_num_programs=100, max_num_atomic_predicates=5,
-        max_depth=2, k1=10, k2=20, thresh=0.5):
+        max_depth=3, k=32):
         self.max_num_programs = max_num_programs
         self.max_num_atomic_predicates = max_num_atomic_predicates
         self.max_depth = max_depth
 
-        self.enumerate_all_candidates_time = 0
-        self.prune_partial_query_time = 0
-        self.prune_parameter_values_time = 0
-        self.find_children_time = 0
-
-        self.k1 = k1
-        self.k2 = k2
-        self.thresh = thresh
+        self.update_answer_list_score_time = 0
+        self.fill_parameter_holes_time = 0
+        self.compute_score_time = 0
+        self.k = k
 
     def run(self, inputs, labels):
+        _start_total_time = time.time()
         self.inputs = inputs
         self.labels = labels
         self.memoize_all_inputs = [{} for _ in range(len(inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
@@ -56,45 +52,42 @@ class QUIVRSoft:
         # Initialize program graph
         query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
 
-        queue = [query_graph]
+        candidate_list = [[query_graph, 1, 0, 0]]
         self.consistent_queries = []
-        while len(queue) != 0:
-            current_query_graph = queue.pop(0) # Pop the last element
-            current_query = current_query_graph.program
-            # print("current_query", utils.print_program(current_query))
-            # IF: overapproximation doesn't match, prune Q
-            _start_prune_partial_query = time.time()
-            score = self.compute_query_score(current_query)
-            if score < self.thresh:
-                continue
-            self.prune_partial_query_time += time.time() - _start_prune_partial_query
-            # ELSE IF: Q is sketch, computes all parameters for Q that are consistent with inputs, and adds them to the final list.
-            if current_query_graph.is_sketch(current_query):
-                _start_prune_parameter_values = time.time()
-                print("current_query", utils.print_program(current_query))
-                self.fill_all_parameter_holes(current_query) # not pruning parameter values
-                # self.prune_parameter_values(current_query, inputs, labels)
-                self.prune_parameter_values_time += time.time() - _start_prune_parameter_values
-            # ELSE: adds all the children of Q to queue.
-            else:
-                _start_find_children = time.time()
+        while len(candidate_list) > 0:
+            new_candidate_list = []
+            for current_query_graph, score, _, _ in candidate_list:
+                current_query = current_query_graph.program
                 all_children = current_query_graph.get_all_children("vocal")
-                queue.extend(all_children)
-                self.find_children_time += time.time() - _start_find_children
+                for child in all_children:
+                    if QueryGraph.is_sketch(child.program):
+                        _start_fill_parameter_holes = time.time()
+                        print("sketch query", utils.print_program(child.program))
+                        self.fill_all_parameter_holes(child.program) # not pruning parameter values
+                        # self.prune_parameter_values(current_query, inputs, labels)
+                        self.fill_parameter_holes_time += time.time() - _start_fill_parameter_holes
+                    else:
+                        _start_compute_score = time.time()
+                        score = self.compute_query_score(child.program)
+                        new_candidate_list.append([child, score, child.num_atomic_predicates, child.depth])
+                        self.compute_score_time += time.time() - _start_compute_score
+            candidate_list = sorted(new_candidate_list, key=lambda x: (-x[1], -x[2], x[3]))[:self.k]
+            print("candidate list count", len(candidate_list))
+            for q, s, npred, depth in candidate_list:
+                print("candidate query", utils.print_program(q.program), s, npred, depth)
+
 
         # RETURN: the list. Need to enumerate over all possible queries to omit ones that are inconsistenet with W.
         answer = []
-        print("candidate queries size", len(self.consistent_queries))
         # return answer
         _start = time.time()
-        for candidate_query in self.consistent_queries:
-            print("candidate query", utils.print_program(candidate_query))
-            score = self.compute_query_score(candidate_query)
-            answer.append([candidate_query, score])
-        self.enumerate_all_candidates_time += time.time() - _start
-        print("[Runtime] enumerate all candidates time: {}, prune partial query time: {}, prune parameter values time: {}, find children time: {}".format(self.enumerate_all_candidates_time, self.prune_partial_query_time, self.prune_parameter_values_time, self.find_children_time))
-        print(self.memoize_all_inputs[0].keys())
+        for current_query, score in self.consistent_queries:
+            # print("complete query", utils.print_program(current_query), score)
+            score = self.compute_query_score(current_query)
+            answer.append([current_query, score])
+        self.update_answer_list_score_time += time.time() - _start
         answer = sorted(answer, key=lambda x: x[1], reverse=True)
+        print("[Runtime] update answer list score time: {}, fill parameter holes time: {}, compute score time: {}, total time: {}".format(self.update_answer_list_score_time, self.fill_parameter_holes_time, self.compute_score_time, time.time() - _start_total_time))
         return answer
 
 
@@ -151,8 +144,8 @@ class QUIVRSoft:
     def fill_all_parameter_holes(self, current_query):
         if QueryGraph.is_complete(current_query):
             score = self.compute_query_score(current_query)
-            if score > self.thresh:
-                self.consistent_queries.append(current_query)
+            self.consistent_queries.append([current_query, score])
+            return
         queue = [current_query]
         while len(queue) != 0:
             current = queue.pop(0)
