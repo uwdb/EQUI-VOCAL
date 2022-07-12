@@ -89,10 +89,15 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, program_str):
     inputs = np.asarray(inputs, dtype=object)
     labels = np.asarray(labels, dtype=object)
 
-    sampled_pos_index = [2340, 133, 1756, 1976, 2367, 60, 844, 1894, 2012, 1136, 656, 140, 2132, 2007, 1342, 311, 1023, 1479, 182, 1721, 568, 1454, 1563, 1725, 1161, 1074, 1871, 715, 1241, 1485, 544, 980, 1800, 1536, 181, 2387, 16, 965, 548, 798, 1240, 2196, 1499, 983, 1287, 2248, 1845, 1785, 1925, 266]
-    sampled_neg_index = [13155, 12034, 7776, 10680, 5019, 6131, 9221, 6362, 8912, 5132, 10593, 7391, 12396, 13235, 3637, 11197, 3783, 4909, 8755, 11750, 8587, 12308, 4307, 4039, 9691, 5182, 5585, 8169, 9555, 9241, 9757, 6478, 13611, 6957, 4808, 12570, 11007, 5380, 4414, 6831, 9923, 7414, 5159, 13277, 13085, 5312, 5342, 10323, 8151, 6542]
-    inputs = inputs[sampled_pos_index[:n_labeled_pos]].tolist() + inputs[sampled_neg_index[:n_labeled_neg]].tolist()
-    labels = labels[sampled_pos_index[:n_labeled_pos]].tolist() + labels[sampled_neg_index[:n_labeled_neg]].tolist()
+    # sampled_pos_index = [2340, 133, 1756, 1976, 2367, 60, 844, 1894, 2012, 1136, 656, 140, 2132, 2007, 1342, 311, 1023, 1479, 182, 1721, 568, 1454, 1563, 1725, 1161, 1074, 1871, 715, 1241, 1485, 544, 980, 1800, 1536, 181, 2387, 16, 965, 548, 798, 1240, 2196, 1499, 983, 1287, 2248, 1845, 1785, 1925, 266]
+    # sampled_neg_index = [13155, 12034, 7776, 10680, 5019, 6131, 9221, 6362, 8912, 5132, 10593, 7391, 12396, 13235, 3637, 11197, 3783, 4909, 8755, 11750, 8587, 12308, 4307, 4039, 9691, 5182, 5585, 8169, 9555, 9241, 9757, 6478, 13611, 6957, 4808, 12570, 11007, 5380, 4414, 6831, 9923, 7414, 5159, 13277, 13085, 5312, 5342, 10323, 8151, 6542]
+    # inputs = inputs[sampled_pos_index[:n_labeled_pos]].tolist() + inputs[sampled_neg_index[:n_labeled_neg]].tolist()
+    # labels = labels[sampled_pos_index[:n_labeled_pos]].tolist() + labels[sampled_neg_index[:n_labeled_neg]].tolist()
+
+    n_pos = sum(labels)
+    sampled_labeled_index = random.sample(list(range(n_pos)), n_labeled_pos) + random.sample(list(range(n_pos, len(labels))), n_labeled_neg)
+    inputs = inputs[sampled_labeled_index]
+    labels = labels[sampled_labeled_index]
 
     memoize_all_inputs = [{} for _ in range(len(inputs))]
 
@@ -105,5 +110,6 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, program_str):
 if __name__ == '__main__':
     # test_quivr_answer_correctness(10, 10)
     # test_quivr_soft(50, 50, "Start(Sequencing(True*, Conjunction(Sequencing(Near_1.05, True*), MinLength_2.0)))") # 0.951
-    test_quivr_soft(10, 50, "Start(Sequencing(True*, Conjunction(Sequencing(Near_1.05, True*), MinLength_2.0)))") # 0.783 "near and last frame not near"
+    # test_quivr_soft(10, 50, "Start(Sequencing(True*, Conjunction(Sequencing(Near_1.05, True*), MinLength_2.0)))") # 0.783 "near and last frame not near"
     # test_quivr_soft(10, 50, "Start(Sequencing(True*, Sequencing(Far_1.1, Sequencing(True*, Sequencing(Near_1.05, True*)))))") # 0.75 “far, near"
+    test_quivr_soft(10, 50, "Start(Sequencing(True*, Conjunction(Sequencing(Near_1.05, True*), MinLength_9.0)))")

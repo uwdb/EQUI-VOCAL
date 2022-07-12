@@ -8,6 +8,7 @@ import math
 import numpy as np
 from sklearn.metrics import f1_score
 import argparse
+import sys
 
 random.seed(10)
 
@@ -64,7 +65,7 @@ def test_quivr_exact(n_labeled_pos, n_labeled_neg):
     for q in answer:
         print(print_program(q))
 
-def test_quivr_soft(n_labeled_pos, n_labeled_neg):
+def test_quivr_soft(n_labeled_pos, n_labeled_neg, max_num_atomic_predicates, max_depth, k):
     # read from json file
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_inputs.json", 'r') as f:
         inputs = json.load(f)
@@ -82,7 +83,7 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg):
     inputs = inputs[sampled_labeled_index]
     labels = labels[sampled_labeled_index]
 
-    algorithm = QUIVRSoft(max_depth=3)
+    algorithm = QUIVRSoft(max_num_atomic_predicates=max_num_atomic_predicates, max_depth=max_depth, k=k)
     answer = algorithm.run(inputs, labels)
     print("answer", len(answer))
     for q, s in answer:
@@ -154,15 +155,25 @@ if __name__ == '__main__':
     ap.add_argument('--method', type=str)
     ap.add_argument('--n_labeled_pos', type=int)
     ap.add_argument('--n_labeled_neg', type=int)
+    ap.add_argument('--npred', type=int, default=5)
+    ap.add_argument('--depth', type=int, default=3)
+    ap.add_argument('--k', type=int, default=32)
     args = ap.parse_args()
     method_str = args.method
     n_labeled_pos = args.n_labeled_pos
     n_labeled_neg = args.n_labeled_neg
-    print("method:", method_str, "n_labeled_pos:", n_labeled_pos, "n_labeled_neg:", n_labeled_neg)
-    if method_str == 'quivr':
-        test_quivr_exact(n_labeled_pos, n_labeled_neg)
-    elif method_str == 'vocal':
-        test_vocal()
-    elif method_str == 'quivr_soft':
-        test_quivr_soft(n_labeled_pos, n_labeled_neg)
-    # test_program("Start(Sequencing(Sequencing(True*, Conjunction(Kleene(Near_1.05), MinLength_1.0)), True*))") # 0.8130
+    npred = args.npred
+    depth = args.depth
+    k = args.k
+
+    with open("outputs/{}/{}-npos_{}-nneg_{}-npred_{}-depth_{}-k_{}.log".format(method_str, method_str, n_labeled_pos, n_labeled_neg, npred, depth, k), 'w') as f:
+        sys.stdout = f
+
+        print("method:", method_str, "n_labeled_pos:", n_labeled_pos, "n_labeled_neg:", n_labeled_neg)
+        if method_str == 'quivr':
+            test_quivr_exact(n_labeled_pos, n_labeled_neg)
+        elif method_str == 'vocal':
+            test_vocal()
+        elif method_str == 'quivr_soft':
+            test_quivr_soft(n_labeled_pos, n_labeled_neg, npred, depth, k)
+        # test_program("Start(Sequencing(Sequencing(True*, Conjunction(Kleene(Near_1.05), MinLength_1.0)), True*))") # 0.8130
