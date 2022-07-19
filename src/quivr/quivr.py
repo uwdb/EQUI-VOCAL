@@ -1,4 +1,7 @@
 """
+The implementation of the QUIVR baseline algorithm, which uses hard constraints to prune intermediate queries.
+
+Algorithm (pseudocode):
 queue = [??]
 candidates_list = []
 answer_list = []
