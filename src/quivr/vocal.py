@@ -1,56 +1,25 @@
-"""
-User initializes hard constraints (e.g., must have a red cube)
-
-labeled_data = [10 positive and negative examples]
-candidates_list = [("red cube" and ??, score)]
-
-// Generate K1 candidates from the initial query
-while len(candidates_list) < K1:
-    Compute all the children of Q.
-    For each child Q':
-        compute the score of Q' based on FN lower bound (using overapproximation), FP lower bound (using underapproximation), and structure (or depth) of query. Add (Q', score) to candidates_list
-
-while len(labeled_data) < N:
-    // Pick next data to label
-    For each top K1 query in candidates_list:
-        compute the weight of each query, and select the next video segment to label based on (weighted) disagreement among the top K1 queries.
-        add the selected video segment to labeled_data.
-    // Update scores
-    For each top K2 query Q' in candidates_list:
-        Update the score of Q'.
-    // Expand search space
-    Find the query Q with the highest score in candidates_list that is incomplete.
-    Find all the children of Q.
-    For each child Q':
-        if Q' is a sketch:
-            compute all parameters for Q' that are at least x% consistent with W (for each parameter in Q', compute its largest/smallest possible value when overapproximating all other parameters).
-            add them along with their scores to candidates_list
-        else:
-            add (Q', score) to candidates_list
-"""
-
-from utils import print_program, str_to_program
-from mimetypes import init
-from query_graph import QueryGraph
-import dsl
+from utils_bu import print_program, str_to_program
+from query_graph_bu import QueryGraph
+import dsl_bu as dsl
 import copy
 import numpy as np
 import time
 from sklearn.metrics import f1_score
 from scipy import stats
+import itertools
+import sys
 
 class VOCAL:
 
     def __init__(self, inputs, labels, max_num_programs=100, max_num_atomic_predicates=5,
-        max_depth=2, k1=10, k2=20, budget=100, thresh=0.5):
+        max_depth=2, k1=10, k2=20, budget=200, thresh=0.5):
         self.max_num_programs = max_num_programs
         self.max_num_atomic_predicates = max_num_atomic_predicates
         self.max_depth = max_depth
 
-        self.enumerate_all_candidates_time = 0
-        self.prune_partial_query_time = 0
-        self.prune_parameter_values_time = 0
-        self.find_children_time = 0
+        self.query_expansion_time = 0
+        self.segment_selection_time = 0
+        self.retain_top_k2_queries_time = 0
 
         self.k1 = k1
         self.k2 = k2
@@ -60,87 +29,91 @@ class VOCAL:
         self.inputs = np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
 
+        self.answers = []
+
     def run(self, init_labeled_index):
+        _start_total_time = time.time()
         self.labeled_index = init_labeled_index
         self.memoize_all_inputs = [{} for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
 
         # Initialize program graph
-        query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
+        self.candidate_queries = []
+        predicate_dict = {dsl.Near: [-0.85, -1.05, -1.25], dsl.Far: [0.9, 1.1, 1.3]}
+        for pred in predicate_dict:
+            for param in predicate_dict[pred]:
+                query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
+                query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred(param)), dsl.TrueStar())
+                query_graph.num_atomic_predicates = 1
+                query_graph.depth = 1
+                self.candidate_queries.append(query_graph)
+                score = self.compute_query_score(query_graph.program, query_graph.depth)
+                print("initialization", print_program(query_graph.program), score)
+                self.answers.append([query_graph, score])
 
-        queue = [query_graph]
-        self.consistent_queries = []
-
-        score = self.compute_query_score(query_graph.program)
-        self.candidate_list = [[query_graph, score]]
-        print("compute init query score")
-        print(print_program(query_graph.program), score)
-        print("compute init k queries scores")
-        while len(self.candidate_list) < self.k1:
-            current_query_graph, _ = self.candidate_list.pop(0)
-            current_query = current_query_graph.program
-            all_children = current_query_graph.get_all_children("vocal")
-            for child in all_children:
-                score = self.compute_query_score(child.program)
-                self.candidate_list.append([child, score])
-                print(print_program(child.program), score)
-
-        while len(queue) != 0 and len(self.labeled_index) < self.budget:
-            print("number of labeled data", len(self.labeled_index))
-            sorted_candidate_list = sorted(self.candidate_list, key=lambda x: x[1], reverse=True)[:self.k1]
-            video_segment_id = self.pick_next_segment(sorted_candidate_list)
-            print("pick next segment", video_segment_id)
-            self.labeled_index.append(video_segment_id)
-            # assert labeled_index does not contain duplicates
-            assert(len(self.labeled_index) == len(set(self.labeled_index)))
-
-            sorted_idx = [i[0] for i in sorted(enumerate(self.candidate_list), key=lambda x: x[1][1], reverse=True)][:self.k2]
-
-            for i in sorted_idx:
-                self.candidate_list[i][1] = self.compute_query_score(self.candidate_list[i][0].program)
-
-            # Expand search space
-            sorted_idx = [i[0] for i in sorted(enumerate(self.candidate_list), key=lambda x: x[1][1], reverse=True)][:self.k2]
-            for i in sorted_idx:
-                current_query_graph = self.candidate_list[i][0]
+        while len(self.candidate_queries) and len(self.labeled_index) < self.budget:
+            # Generate more queries
+            _start_query_expansion_time = time.time()
+            new_candidate_queries = []
+            scores = []
+            for current_query_graph in self.candidate_queries:
                 current_query = current_query_graph.program
-                if not QueryGraph.is_complete(current_query):
-                    print("expand search space", print_program(current_query))
-                    del self.candidate_list[i]
-                    break
-            all_children = current_query_graph.get_all_children("vocal")
-            for child in all_children:
-                if QueryGraph.is_sketch(child.program):
-                    self.fill_all_parameter_holes(child.program)
-                    # self.prune_parameter_values(child.program)
-                else:
-                    score = self.compute_query_score(child.program)
-                    self.candidate_list.append([child, score])
-            print("end of iteration", sum(self.labels[self.labeled_index]), len(self.labeled_index)-sum(self.labels[self.labeled_index]))
-            print("candidate list")
-            for graph, score in self.candidate_list:
-                print(print_program(graph.program), score)
-            print("top k queries")
-            n_answer = 10
-            answer = []
-            sorted_candidate_list = sorted(self.candidate_list, key=lambda x: x[1], reverse=True)
-            for query_graph, score in sorted_candidate_list:
-                if QueryGraph.is_complete(query_graph.program):
-                    answer.append([query_graph.program, score])
-                    if len(answer) == n_answer:
-                        break
-            for q, s in answer:
-                print(print_program(q), s)
+                # print("expand search space", print_program(current_query))
+                all_children = current_query_graph.get_all_children_bu()
+                # Compute F1 score of each candidate query
+                for child in all_children:
+                    score = self.compute_query_score(child.program, child.depth)
+                    if score > 0:
+                        new_candidate_queries.append(child)
+                        scores.append(score)
+                        self.answers.append([child, score])
+                        # print(print_program(child.program), score)
+            self.query_expansion_time += time.time() - _start_query_expansion_time
+
+            # # Sample k1 queries
+            # weight = np.array(scores)
+            # weight = weight / np.sum(weight)
+            # candidate_idx = np.random.choice(np.arange(len(new_candidate_queries)), size=min(self.k1, len(new_candidate_queries)), replace=False, p=weight)
+            # print("candidate_idx", candidate_idx)
+            # new_candidate_queries = np.asarray(new_candidate_queries)
+            # scores = np.asarray(scores)
+            # self.candidate_queries = new_candidate_queries[candidate_idx]
+            # scores = scores[candidate_idx]
+            # print("k1 queries", [(print_program(query.program), score) for query, score in zip(self.candidate_queries, scores)])
+
+            # Baseline: keep all queries
+            self.candidate_queries = new_candidate_queries
+
+            print("size of queue", sys.getsizeof(self.candidate_queries))
+            print("size of cache", sys.getsizeof(self.memoize_all_inputs))
+
+            # Retain the top k2 queries with the highest scores as answers
+            _start_retain_top_k2_queries_time = time.time()
+            # for i in range(len(self.answers)):
+            #     self.answers[i][1] = self.compute_query_score(self.answers[i][0].program, self.answers[i][0].depth)
+            self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
+            self.answers = self.answers[:self.k2]
+            print("top k2 queries", [(print_program(query.program), score) for query, score in self.answers])
+            self.retain_top_k2_queries_time += time.time() - _start_retain_top_k2_queries_time
+
+            # # Select new video segments to label
+            # _start_segmnet_selection_time = time.time()
+            # # video_segment_ids = self.pick_next_segment()
+            # video_segment_ids = self.pick_next_segment_model_picker()
+            # print("pick next segments", video_segment_ids)
+            # self.labeled_index += video_segment_ids
+            # print("# labeled segments", len(self.labeled_index))
+            # # assert labeled_index does not contain duplicates
+            # assert(len(self.labeled_index) == len(set(self.labeled_index)))
+            # self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
         # RETURN: the list.
-        n_answer = 10
-        answer = []
-        sorted_candidate_list = sorted(self.candidate_list, key=lambda x: x[1], reverse=True)
-        for query_graph, score in sorted_candidate_list:
-            if QueryGraph.is_complete(query_graph.program):
-                answer.append(query_graph.program)
-                if len(answer) == n_answer:
-                    break
-        return answer
+        print("final_answers")
+        for query_graph, score in self.answers:
+            print("answer", print_program(query_graph.program), score)
+
+        print("[Runtime] query expansion time: {}, segment selection time: {}, retain top k2 queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k2_queries_time, time.time() - _start_total_time))
+
+        return self.answers
 
     def prune_parameter_values(self, current_query, inputs, labels):
         # current_query is sketch (containing only parameter holes)
@@ -232,21 +205,68 @@ class VOCAL:
                     #add submodules
                     queue.append(functionclass)
 
-    def compute_query_score(self, current_query):
+    def exhaustive_search(self):
+        self.labeled_index = list(range(len(self.labels)))
+        _start_total_time = time.time()
+        self.memoize_all_inputs = [{} for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+
+        # Initialize program graph
+        self.candidate_queries = []
+        predicate_dict = {dsl.Near: [-0.85, -1.05, -1.25], dsl.Far: [0.9, 1.1, 1.3]}
+        for pred in predicate_dict:
+            for param in predicate_dict[pred]:
+                query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
+                query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred(param)), dsl.TrueStar())
+                query_graph.num_atomic_predicates = 1
+                query_graph.depth = 1
+                self.candidate_queries.append(query_graph)
+
+        for current_query_graph in self.candidate_queries:
+            self.dfs(current_query_graph)
+
+        # RETURN: the list.
+        print("final_answers")
+        for query_graph, score in self.answers:
+            print("answer", print_program(query_graph.program), score)
+
+        print("[Runtime] total time: {}".format(time.time() - _start_total_time))
+
+        return self.answers
+
+    def dfs(self, current_query_graph):
+        print("expand search space", print_program(current_query_graph.program))
+        all_children = current_query_graph.get_all_children_bu()
+        # Compute F1 score of each candidate query
+        for child in all_children:
+            self.dfs(child)
+        score = self.compute_query_score(current_query_graph.program, current_query_graph.depth)
+        print("add query", print_program(current_query_graph.program), score)
+        if score > 0:
+            self.answers.append([current_query_graph, score])
+            self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
+            self.answers = self.answers[:self.k2]
+
+    def compute_query_score(self, current_query, depth):
         y_pred = []
         # for i, (input, label) in enumerate(zip(self.inputs, self.labels)):
         for i in self.labeled_index:
             input = self.inputs[i]
             label = self.labels[i]
             memoize = self.memoize_all_inputs[i]
-            result, memoize = current_query.execute(input, label, memoize)
+            if depth >= self.max_depth - 1:
+                result, _  = current_query.execute(input, label, memoize, cache=False)
+            else:
+                result, memoize  = current_query.execute(input, label, memoize)
             y_pred.append(int(result[0, len(input[0])] > 0))
             self.memoize_all_inputs[i] = memoize
         # print(self.labels[self.labeled_index], y_pred)
         score = f1_score(list(self.labels[self.labeled_index]), y_pred)
         return score
 
-    def pick_next_segment(self, sorted_candidate_list):
+    def pick_next_segment(self):
+        """
+        Pick the next segment to be labeled, based on disagreement among candidate queries (not their weights yet).
+        """
         tuning_par = 1
         true_labels = np.array(self.labels)
         prediction_matrix = []
@@ -257,34 +277,34 @@ class VOCAL:
             label = self.labels[i]
             memoize = self.memoize_all_inputs[i]
             pred_per_input = []
-            for query_graph, _ in sorted_candidate_list:
+            for query_graph in self.candidate_queries:
                 query = query_graph.program
                 result, memoize = query.execute(input, label, memoize)
                 pred_per_input.append(int(result[0, len(input[0])] > 0))
+                self.memoize_all_inputs[i] = memoize
             prediction_matrix.append(pred_per_input)
         prediction_matrix = np.array(prediction_matrix)
         print("constructing prediction matrix", time.time()-_start)
         n_instances = len(true_labels)
-        k = self.k1
 
-        # Initialize
-        loss_t = np.zeros(k)
-        for i in range(n_instances):
-            if i not in self.labeled_index:
-                continue
-            if true_labels[i]:
-                loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
-                # loss_t += (np.array((prediction_matrix_pair_level[t, :] != 1) * 1) / u_t * (n_pos + n_neg) / (2 * n_pos))
-                # n_pos += 1
-            else:
-                loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
+        # # Initialize
+        # loss_t = np.zeros(self.k1)
+        # for i in range(n_instances):
+        #     if i not in self.labeled_index:
+        #         continue
+        #     if true_labels[i]:
+        #         loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
+        #         # loss_t += (np.array((prediction_matrix_pair_level[t, :] != 1) * 1) / u_t * (n_pos + n_neg) / (2 * n_pos))
+        #         # n_pos += 1
+        #     else:
+        #         loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
 
-        eta = np.sqrt(np.log(k)/(2*(len(self.labeled_index)+1)))
+        # eta = np.sqrt(np.log(self.k1)/(2*(len(self.labeled_index)+1)))
 
-        posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
-        # Note that above equation is equivalent to np.exp(-eta * loss_t).
-        # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
-        posterior_t  /= np.sum(posterior_t)  # normalized weight
+        # posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
+        # # Note that above equation is equivalent to np.exp(-eta * loss_t).
+        # # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
+        # posterior_t  /= np.sum(posterior_t)  # normalized weight
 
         entropy_list = np.zeros(n_instances)
         for i in range(n_instances):
@@ -301,6 +321,88 @@ class VOCAL:
                 if entropy_i < 0:
                     entropy_i = 0
                 entropy_list[i] = entropy_i
-        # find argmax of entropy
-        max_entropy_index = np.argmax(entropy_list)
-        return max_entropy_index
+        # find argmax of entropy (top k)
+        n_to_label = 1
+        video_segment_ids = np.argpartition(entropy_list, -n_to_label)[-n_to_label:]
+        # max_entropy_index = np.argmax(entropy_list)
+        return video_segment_ids.tolist()
+
+    def pick_next_segment_model_picker(self):
+        """
+        Pick the next segment to be labeled, using the Model Picker algorithm.
+        """
+        # tuning_par = 1
+        true_labels = np.array(self.labels)
+        prediction_matrix = []
+        _start = time.time()
+        for i in range(len(self.inputs)):
+            # print("prediction matrix", i)
+            input = self.inputs[i]
+            label = self.labels[i]
+            memoize = self.memoize_all_inputs[i]
+            pred_per_input = []
+            for query_graph in itertools.chain(self.candidate_queries, [item[0] for item in self.answers]):
+                query = query_graph.program
+                # print("test", print_program(query))
+                if query_graph.depth >= self.max_depth - 1:
+                    result, _  = query.execute(input, label, memoize, cache=False)
+                else:
+                    result, memoize  = query.execute(input, label, memoize)
+                # result, memoize = query.execute(input, label, memoize)
+                pred_per_input.append(int(result[0, len(input[0])] > 0))
+                self.memoize_all_inputs[i] = memoize
+            prediction_matrix.append(pred_per_input)
+        prediction_matrix = np.array(prediction_matrix)
+        print("constructing prediction matrix", time.time()-_start)
+        # print(prediction_matrix.shape)
+        n_instances = len(true_labels)
+
+        # Initialize
+        loss_t = np.zeros(prediction_matrix.shape[1])
+        for i in range(n_instances):
+            if i not in self.labeled_index:
+                continue
+            if true_labels[i]:
+                loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
+                # loss_t += (np.array((prediction_matrix_pair_level[t, :] != 1) * 1) / u_t * (n_pos + n_neg) / (2 * n_pos))
+                # n_pos += 1
+            else:
+                loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
+
+        eta = np.sqrt(np.log(self.k1)/(2*(len(self.labeled_index)+1)))
+
+        posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
+        # Note that above equation is equivalent to np.exp(-eta * loss_t).
+        # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
+        posterior_t  /= np.sum(posterior_t)  # normalized weight
+
+        entropy_list = np.zeros(n_instances)
+        for i in range(n_instances):
+            if i in self.labeled_index:
+                entropy_list[i] = -1
+            else:
+                entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :], tuning_par=10)
+        # find argmax of entropy (top k)
+        n_to_label = 1
+        video_segment_ids = np.argpartition(entropy_list, -n_to_label)[-n_to_label:]
+        # max_entropy_index = np.argmax(entropy_list)
+        return video_segment_ids.tolist()
+
+    def _compute_u_t(self, posterior_t, predictions_c, tuning_par=1):
+
+        # Initialize possible u_t's
+        u_t_list = np.zeros(2)
+
+        # Repeat for each class
+        for c in [0, 1]:
+            # Compute the loss of models if the label of the streamed data is "c"
+            loss_c = np.array(predictions_c != c)*1
+            #
+            # Compute the respective u_t value (conditioned on class c)
+            term1 = np.inner(posterior_t, loss_c)
+            u_t_list[c] = term1*(1-term1)
+
+        # Return the final u_t
+        u_t = tuning_par * np.max(u_t_list)
+
+        return u_t
