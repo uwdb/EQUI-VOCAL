@@ -65,7 +65,7 @@ def test_quivr_exact(n_labeled_pos, n_labeled_neg):
     for q in answer:
         print(print_program(q))
 
-def test_quivr_soft(n_labeled_pos, n_labeled_neg, max_num_atomic_predicates, max_depth, k):
+def test_quivr_soft(n_labeled_pos, n_labeled_neg, max_num_atomic_predicates, max_depth, k, log_name):
     # read from json file
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_inputs.json", 'r') as f:
         inputs = json.load(f)
@@ -83,13 +83,13 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, max_num_atomic_predicates, max
     inputs = inputs[sampled_labeled_index]
     labels = labels[sampled_labeled_index]
 
-    algorithm = QUIVRSoft(max_num_atomic_predicates=max_num_atomic_predicates, max_depth=max_depth, k=k)
+    algorithm = QUIVRSoft(max_num_atomic_predicates=max_num_atomic_predicates, max_depth=max_depth, k=k, log_name=log_name)
     answer = algorithm.run(inputs, labels)
     print("answer", len(answer))
     for q, s in answer:
         print(print_program(q), s)
 
-def test_vocal():
+def test_vocal(n_labeled_pos, n_labeled_neg, npred, depth, k):
     # read from json file
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_inputs.json", 'r') as f:
         inputs = json.load(f)
@@ -100,17 +100,16 @@ def test_vocal():
     labels = np.asarray(labels, dtype=object)
 
     n_pos = sum(labels)
-    n_neg = len(labels) - n_pos
-    sampled_labeled_index = random.sample(list(range(n_pos)), 50) + random.sample(list(range(n_pos, len(labels))), 250)
+    sampled_labeled_index = random.sample(list(range(n_pos)), n_labeled_pos) + random.sample(list(range(n_pos, len(labels))), n_labeled_neg)
     inputs = inputs[sampled_labeled_index]
     labels = labels[sampled_labeled_index]
+
     n_pos = sum(labels)
-    n_neg = len(labels) - n_pos
-    init_labeled_index = random.sample(list(range(n_pos)), 2) + random.sample(list(range(n_pos, len(labels))), 2)
-    algorithm = VOCAL(inputs, labels, max_num_atomic_predicates=10, max_depth=5, k1=32, k2=64, budget=50, thresh=0.5)
-    answer = algorithm.run(init_labeled_index)
-    for q in answer:
-        print(print_program(q))
+    # init_labeled_index = random.sample(list(range(n_pos)), 10) + random.sample(list(range(n_pos, len(labels))), 50)
+    algorithm = VOCAL(inputs, labels, max_num_atomic_predicates=npred, max_depth=depth, k1=k, k2=k, budget=100, thresh=0.5)
+    # algorithm.run(init_labeled_index)
+    algorithm.exhaustive_search()
+
 
 def compute_query_score(current_query, inputs, labels):
     y_pred = []
@@ -165,15 +164,15 @@ if __name__ == '__main__':
     npred = args.npred
     depth = args.depth
     k = args.k
-
-    with open("outputs/{}/{}-npos_{}-nneg_{}-npred_{}-depth_{}-k_{}.log".format(method_str, method_str, n_labeled_pos, n_labeled_neg, npred, depth, k), 'w') as f:
+    log_name = "{}-npos_{}-nneg_{}-npred_{}-depth_{}-k_{}-all_fragments".format(method_str, n_labeled_pos, n_labeled_neg, npred, depth, k)
+    with open("outputs/{}/{}.log".format(method_str, log_name), 'w') as f:
         sys.stdout = f
 
         print("method:", method_str, "n_labeled_pos:", n_labeled_pos, "n_labeled_neg:", n_labeled_neg)
         if method_str == 'quivr':
             test_quivr_exact(n_labeled_pos, n_labeled_neg)
         elif method_str == 'vocal':
-            test_vocal()
+            test_vocal(n_labeled_pos, n_labeled_neg, npred, depth, k)
         elif method_str == 'quivr_soft':
-            test_quivr_soft(n_labeled_pos, n_labeled_neg, npred, depth, k)
+            test_quivr_soft(n_labeled_pos, n_labeled_neg, npred, depth, k, log_name)
         # test_program("Start(Sequencing(Sequencing(True*, Conjunction(Kleene(Near_1.05), MinLength_1.0)), True*))") # 0.8130
