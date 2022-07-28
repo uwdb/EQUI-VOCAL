@@ -1,4 +1,7 @@
 """
+The implementation of the QUIVR_Soft algorithm, which is a variant of the QUIVR algorithm that uses soft constraints (F1 score) to rank and prune intermediate queries.
+
+Algorithm (pseudocode):
 candidates_list = [(??, 1, 0, 0)]  // (query_graph, f1_score, npred, depth)
 answer_list = []
 
@@ -29,11 +32,27 @@ import numpy as np
 import time
 from sklearn.metrics import f1_score
 from scipy import stats
+import sqlite3
+import io
+
+def adapt_array(arr):
+    """
+    http://stackoverflow.com/a/31312102/190597 (SoulNibbler)
+    """
+    out = io.BytesIO()
+    np.save(out, arr)
+    out.seek(0)
+    return sqlite3.Binary(out.read())
+
+def convert_array(text):
+    out = io.BytesIO(text)
+    out.seek(0)
+    return np.load(out)
 
 class QUIVRSoft:
 
     def __init__(self, max_num_programs=100, max_num_atomic_predicates=5,
-        max_depth=3, k=32):
+        max_depth=3, k=32, log_name=None):
         self.max_num_programs = max_num_programs
         self.max_num_atomic_predicates = max_num_atomic_predicates
         self.max_depth = max_depth
@@ -42,12 +61,26 @@ class QUIVRSoft:
         self.fill_parameter_holes_time = 0
         self.compute_score_time = 0
         self.k = k
+        self.log_name = log_name if log_name else "quivr_soft"
+
+        # Converts np.array to TEXT when inserting
+        sqlite3.register_adapter(np.ndarray, adapt_array)
+
+        # Converts TEXT to np.array when selecting
+        sqlite3.register_converter("array", convert_array)
+
+        self.con = sqlite3.connect("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/sqlite/{}.db".format(self.log_name), detect_types=sqlite3.PARSE_DECLTYPES)
 
     def run(self, inputs, labels):
         _start_total_time = time.time()
         self.inputs = inputs
         self.labels = labels
-        self.memoize_all_inputs = [{} for _ in range(len(inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+
+        # self.memoize_all_inputs = [{} for _ in range(len(inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+        cur = self.con.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS quivr_soft (input INTEGER, query TEXT, result array)")
+        # cur.executemany("INSERT INTO quivr_soft VALUES (?, ?, ?)", self.memoize_all_inputs)
+        # self.con.commit()
 
         # Initialize program graph
         query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
@@ -76,6 +109,7 @@ class QUIVRSoft:
             for q, s, npred, depth in candidate_list:
                 print("candidate query", utils.print_program(q.program), s, npred, depth)
 
+            self.consistent_queries = sorted(self.consistent_queries, key=lambda x: -x[1])[:64]
 
         # RETURN: the list. Need to enumerate over all possible queries to omit ones that are inconsistenet with W.
         answer = []
@@ -129,16 +163,25 @@ class QUIVRSoft:
     def fill_other_parameter_holes(self, new_query, inputs, labels, value_range):
         theta_lb = value_range[0]
         theta_ub = value_range[1]
+        cur = self.con.cursor()
         for i, (input, label) in enumerate(zip(inputs, labels)):
-            memoize = self.memoize_all_inputs[i]
-            result, memoize = new_query.execute(input, label, memoize)
-            self.memoize_all_inputs[i] = memoize
+            memoize = {}
+            for q, s in cur.execute("select query, score from quivr_soft where input = ?", (i,)):
+                memoize[q] = s
+            result, memoize_new = new_query.execute(input, label, memoize)
+            memo_delta = []
+            for q, s in memoize_new.items():
+                if q not in memoize:
+                    memo_delta.append([i, q, s])
+            cur.executemany("INSERT INTO quivr_soft VALUES (?, ?, ?)", memo_delta)
+            # self.memoize_all_inputs[i] = memoize
             if label == 1:
                 theta_ub = min(result[0, len(input[0])], theta_ub)
             if label == 0:
                 theta_lb = max(result[0, len(input[0])], theta_lb)
             if theta_lb > theta_ub:
                 break
+        # self.con.commit()
         return [theta_lb, theta_ub]
 
     def fill_all_parameter_holes(self, current_query):
@@ -178,70 +221,84 @@ class QUIVRSoft:
 
     def compute_query_score(self, current_query):
         y_pred = []
+        cur = self.con.cursor()
         for i, (input, label) in enumerate(zip(self.inputs, self.labels)):
-            memoize = self.memoize_all_inputs[i]
+            memoize = {}
+            for q, arr in cur.execute("select query, result from quivr_soft where input = ?", (i,)):
+                memoize[q] = arr
+            prev_memoize = copy.deepcopy(memoize)
+            # print("prev_memoize", prev_memoize)
             result, memoize = current_query.execute(input, label, memoize)
+            # print("memoize", memoize)
+
+            memo_delta = []
+            for q, arr in memoize.items():
+                print("q", q)
+                if q not in prev_memoize:
+                    memo_delta.append([i, q, arr])
+            # print("memo_delta", memo_delta)
+            cur.executemany("INSERT INTO quivr_soft VALUES (?, ?, ?)", memo_delta)
             y_pred.append(int(result[0, len(input[0])] > 0))
-            self.memoize_all_inputs[i] = memoize
+        # self.con.commit()
         # print(self.labels[self.labeled_index], y_pred)
         score = f1_score(list(self.labels), y_pred)
         return score
 
-    def pick_next_segment(self, sorted_candidate_list):
-        tuning_par = 1
-        true_labels = np.array(self.labels)
-        prediction_matrix = []
-        _start = time.time()
-        for i in range(len(self.inputs)):
-            # print("prediction matrix", i)
-            input = self.inputs[i]
-            label = self.labels[i]
-            memoize = self.memoize_all_inputs[i]
-            pred_per_input = []
-            for query_graph, _ in sorted_candidate_list:
-                query = query_graph.program
-                result, memoize = query.execute(input, label, memoize)
-                pred_per_input.append(int(result[0, len(input[0])] > 0))
-            prediction_matrix.append(pred_per_input)
-        prediction_matrix = np.array(prediction_matrix)
-        print("constructing prediction matrix", time.time()-_start)
-        n_instances = len(true_labels)
-        k = self.k1
+    # def pick_next_segment(self, sorted_candidate_list):
+    #     tuning_par = 1
+    #     true_labels = np.array(self.labels)
+    #     prediction_matrix = []
+    #     _start = time.time()
+    #     for i in range(len(self.inputs)):
+    #         # print("prediction matrix", i)
+    #         input = self.inputs[i]
+    #         label = self.labels[i]
+    #         memoize = self.memoize_all_inputs[i]
+    #         pred_per_input = []
+    #         for query_graph, _ in sorted_candidate_list:
+    #             query = query_graph.program
+    #             result, memoize = query.execute(input, label, memoize)
+    #             pred_per_input.append(int(result[0, len(input[0])] > 0))
+    #         prediction_matrix.append(pred_per_input)
+    #     prediction_matrix = np.array(prediction_matrix)
+    #     print("constructing prediction matrix", time.time()-_start)
+    #     n_instances = len(true_labels)
+    #     k = self.k1
 
-        # Initialize
-        loss_t = np.zeros(k)
-        for i in range(n_instances):
-            if i not in self.labeled_index:
-                continue
-            if true_labels[i]:
-                loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
-                # loss_t += (np.array((prediction_matrix_pair_level[t, :] != 1) * 1) / u_t * (n_pos + n_neg) / (2 * n_pos))
-                # n_pos += 1
-            else:
-                loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
+    #     # Initialize
+    #     loss_t = np.zeros(k)
+    #     for i in range(n_instances):
+    #         if i not in self.labeled_index:
+    #             continue
+    #         if true_labels[i]:
+    #             loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
+    #             # loss_t += (np.array((prediction_matrix_pair_level[t, :] != 1) * 1) / u_t * (n_pos + n_neg) / (2 * n_pos))
+    #             # n_pos += 1
+    #         else:
+    #             loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
 
-        eta = np.sqrt(np.log(k)/(2*(len(self.labeled_index)+1)))
+    #     eta = np.sqrt(np.log(k)/(2*(len(self.labeled_index)+1)))
 
-        posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
-        # Note that above equation is equivalent to np.exp(-eta * loss_t).
-        # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
-        posterior_t  /= np.sum(posterior_t)  # normalized weight
+    #     posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
+    #     # Note that above equation is equivalent to np.exp(-eta * loss_t).
+    #     # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
+    #     posterior_t  /= np.sum(posterior_t)  # normalized weight
 
-        entropy_list = np.zeros(n_instances)
-        for i in range(n_instances):
-            if i in self.labeled_index:
-                entropy_list[i] = -1
-            else:
-                # Measure the normalized entropy of the incoming data
-                hist, bin_edges = np.histogram(prediction_matrix[i, :], bins=2)
-                prob_i = hist/np.sum(hist)
-                entropy_i = stats.entropy(prob_i, base=2) * tuning_par
-                # Check if the normalized entropy is greater than 1
-                if entropy_i > 1:
-                    entropy_i = 1
-                if entropy_i < 0:
-                    entropy_i = 0
-                entropy_list[i] = entropy_i
-        # find argmax of entropy
-        max_entropy_index = np.argmax(entropy_list)
-        return max_entropy_index
+    #     entropy_list = np.zeros(n_instances)
+    #     for i in range(n_instances):
+    #         if i in self.labeled_index:
+    #             entropy_list[i] = -1
+    #         else:
+    #             # Measure the normalized entropy of the incoming data
+    #             hist, bin_edges = np.histogram(prediction_matrix[i, :], bins=2)
+    #             prob_i = hist/np.sum(hist)
+    #             entropy_i = stats.entropy(prob_i, base=2) * tuning_par
+    #             # Check if the normalized entropy is greater than 1
+    #             if entropy_i > 1:
+    #                 entropy_i = 1
+    #             if entropy_i < 0:
+    #                 entropy_i = 0
+    #             entropy_list[i] = entropy_i
+    #     # find argmax of entropy
+    #     max_entropy_index = np.argmax(entropy_list)
+    #     return max_entropy_index
