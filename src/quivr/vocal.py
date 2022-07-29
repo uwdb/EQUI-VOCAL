@@ -8,6 +8,12 @@ from sklearn.metrics import f1_score
 from scipy import stats
 import itertools
 import sys
+from lru import LRU
+from multiprocessing import Pool
+import multiprocessing as mp
+from functools import partial
+
+num_workers = 32
 
 class VOCAL:
 
@@ -34,7 +40,7 @@ class VOCAL:
     def run(self, init_labeled_index):
         _start_total_time = time.time()
         self.labeled_index = init_labeled_index
-        self.memoize_all_inputs = [{} for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+        self.memoize_all_inputs = [LRU(10000) for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
 
         # Initialize program graph
         self.candidate_queries = []
@@ -221,8 +227,15 @@ class VOCAL:
                 query_graph.depth = 1
                 self.candidate_queries.append(query_graph)
 
-        for current_query_graph in self.candidate_queries:
-            self.dfs(current_query_graph)
+        with Pool(processes=num_workers) as pool:
+            for i, ret in enumerate(pool.imap_unordered(self.dfs, self.candidate_queries)):
+                self.answers.extend(ret)
+
+        self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
+        self.answers = self.answers[:self.k2]
+
+        # for current_query_graph in self.candidate_queries:
+        #     self.dfs(current_query_graph)
 
         # RETURN: the list.
         print("final_answers")
@@ -234,17 +247,20 @@ class VOCAL:
         return self.answers
 
     def dfs(self, current_query_graph):
-        print("expand search space", print_program(current_query_graph.program))
+        answers = []
+        # print("expand search space", print_program(current_query_graph.program))
         all_children = current_query_graph.get_all_children_bu()
         # Compute F1 score of each candidate query
         for child in all_children:
-            self.dfs(child)
+            answers.extend(self.dfs(child))
+        _start_time = time.time()
         score = self.compute_query_score(current_query_graph.program, current_query_graph.depth)
-        print("add query", print_program(current_query_graph.program), score)
+        print("add query: {}, score: {}, time:{}".format(print_program(current_query_graph.program), score, time.time() - _start_time))
         if score > 0:
-            self.answers.append([current_query_graph, score])
-            self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
-            self.answers = self.answers[:self.k2]
+            answers.append([current_query_graph, score])
+            answers = sorted(answers, key=lambda x: x[1], reverse=True)
+            answers = answers[:self.k2]
+        return answers
 
     def compute_query_score(self, current_query, depth):
         y_pred = []
@@ -253,13 +269,11 @@ class VOCAL:
             input = self.inputs[i]
             label = self.labels[i]
             memoize = self.memoize_all_inputs[i]
-            if depth >= self.max_depth - 1:
-                result, _  = current_query.execute(input, label, memoize, cache=False)
-            else:
-                result, memoize  = current_query.execute(input, label, memoize)
+            result, memoize  = current_query.execute(input, label, memoize)
             y_pred.append(int(result[0, len(input[0])] > 0))
             self.memoize_all_inputs[i] = memoize
         # print(self.labels[self.labeled_index], y_pred)
+        print(len(self.memoize_all_inputs[0]))
         score = f1_score(list(self.labels[self.labeled_index]), y_pred)
         return score
 
@@ -344,11 +358,7 @@ class VOCAL:
             for query_graph in itertools.chain(self.candidate_queries, [item[0] for item in self.answers]):
                 query = query_graph.program
                 # print("test", print_program(query))
-                if query_graph.depth >= self.max_depth - 1:
-                    result, _  = query.execute(input, label, memoize, cache=False)
-                else:
-                    result, memoize  = query.execute(input, label, memoize)
-                # result, memoize = query.execute(input, label, memoize)
+                result, memoize = query.execute(input, label, memoize)
                 pred_per_input.append(int(result[0, len(input[0])] > 0))
                 self.memoize_all_inputs[i] = memoize
             prediction_matrix.append(pred_per_input)
