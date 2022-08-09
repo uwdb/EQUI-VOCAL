@@ -1,6 +1,7 @@
 # InLaneK, MinLength_theta, Dist_theta(A, B)
 import math
 import copy
+import re
 import numpy as np
 import utils_bu as utils
 import functools
@@ -154,25 +155,39 @@ class DurationOperator(BaseOperator):
         super().__init__(submodules, name="Duration")
 
     def execute(self, input, label, memoize, cache=True):
-        subquery_str = utils.print_program(self)
-        if subquery_str in memoize:
-            return memoize[subquery_str], memoize
-        if len(input[0]) < self.theta:
-            return np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf), memoize
+        # res1, memoize = self.submodules["duration"].execute(input, label, memoize)
+        kleene = KleeneOperator(self.submodules["duration"])
+        conj = ConjunctionOperator(kleene, MinLength(self.theta))
+        return conj.execute(input, label, memoize)
 
-        Q_mtx, memoize = self.submodules["duration"].execute(input, label, memoize)
-        base_arr = [Q_mtx]
 
-        for _ in range(2, len(input[0]) + 1):
-            Q_pow_k = np.amax(np.minimum(base_arr[-1][..., np.newaxis], Q_mtx[np.newaxis, ...]), axis=1)
-            base_arr.append(Q_pow_k)
+# class DurationOperator(BaseOperator):
+#     def __init__(self, function1, theta):
+#         # theta >= 2 and is an integer
+#         self.theta = int(theta)
+#         submodules = { "duration": function1 }
+#         super().__init__(submodules, name="Duration")
 
-        result = np.amax(np.stack(base_arr[(self.theta-1):], axis=0), axis=0)
+#     def execute(self, input, label, memoize, cache=True):
+#         subquery_str = utils.print_program(self, as_dict_key=True)
+#         if subquery_str in memoize:
+#             return memoize[subquery_str], memoize
+#         if len(input[0]) < self.theta:
+#             return np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf), memoize
 
-        if cache:
-            memoize[subquery_str] = result
+#         Q_mtx, memoize = self.submodules["duration"].execute(input, label, memoize)
+#         base_arr = [Q_mtx]
 
-        return result, memoize
+#         for _ in range(2, len(input[0]) + 1):
+#             Q_pow_k = np.amax(np.minimum(base_arr[-1][..., np.newaxis], Q_mtx[np.newaxis, ...]), axis=1)
+#             base_arr.append(Q_pow_k)
+
+#         result = np.amax(np.stack(base_arr[(self.theta-1):], axis=0), axis=0)
+
+#         if cache:
+#             memoize[subquery_str] = result
+
+#         return result, memoize
 
 
 ############### Predicate ################
@@ -276,6 +291,122 @@ class Far(Predicate):
 
         return result, memoize
 
+class DirectionPredicate(Predicate):
+    has_theta = False
+
+    def __init__(self, direction_name):
+        super().__init__(direction_name)
+
+    def execute(self, direction_name, input, label, memoize, cache):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if direction_relationship(input[0][i], input[1][i], direction_name):
+                result[i, i + 1] = np.inf
+
+        if cache:
+            memoize[subquery_str] = result
+
+        return result, memoize
+
+class QuadrantPredicate(Predicate):
+    has_theta = False
+
+    def __init__(self, quadrant_name):
+        super().__init__(quadrant_name)
+
+    def execute(self, quadrant_name, input, label, memoize, cache):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if quadrant_relationship(input[0][i], input[1][i], quadrant_name):
+                result[i, i + 1] = np.inf
+
+        if cache:
+            memoize[subquery_str] = result
+
+        return result, memoize
+
+
+class TopQuadrant(QuadrantPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("TopQuadrant")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("TopQuadrant", input, label, memoize, cache)
+
+class BottomQuadrant(QuadrantPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("BottomQuadrant")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("BottomQuadrant", input, label, memoize, cache)
+
+class RightQuadrant(QuadrantPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("RightQuadrant")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("RightQuadrant", input, label, memoize, cache)
+
+class LeftQuadrant(QuadrantPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("LeftQuadrant")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("LeftQuadrant", input, label, memoize, cache)
+
+class Front(DirectionPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("Front")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("Front", input, label, memoize, cache)
+
+class Back(DirectionPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("Back")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("Back", input, label, memoize, cache)
+
+class Right(DirectionPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("Right")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("Right", input, label, memoize, cache)
+
+class Left(DirectionPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("Left")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("Left", input, label, memoize, cache)
+
+
 class TrueStar(Predicate):
     has_theta=False
 
@@ -349,6 +480,38 @@ def obj_distance(bbox1, bbox2):
     cy2 = (y3 + y4) / 2
     return math.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2) / ((x2 - x1 + x4 - x3) / 2)
 
+def direction_relationship(bbox1, bbox2, direction):
+    x1, y1, x2, y2 = bbox1
+    x3, y3, x4, y4 = bbox2
+    cx1 = (x1 + x2) / 2
+    cy1 = (y1 + y2) / 2
+    cx2 = (x3 + x4) / 2
+    cy2 = (y3 + y4) / 2
+    if direction == "Left":
+        return cx1 < cx2
+    elif direction == "Right":
+        return cx1 > cx2
+    elif direction == "Back":
+        return cy1 < cy2
+    elif direction == "Front":
+        return cy1 > cy2
+    else:
+        raise ValueError("Invalid direction")
+
+def quadrant_relationship(bbox1, quadrant):
+    x1, y1, x2, y2 = bbox1
+    cx1 = (x1 + x2) / 2
+    cy1 = (y1 + y2) / 2
+    if quadrant == "LeftQuadrant":
+        return cx1 >= 0 and cx1 < 240
+    elif quadrant == "RightQuadrant":
+        return cx1 >= 240 and cx1 <= 480
+    elif quadrant == "TopQuadrant":
+        return cy1 >= 0 and cy1 < 160
+    elif quadrant == "BottomQuadrant":
+        return cy1 >= 160 and cy1 <= 320
+    else:
+        raise ValueError("Invalid direction")
 
 ######## Hole ###########
 class Hole:
