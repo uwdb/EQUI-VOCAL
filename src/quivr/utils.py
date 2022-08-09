@@ -84,10 +84,6 @@ def str_to_program(program_str):
         return program_init(*submodule_list)
 
 
-
-
-
-
 def print_program_dict(prog_dict):
     log_and_print(print_program(prog_dict["program"], ignore_constants=True))
     log_and_print("struct_cost {:.4f} | score {:.4f} | path_cost {:.4f} | time {:.4f}".format(
