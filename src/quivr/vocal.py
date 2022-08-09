@@ -12,13 +12,19 @@ from lru import LRU
 from multiprocessing import Pool
 import multiprocessing as mp
 from functools import partial
+import resource
+from pympler import asizeof
+
+def using(point=""):
+    usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return '''%s: mem=%s MB
+           '''%(point, usage/1024.0 )
 
 num_workers = 32
 
 class VOCAL:
 
-    def __init__(self, inputs, labels, max_num_programs=100, max_num_atomic_predicates=5,
-        max_depth=2, k1=10, k2=20, budget=200, thresh=0.5):
+    def __init__(self, inputs, labels, predicate_dict, max_num_programs=100, max_num_atomic_predicates=5, max_depth=2, k1=10, k2=20, budget=200, thresh=0.5, max_duration=2):
         self.max_num_programs = max_num_programs
         self.max_num_atomic_predicates = max_num_atomic_predicates
         self.max_depth = max_depth
@@ -31,10 +37,12 @@ class VOCAL:
         self.k2 = k2
         self.budget = budget
         self.thresh = thresh
+        self.max_duration = max_duration
 
         self.inputs = np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
 
+        self.predicate_dict = predicate_dict
         self.answers = []
 
     def run(self, init_labeled_index):
@@ -44,11 +52,17 @@ class VOCAL:
 
         # Initialize program graph
         self.candidate_queries = []
-        predicate_dict = {dsl.Near: [-0.85, -1.05, -1.25], dsl.Far: [0.9, 1.1, 1.3]}
-        for pred in predicate_dict:
-            for param in predicate_dict[pred]:
+
+        for pred in self.predicate_dict:
+            pred_instances = []
+            if self.predicate_dict[pred]:
+                for param in self.predicate_dict[pred]:
+                    pred_instances.append(pred(param))
+            else:
+                pred_instances.append(pred())
+            for pred_instance in pred_instances:
                 query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
-                query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred(param)), dsl.TrueStar())
+                query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred_instance), dsl.TrueStar())
                 query_graph.num_atomic_predicates = 1
                 query_graph.depth = 1
                 self.candidate_queries.append(query_graph)
@@ -63,8 +77,8 @@ class VOCAL:
             scores = []
             for current_query_graph in self.candidate_queries:
                 current_query = current_query_graph.program
-                # print("expand search space", print_program(current_query))
-                all_children = current_query_graph.get_all_children_bu()
+                print("expand search space", print_program(current_query))
+                all_children = current_query_graph.get_all_children_bu(self.predicate_dict, self.max_duration)
                 # Compute F1 score of each candidate query
                 for child in all_children:
                     score = self.compute_query_score(child.program, child.depth)
@@ -72,45 +86,48 @@ class VOCAL:
                         new_candidate_queries.append(child)
                         scores.append(score)
                         self.answers.append([child, score])
-                        # print(print_program(child.program), score)
+                        print(print_program(child.program), score)
             self.query_expansion_time += time.time() - _start_query_expansion_time
 
-            # # Sample k1 queries
-            # weight = np.array(scores)
-            # weight = weight / np.sum(weight)
-            # candidate_idx = np.random.choice(np.arange(len(new_candidate_queries)), size=min(self.k1, len(new_candidate_queries)), replace=False, p=weight)
-            # print("candidate_idx", candidate_idx)
-            # new_candidate_queries = np.asarray(new_candidate_queries)
-            # scores = np.asarray(scores)
-            # self.candidate_queries = new_candidate_queries[candidate_idx]
-            # scores = scores[candidate_idx]
-            # print("k1 queries", [(print_program(query.program), score) for query, score in zip(self.candidate_queries, scores)])
+            # Sample k1 queries
+            if len(new_candidate_queries):
+                weight = np.array(scores)
+                weight = weight / np.sum(weight)
+                candidate_idx = np.random.choice(np.arange(len(new_candidate_queries)), size=min(self.k1, len(new_candidate_queries)), replace=False, p=weight)
+                print("candidate_idx", candidate_idx)
+                new_candidate_queries = np.asarray(new_candidate_queries)
+                scores = np.asarray(scores)
+                self.candidate_queries = new_candidate_queries[candidate_idx]
+                scores = scores[candidate_idx]
+                print("k1 queries", [(print_program(query.program), score) for query, score in zip(self.candidate_queries, scores)])
+            else:
+                self.candidate_queries = []
 
             # Baseline: keep all queries
-            self.candidate_queries = new_candidate_queries
+            # self.candidate_queries = new_candidate_queries
 
             print("size of queue", sys.getsizeof(self.candidate_queries))
             print("size of cache", sys.getsizeof(self.memoize_all_inputs))
 
             # Retain the top k2 queries with the highest scores as answers
             _start_retain_top_k2_queries_time = time.time()
-            # for i in range(len(self.answers)):
-            #     self.answers[i][1] = self.compute_query_score(self.answers[i][0].program, self.answers[i][0].depth)
+            for i in range(len(self.answers)):
+                self.answers[i][1] = self.compute_query_score(self.answers[i][0].program, self.answers[i][0].depth)
             self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             self.answers = self.answers[:self.k2]
             print("top k2 queries", [(print_program(query.program), score) for query, score in self.answers])
             self.retain_top_k2_queries_time += time.time() - _start_retain_top_k2_queries_time
 
-            # # Select new video segments to label
-            # _start_segmnet_selection_time = time.time()
-            # # video_segment_ids = self.pick_next_segment()
-            # video_segment_ids = self.pick_next_segment_model_picker()
-            # print("pick next segments", video_segment_ids)
-            # self.labeled_index += video_segment_ids
-            # print("# labeled segments", len(self.labeled_index))
-            # # assert labeled_index does not contain duplicates
-            # assert(len(self.labeled_index) == len(set(self.labeled_index)))
-            # self.segment_selection_time += time.time() - _start_segmnet_selection_time
+            # Select new video segments to label
+            _start_segmnet_selection_time = time.time()
+            # video_segment_ids = self.pick_next_segment()
+            video_segment_ids = self.pick_next_segment_model_picker()
+            print("pick next segments", video_segment_ids)
+            self.labeled_index += video_segment_ids
+            print("# labeled segments", len(self.labeled_index))
+            # assert labeled_index does not contain duplicates
+            assert(len(self.labeled_index) == len(set(self.labeled_index)))
+            self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
         # RETURN: the list.
         print("final_answers")
@@ -214,28 +231,35 @@ class VOCAL:
     def exhaustive_search(self):
         self.labeled_index = list(range(len(self.labels)))
         _start_total_time = time.time()
-        self.memoize_all_inputs = [{} for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+        self.memoize_all_inputs = [LRU(10000) for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+        print("LRU can maximally store {} results".format(10000))
 
         # Initialize program graph
         self.candidate_queries = []
-        predicate_dict = {dsl.Near: [-0.85, -1.05, -1.25], dsl.Far: [0.9, 1.1, 1.3]}
-        for pred in predicate_dict:
-            for param in predicate_dict[pred]:
+
+        for pred in self.predicate_dict:
+            pred_instances = []
+            if self.predicate_dict[pred]:
+                for param in self.predicate_dict[pred]:
+                    pred_instances.append(pred(param))
+            else:
+                pred_instances.append(pred())
+            for pred_instance in pred_instances:
                 query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
-                query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred(param)), dsl.TrueStar())
+                query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred_instance), dsl.TrueStar())
                 query_graph.num_atomic_predicates = 1
                 query_graph.depth = 1
                 self.candidate_queries.append(query_graph)
 
-        with Pool(processes=num_workers) as pool:
-            for i, ret in enumerate(pool.imap_unordered(self.dfs, self.candidate_queries)):
-                self.answers.extend(ret)
+        # with Pool(processes=num_workers) as pool:
+        #     for i, ret in enumerate(pool.imap_unordered(self.dfs, self.candidate_queries)):
+        #         self.answers.extend(ret)
 
-        self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
-        self.answers = self.answers[:self.k2]
+        # self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
+        # self.answers = self.answers[:self.k2]
 
-        # for current_query_graph in self.candidate_queries:
-        #     self.dfs(current_query_graph)
+        for current_query_graph in self.candidate_queries:
+            self.dfs(current_query_graph)
 
         # RETURN: the list.
         print("final_answers")
@@ -247,20 +271,25 @@ class VOCAL:
         return self.answers
 
     def dfs(self, current_query_graph):
-        answers = []
         # print("expand search space", print_program(current_query_graph.program))
-        all_children = current_query_graph.get_all_children_bu()
+        all_children = current_query_graph.get_all_children_bu(self.predicate_dict, self.max_duration)
         # Compute F1 score of each candidate query
         for child in all_children:
-            answers.extend(self.dfs(child))
+            # answers.extend(self.dfs(child))
+            self.dfs(child)
         _start_time = time.time()
         score = self.compute_query_score(current_query_graph.program, current_query_graph.depth)
+        # print("size of queue", asizeof.asizeof(self.candidate_queries))
+        print("size of cache", asizeof.asizeof(self.memoize_all_inputs)/1000000)
         print("add query: {}, score: {}, time:{}".format(print_program(current_query_graph.program), score, time.time() - _start_time))
         if score > 0:
-            answers.append([current_query_graph, score])
-            answers = sorted(answers, key=lambda x: x[1], reverse=True)
-            answers = answers[:self.k2]
-        return answers
+            self.answers.append([current_query_graph, score])
+            self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
+            self.answers = self.answers[:self.k2]
+            # answers.append([current_query_graph, score])
+            # answers = sorted(answers, key=lambda x: x[1], reverse=True)
+            # answers = answers[:self.k2]
+        # return answers
 
     def compute_query_score(self, current_query, depth):
         y_pred = []
@@ -273,7 +302,8 @@ class VOCAL:
             y_pred.append(int(result[0, len(input[0])] > 0))
             self.memoize_all_inputs[i] = memoize
         # print(self.labels[self.labeled_index], y_pred)
-        print(len(self.memoize_all_inputs[0]))
+        print("cache", len(self.memoize_all_inputs[0]))
+        print(using("profile"))
         score = f1_score(list(self.labels[self.labeled_index]), y_pred)
         return score
 
