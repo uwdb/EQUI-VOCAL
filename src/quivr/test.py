@@ -1,14 +1,10 @@
 from utils import print_program, str_to_program
-from quivr import QUIVR
-from vocal import VOCAL
-from quivr_soft import QUIVRSoft
 import json
 import random
 import math
 import numpy as np
 from sklearn.metrics import f1_score
-import argparse
-import dsl
+import time
 
 random.seed(10)
 
@@ -44,6 +40,69 @@ def obj_distance(bbox1, bbox2):
     return math.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2) / ((x2 - x1 + x4 - x3) / 2)
 
 
+def test_vocal(n_labeled_pos, n_labeled_neg, program_str):
+    # read from json file
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_inputs.json", 'r') as f:
+        inputs = json.load(f)
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_labels.json", 'r') as f:
+        labels = json.load(f)
+    inputs = np.asarray(inputs, dtype=object)
+    labels = np.asarray(labels, dtype=object)
+
+    # sampled_pos_index = [2340, 133, 1756, 1976, 2367, 60, 844, 1894, 2012, 1136, 656, 140, 2132, 2007, 1342, 311, 1023, 1479, 182, 1721, 568, 1454, 1563, 1725, 1161, 1074, 1871, 715, 1241, 1485, 544, 980, 1800, 1536, 181, 2387, 16, 965, 548, 798, 1240, 2196, 1499, 983, 1287, 2248, 1845, 1785, 1925, 266]
+    # sampled_neg_index = [13155, 12034, 7776, 10680, 5019, 6131, 9221, 6362, 8912, 5132, 10593, 7391, 12396, 13235, 3637, 11197, 3783, 4909, 8755, 11750, 8587, 12308, 4307, 4039, 9691, 5182, 5585, 8169, 9555, 9241, 9757, 6478, 13611, 6957, 4808, 12570, 11007, 5380, 4414, 6831, 9923, 7414, 5159, 13277, 13085, 5312, 5342, 10323, 8151, 6542]
+    # inputs = inputs[sampled_pos_index[:n_labeled_pos]].tolist() + inputs[sampled_neg_index[:n_labeled_neg]].tolist()
+    # labels = labels[sampled_pos_index[:n_labeled_pos]].tolist() + labels[sampled_neg_index[:n_labeled_neg]].tolist()
+
+    n_pos = sum(labels)
+    sampled_labeled_index = random.sample(list(range(n_pos)), n_labeled_pos) + random.sample(list(range(n_pos, len(labels))), n_labeled_neg)
+    inputs = inputs[sampled_labeled_index]
+    labels = labels[sampled_labeled_index]
+    memoize_all_inputs = [{} for _ in range(len(inputs))]
+
+    program = str_to_program(program_str)
+    print(print_program(program))
+    # compute score
+    score, memoize_all_inputs = compute_query_score(program, inputs, labels, memoize_all_inputs)
+    print("score: ", score)
+
+
+def test_query_equivalent(n_labeled_pos, n_labeled_neg, program_str1, program_str2):
+    # read from json file
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_inputs.json", 'r') as f:
+        inputs = json.load(f)
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_labels.json", 'r') as f:
+        labels = json.load(f)
+    inputs = np.asarray(inputs, dtype=object)
+    labels = np.asarray(labels, dtype=object)
+
+    # sampled_pos_index = [2340, 133, 1756, 1976, 2367, 60, 844, 1894, 2012, 1136, 656, 140, 2132, 2007, 1342, 311, 1023, 1479, 182, 1721, 568, 1454, 1563, 1725, 1161, 1074, 1871, 715, 1241, 1485, 544, 980, 1800, 1536, 181, 2387, 16, 965, 548, 798, 1240, 2196, 1499, 983, 1287, 2248, 1845, 1785, 1925, 266]
+    # sampled_neg_index = [13155, 12034, 7776, 10680, 5019, 6131, 9221, 6362, 8912, 5132, 10593, 7391, 12396, 13235, 3637, 11197, 3783, 4909, 8755, 11750, 8587, 12308, 4307, 4039, 9691, 5182, 5585, 8169, 9555, 9241, 9757, 6478, 13611, 6957, 4808, 12570, 11007, 5380, 4414, 6831, 9923, 7414, 5159, 13277, 13085, 5312, 5342, 10323, 8151, 6542]
+    # inputs = inputs[sampled_pos_index[:n_labeled_pos]].tolist() + inputs[sampled_neg_index[:n_labeled_neg]].tolist()
+    # labels = labels[sampled_pos_index[:n_labeled_pos]].tolist() + labels[sampled_neg_index[:n_labeled_neg]].tolist()
+
+    n_pos = sum(labels)
+    sampled_labeled_index = random.sample(list(range(n_pos)), n_labeled_pos) + random.sample(list(range(n_pos, len(labels))), n_labeled_neg)
+    inputs = inputs[sampled_labeled_index]
+    labels = labels[sampled_labeled_index]
+    memoize_all_inputs = [{} for _ in range(len(inputs))]
+
+    # compute score
+    _start = time.time()
+    program1 = str_to_program(program_str1)
+    print(print_program(program1))
+    score1, memoize_all_inputs = compute_query_score(program1, inputs, labels, memoize_all_inputs)
+    print("program1 score: ", score1)
+    print("program1 time: ", time.time() - _start)
+
+    _start = time.time()
+    program2 = str_to_program(program_str2)
+    print(print_program(program2))
+    score2, memoize_all_inputs = compute_query_score(program2, inputs, labels, memoize_all_inputs)
+    print("program2 score: ", score2)
+    print("program2 time: ", time.time() - _start)
+
+# Test quivr (topdown, exact)
 def test_quivr_answer_correctness(n_labeled_pos, n_labeled_neg):
     # read from json file
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_inputs.json", 'r') as f:
@@ -80,6 +139,7 @@ def test_quivr_answer_correctness(n_labeled_pos, n_labeled_neg):
                 print("pass {}".format(count))
     print("OK")
 
+# Test quivr_soft (topdown)
 def test_quivr_soft(n_labeled_pos, n_labeled_neg, program_str):
     # read from json file
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/collision_inputs.json", 'r') as f:
@@ -107,9 +167,14 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, program_str):
     score, memoize_all_inputs = compute_query_score(program, inputs, labels, memoize_all_inputs)
     print("score: ", score)
 
+
 if __name__ == '__main__':
+    # test_query_equivalent(100, 100, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Kleene(Far_1.1), MinLength_2)), True*), Near_1.05), True*), Conjunction(Kleene(Conjunction(Near_1.05, Far_0.9)), MinLength_10)), True*)", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.1, 2)), True*), Near_1.05), True*), Duration(Conjunction(Near_1.05, Far_0.9), 10)), True*)")
+    test_vocal(50, 250, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.3, 2)), True*), Near_0.85), True*), Duration(Near_1.05, 3)), True*)")
+
+
     # test_quivr_answer_correctness(10, 10)
     # test_quivr_soft(50, 50, "Start(Sequencing(True*, Conjunction(Sequencing(Near_1.05, True*), MinLength_2.0)))") # 0.951
     # test_quivr_soft(10, 50, "Start(Sequencing(True*, Conjunction(Sequencing(Near_1.05, True*), MinLength_2.0)))") # 0.783 "near and last frame not near"
     # test_quivr_soft(10, 50, "Start(Sequencing(True*, Sequencing(Far_1.1, Sequencing(True*, Sequencing(Near_1.05, True*)))))") # 0.75 “far, near"
-    test_quivr_soft(10, 50, "Start(Sequencing(True*, Conjunction(Sequencing(Near_1.05, True*), MinLength_9.0)))")
+    # test_quivr_soft(10, 50, "Start(Sequencing(Sequencing(True*, Near_1.05), True*))")

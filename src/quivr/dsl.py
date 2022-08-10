@@ -1,13 +1,9 @@
 # InLaneK, MinLength_theta, Dist_theta(A, B)
-from dataclasses import dataclass, field
-from distutils.util import subst_vars
-from email.mime import base
-from typing import Dict, List
-from pprint import pprint
 import math
 import copy
 import numpy as np
 import utils
+import functools
 
 # (predicate), conjunction, sequencing, Kleene star, finite k iteration
 # Omit nested Kleene star operators, as well as Kleene star around sequencing.
@@ -28,7 +24,7 @@ class BaseOperator:
     def get_typesignature(self):
         return self.input_type, self.output_type
 
-    def execute(self, input, label, memoize):
+    def execute(self):
         # Boolean semantics: Z (trajectories) --> B (0 or 1)
         raise NotImplementedError
 
@@ -41,8 +37,8 @@ class StartOperator(BaseOperator):
         submodules = { 'program' : self.program }
         super().__init__(submodules, name="Start")
 
-    def execute(self, input, label, memoize):
-        return self.submodules["program"].execute(input, label, memoize)
+    def execute(self, input, label, memoize, cache=True):
+        return self.submodules["program"].execute(input, label, memoize, cache)
 
 class ConjunctionOperator(BaseOperator):
     def __init__(self, function1=None, function2=None):
@@ -53,14 +49,17 @@ class ConjunctionOperator(BaseOperator):
         submodules = { "function1": function1, "function2": function2 }
         super().__init__(submodules, name="Conjunction")
 
-    def execute(self, input, label, memoize):
+    def execute(self, input, label, memoize, cache=True):
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         res1, memoize = self.submodules["function1"].execute(input, label, memoize)
         res2, memoize = self.submodules["function2"].execute(input, label, memoize)
         result = np.minimum(res1, res2)
-        memoize[subquery_str] = result
+
+        if cache:
+            memoize[subquery_str] = result
+
         return result, memoize
 
 class SequencingOperator(BaseOperator):
@@ -72,13 +71,16 @@ class SequencingOperator(BaseOperator):
         submodules = { "function1": function1, "function2": function2 }
         super().__init__(submodules, name="Sequencing")
 
-    def execute(self, input, label, memoize):
+    def execute(self, input, label, memoize, cache=True):
         # TODO: Make sure when len(input) > 2, all trajectories have the same length
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
         result = np.amax(np.minimum(self.submodules["function1"].execute(input, label, memoize)[0][..., np.newaxis], self.submodules["function2"].execute(input, label, memoize)[0][np.newaxis, ...]), axis=1)
-        memoize[subquery_str] = result
+
+        if cache:
+            memoize[subquery_str] = result
+
         return result, memoize
 
 class IterationOperator(BaseOperator):
@@ -101,7 +103,7 @@ class IterationOperator(BaseOperator):
         # TODO: this is not optimized (refer to the paper)
         if k == 0:
             # A matrix with inf on the diagonal and -inf elsewhere
-            return np.fill_diagonal(np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf")), float("inf"))
+            return np.fill_diagonal(np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf), np.inf)
 
         pow = self.execute_helper(self, k // 2, input, label)
 
@@ -119,12 +121,12 @@ class KleeneOperator(BaseOperator):
         submodules = { "kleene": function1}
         super().__init__(submodules, name="Kleene")
 
-    def execute(self, input, label, memoize):
+    def execute(self, input, label, memoize, cache=True):
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
-        identity_mtx = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
-        np.fill_diagonal(identity_mtx, float("inf"))
+        identity_mtx = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        np.fill_diagonal(identity_mtx, np.inf)
 
         base_arr = [identity_mtx]
 
@@ -137,18 +139,72 @@ class KleeneOperator(BaseOperator):
             base_arr.append(Q_pow_k)
 
         result = np.amax(np.stack(base_arr, axis=0), axis=0)
-        memoize[subquery_str] = result
+
+        if cache:
+            memoize[subquery_str] = result
+
         return result, memoize
 
+
+class DurationOperator(BaseOperator):
+    def __init__(self, function1, theta):
+        # theta >= 2 and is an integer
+        self.theta = int(theta)
+        submodules = { "duration": function1 }
+        super().__init__(submodules, name="Duration")
+
+    def execute(self, input, label, memoize, cache=True):
+        # res1, memoize = self.submodules["duration"].execute(input, label, memoize)
+        kleene = KleeneOperator(self.submodules["duration"])
+        conj = ConjunctionOperator(kleene, MinLength(self.theta))
+        return conj.execute(input, label, memoize)
+
+
+# class DurationOperator(BaseOperator):
+#     def __init__(self, function1, theta):
+#         # theta >= 2 and is an integer
+#         self.theta = int(theta)
+#         submodules = { "duration": function1 }
+#         super().__init__(submodules, name="Duration")
+
+#     def execute(self, input, label, memoize, cache=True):
+#         subquery_str = utils.print_program(self, as_dict_key=True)
+#         if subquery_str in memoize:
+#             return memoize[subquery_str], memoize
+#         if len(input[0]) < self.theta:
+#             return np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf), memoize
+
+#         Q_mtx, memoize = self.submodules["duration"].execute(input, label, memoize)
+#         base_arr = [Q_mtx]
+
+#         for _ in range(2, len(input[0]) + 1):
+#             Q_pow_k = np.amax(np.minimum(base_arr[-1][..., np.newaxis], Q_mtx[np.newaxis, ...]), axis=1)
+#             base_arr.append(Q_pow_k)
+
+#         result = np.amax(np.stack(base_arr[(self.theta-1):], axis=0), axis=0)
+
+#         if cache:
+#             memoize[subquery_str] = result
+
+#         return result, memoize
+
+
 ############### Predicate ################
+@functools.total_ordering
 class Predicate:
     def __init__(self, name):
         self.name = name
 
+    def __eq__(self, other):
+        return self.name == other.name
+
+    def __lt__(self, other):
+        return self.name < other.name
+
     def set_theta(self, theta):
         self.theta = theta
 
-    def execute(self, input, label, memoize):
+    def execute(self):
         raise NotImplementedError
 
 class Near(Predicate):
@@ -168,13 +224,13 @@ class Near(Predicate):
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
-        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
             result[i, i + 1] = -1 * obj_distance(input[0][i], input[1][i])
         memoize[subquery_str] = result
         return result, memoize
 
-    def execute(self, input, label, memoize):
+    def execute(self, input, label, memoize, cache=True):
         if self.with_hole:
             return self.execute_with_hole(input, label, memoize)
 
@@ -183,11 +239,14 @@ class Near(Predicate):
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
-        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
             if -1 * obj_distance(input[0][i], input[1][i]) >= self.theta:
-                result[i, i + 1] = float("inf")
-        memoize[subquery_str] = result
+                result[i, i + 1] = np.inf
+
+        if cache:
+            memoize[subquery_str] = result
+
         return result, memoize
 
 class Far(Predicate):
@@ -207,13 +266,13 @@ class Far(Predicate):
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
-        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
             result[i, i + 1] = obj_distance(input[0][i], input[1][i])
         memoize[subquery_str] = result
         return result, memoize
 
-    def execute(self, input, label, memoize):
+    def execute(self, input, label, memoize, cache=True):
         if self.with_hole:
             return self.execute_with_hole(input, label, memoize)
 
@@ -221,12 +280,131 @@ class Far(Predicate):
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
-        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
             if obj_distance(input[0][i], input[1][i]) >= self.theta:
-                result[i, i + 1] = float("inf")
-        memoize[subquery_str] = result
+                result[i, i + 1] = np.inf
+
+        if cache:
+            memoize[subquery_str] = result
+
         return result, memoize
+
+class DirectionPredicate(Predicate):
+    has_theta = False
+
+    def __init__(self, direction_name):
+        super().__init__(direction_name)
+
+    def execute(self, direction_name, input, label, memoize, cache):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if direction_relationship(input[0][i], input[1][i], direction_name):
+                result[i, i + 1] = np.inf
+
+        if cache:
+            memoize[subquery_str] = result
+
+        return result, memoize
+
+class QuadrantPredicate(Predicate):
+    has_theta = False
+
+    def __init__(self, quadrant_name):
+        super().__init__(quadrant_name)
+
+    def execute(self, quadrant_name, input, label, memoize, cache):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if quadrant_relationship(input[0][i], input[1][i], quadrant_name):
+                result[i, i + 1] = np.inf
+
+        if cache:
+            memoize[subquery_str] = result
+
+        return result, memoize
+
+
+class TopQuadrant(QuadrantPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("TopQuadrant")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("TopQuadrant", input, label, memoize, cache)
+
+class BottomQuadrant(QuadrantPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("BottomQuadrant")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("BottomQuadrant", input, label, memoize, cache)
+
+class RightQuadrant(QuadrantPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("RightQuadrant")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("RightQuadrant", input, label, memoize, cache)
+
+class LeftQuadrant(QuadrantPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("LeftQuadrant")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("LeftQuadrant", input, label, memoize, cache)
+
+class Front(DirectionPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("Front")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("Front", input, label, memoize, cache)
+
+class Back(DirectionPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("Back")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("Back", input, label, memoize, cache)
+
+class Right(DirectionPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("Right")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("Right", input, label, memoize, cache)
+
+class Left(DirectionPredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("Left")
+
+    def execute(self, input, label, memoize, cache=True):
+        return super().execute("Left", input, label, memoize, cache)
+
 
 class TrueStar(Predicate):
     has_theta=False
@@ -234,16 +412,19 @@ class TrueStar(Predicate):
     def __init__(self):
         super().__init__("True*")
 
-    def execute(self, input, label, memoize):
+    def execute(self, input, label, memoize, cache=True):
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
 
-        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0]) + 1):
             for j in range(i, len(input[0]) + 1):
-                result[i, j] = float("inf")
-        memoize[subquery_str] = result
+                result[i, j] = np.inf
+
+        if cache:
+            memoize[subquery_str] = result
+
         return result, memoize
 
 class MinLength(Predicate):
@@ -263,14 +444,14 @@ class MinLength(Predicate):
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
 
-        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
             for j in range(i, len(input[0]) + 1):
                 result[i, j] = j - i
         memoize[subquery_str] = result
         return result, memoize
 
-    def execute(self, input, label, memoize):
+    def execute(self, input, label, memoize, cache=True):
         if self.with_hole:
             return self.execute_with_hole(input, label, memoize)
 
@@ -278,12 +459,15 @@ class MinLength(Predicate):
         if subquery_str in memoize:
             return memoize[subquery_str], memoize
 
-        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
             for j in range(i, len(input[0]) + 1):
                 if j - i >= self.theta:
-                    result[i, j] = float("inf")
-        memoize[subquery_str] = result
+                    result[i, j] = np.inf
+
+        if cache:
+            memoize[subquery_str] = result
+
         return result, memoize
 
 def obj_distance(bbox1, bbox2):
@@ -295,6 +479,38 @@ def obj_distance(bbox1, bbox2):
     cy2 = (y3 + y4) / 2
     return math.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2) / ((x2 - x1 + x4 - x3) / 2)
 
+def direction_relationship(bbox1, bbox2, direction):
+    x1, y1, x2, y2 = bbox1
+    x3, y3, x4, y4 = bbox2
+    cx1 = (x1 + x2) / 2
+    cy1 = (y1 + y2) / 2
+    cx2 = (x3 + x4) / 2
+    cy2 = (y3 + y4) / 2
+    if direction == "Left":
+        return cx1 < cx2
+    elif direction == "Right":
+        return cx1 > cx2
+    elif direction == "Back":
+        return cy1 < cy2
+    elif direction == "Front":
+        return cy1 > cy2
+    else:
+        raise ValueError("Invalid direction")
+
+def quadrant_relationship(bbox1, quadrant):
+    x1, y1, x2, y2 = bbox1
+    cx1 = (x1 + x2) / 2
+    cy1 = (y1 + y2) / 2
+    if quadrant == "LeftQuadrant":
+        return cx1 >= 0 and cx1 < 240
+    elif quadrant == "RightQuadrant":
+        return cx1 >= 240 and cx1 <= 480
+    elif quadrant == "TopQuadrant":
+        return cy1 >= 0 and cy1 < 160
+    elif quadrant == "BottomQuadrant":
+        return cy1 >= 160 and cy1 <= 320
+    else:
+        raise ValueError("Invalid direction")
 
 ######## Hole ###########
 class Hole:
@@ -311,15 +527,15 @@ class PredicateHole(Hole):
             return memoize[subquery_str], memoize
         if label == 1:
             # over-approximation
-            result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+            result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
             for i in range(len(input[0]) + 1):
                 for j in range(i, len(input[0]) + 1):
-                    result[i, j] = float("inf")
+                    result[i, j] = np.inf
             memoize[subquery_str] = result
             return result, memoize
         else:
             # under-approximation
-            result = np.full((len(input[0]) + 1, len(input[0]) + 1), -float("inf"))
+            result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
             memoize[subquery_str] = result
             return result, memoize
 
@@ -346,7 +562,7 @@ class ParameterHole(Hole):
 
     def execute(self, input, label, memoize):
         if label == 1:
-            self.predicate.set_theta(-float("inf"))
+            self.predicate.set_theta(-np.inf)
         else:
-            self.predicate.set_theta(float("inf"))
+            self.predicate.set_theta(np.inf)
         return self.predicate.execute(input, label, memoize)

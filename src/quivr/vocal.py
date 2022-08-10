@@ -1,13 +1,12 @@
-from utils_bu import print_program, str_to_program
-from query_graph_bu import QueryGraph
-import dsl_bu as dsl
+from utils import print_program, str_to_program
+from query_graph import QueryGraph
+import dsl
 import copy
 import numpy as np
 import time
 from sklearn.metrics import f1_score
 from scipy import stats
 import itertools
-import sys
 from lru import LRU
 from multiprocessing import Pool
 import multiprocessing as mp
@@ -105,9 +104,6 @@ class VOCAL:
 
             # Baseline: keep all queries
             # self.candidate_queries = new_candidate_queries
-
-            print("size of queue", sys.getsizeof(self.candidate_queries))
-            print("size of cache", sys.getsizeof(self.memoize_all_inputs))
 
             # Retain the top k2 queries with the highest scores as answers
             _start_retain_top_k2_queries_time = time.time()
@@ -279,10 +275,8 @@ class VOCAL:
             self.dfs(child)
         _start_time = time.time()
         score = self.compute_query_score(current_query_graph.program, current_query_graph.depth)
-        # print("size of queue", asizeof.asizeof(self.candidate_queries))
-        print("size of cache", asizeof.asizeof(self.memoize_all_inputs)/1000000)
         print("add query: {}, score: {}, time:{}".format(print_program(current_query_graph.program), score, time.time() - _start_time))
-        if score > 0:
+        if score > 0 and score > self.answers[-1][1]:
             self.answers.append([current_query_graph, score])
             self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             self.answers = self.answers[:self.k2]

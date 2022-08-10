@@ -2,7 +2,7 @@
 This script is used to compute the score of answer queries (/outputs/vocal/xxx.log) over all video fragments (e.g., 50 positive and 250 negative fragments).
 """
 
-from utils_bu import print_program, str_to_program
+from utils import print_program, str_to_program
 import random
 import json
 import numpy as np

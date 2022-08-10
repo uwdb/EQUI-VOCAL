@@ -83,7 +83,7 @@ class QUIVRSoft:
         # self.con.commit()
 
         # Initialize program graph
-        query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
+        query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth, topdown_or_bottomup="topdown")
 
         candidate_list = [[query_graph, 1, 0, 0]]
         self.consistent_queries = []

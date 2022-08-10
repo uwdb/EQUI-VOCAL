@@ -1,3 +1,4 @@
+import os
 from utils import print_program, str_to_program
 from quivr import QUIVR
 from vocal import VOCAL
@@ -9,7 +10,7 @@ import numpy as np
 from sklearn.metrics import f1_score
 import argparse
 import sys
-import dsl_bu as dsl
+import dsl
 
 random.seed(10)
 
@@ -118,19 +119,25 @@ def test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, query_str=
     algorithm = VOCAL(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k1=k, k2=k, budget=100, thresh=0.5, max_duration=max_duration)
     algorithm.run(init_labeled_index)
 
-def test_vocal_exhaustive(npred, depth, max_duration):
+def test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration):
     # read from json file
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_inputs_train.json", 'r') as f:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_inputs_test.json", 'r') as f:
         inputs = json.load(f)
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_labels_train.json", 'r') as f:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_labels_test.json", 'r') as f:
         labels = json.load(f)
 
     inputs = np.asarray(inputs, dtype=object)
     labels = np.asarray(labels, dtype=object)
 
+    n_pos = sum(labels)
+    sampled_labeled_index = random.sample(list(range(n_pos)), n_labeled_pos) + random.sample(list(range(n_pos, len(labels))), n_labeled_neg)
+    inputs = inputs[sampled_labeled_index]
+    labels = labels[sampled_labeled_index]
+
     predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
     algorithm = VOCAL(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k1=1000, k2=1000, budget=100, thresh=0.5, max_duration=max_duration)
     algorithm.exhaustive_search()
+
 
 def compute_query_score(current_query, inputs, labels):
     y_pred = []
@@ -173,8 +180,8 @@ if __name__ == '__main__':
     # ap.add_argument('--num_train', type=int)
     # ap.add_argument('--duration', type=int)
     ap.add_argument('--method', type=str)
-    # ap.add_argument('--n_labeled_pos', type=int)
-    # ap.add_argument('--n_labeled_neg', type=int)
+    ap.add_argument('--n_labeled_pos', type=int, default=50)
+    ap.add_argument('--n_labeled_neg', type=int, default=250)
     ap.add_argument('--npred', type=int, default=5)
     ap.add_argument('--depth', type=int, default=3)
     ap.add_argument('--k', type=int, default=32)
@@ -185,8 +192,8 @@ if __name__ == '__main__':
     ap.add_argument('--query_str', type=str, default="collision")
     args = ap.parse_args()
     method_str = args.method
-    # n_labeled_pos = args.n_labeled_pos
-    # n_labeled_neg = args.n_labeled_neg
+    n_labeled_pos = args.n_labeled_pos
+    n_labeled_neg = args.n_labeled_neg
     npred = args.npred
     depth = args.depth
     k = args.k
@@ -198,19 +205,22 @@ if __name__ == '__main__':
     # log_name = "{}-npos_{}-nneg_{}-npred_{}-depth_{}-k_{}-model_picker_include_answers".format(method_str, n_labeled_pos, n_labeled_neg, npred, depth, k)
     # log_name = "{}-npred_{}-depth_{}-k_{}-initpos_{}-initneg_{}-max_duration_{}".format(method_str, npred, depth, k, n_init_pos, n_init_neg, max_duration)
     log_name = "{}-query_{}-npred_{}-depth_{}-k_{}-max_duration_{}-all_fragments".format(method_str, query_str, npred, depth, k, max_duration)
+    # if dir not exist, create it
+    if not os.path.exists("outputs/{}".format(method_str)):
+        os.makedirs("outputs/{}".format(method_str))
     if output_to_file:
         f = open("outputs/{}/{}.log".format(method_str, log_name), 'w')
         sys.stdout = f
 
-    print(log_name)
-    print("method:", method_str, "npred:", npred, "depth:", depth, "k:", k, "max_duration:", max_duration, "n_init_pos:", n_init_pos, "n_init_neg:", n_init_neg, "query_str:", query_str)
+    print(args)
+
     if method_str == 'quivr':
         test_quivr_exact()
         # test_quivr_exact(n_labeled_pos, n_labeled_neg)
     elif method_str == 'vocal':
         test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, query_str)
     elif method_str == "vocal_exhaustive":
-        test_vocal_exhaustive(npred, depth, max_duration)
+        test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration)
     elif method_str == 'quivr_soft':
         test_quivr_soft(npred, depth, k, log_name)
         # test_quivr_soft(n_labeled_pos, n_labeled_neg, npred, depth, k, log_name)

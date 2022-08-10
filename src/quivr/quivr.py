@@ -49,7 +49,7 @@ class QUIVR:
         self.memoize_all_inputs = [{} for _ in range(len(inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
 
         # Initialize program graph
-        query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
+        query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth, topdown_or_bottomup='topdown')
 
         queue = [query_graph]
         self.consistent_queries = []
