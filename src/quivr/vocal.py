@@ -8,9 +8,9 @@ from sklearn.metrics import f1_score
 from scipy import stats
 import itertools
 from lru import LRU
-from multiprocessing import Pool
-import multiprocessing as mp
-from functools import partial
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
+# from functools import partial
 import resource
 from pympler import asizeof
 
@@ -23,7 +23,7 @@ num_workers = 32
 
 class VOCAL:
 
-    def __init__(self, inputs, labels, predicate_dict, max_num_programs=100, max_num_atomic_predicates=5, max_depth=2, k1=10, k2=20, budget=200, thresh=0.5, max_duration=2):
+    def __init__(self, inputs, labels, predicate_dict, max_num_programs=100, max_num_atomic_predicates=5, max_depth=2, k1=10, k2=20, budget=200, thresh=0.5, max_duration=2, multithread=1):
         self.max_num_programs = max_num_programs
         self.max_num_atomic_predicates = max_num_atomic_predicates
         self.max_depth = max_depth
@@ -43,6 +43,15 @@ class VOCAL:
 
         self.predicate_dict = predicate_dict
         self.answers = []
+        self.multithread = multithread
+
+        if self.multithread > 1:
+            self.m = multiprocessing.Manager()
+            self.lock = self.m.Lock()
+        elif self.multithread == 1:
+            self.lock = None
+        else:
+            raise ValueError("multithread must be 1 or greater")
 
     def run(self, init_labeled_index):
         _start_total_time = time.time()
@@ -65,7 +74,7 @@ class VOCAL:
                 query_graph.num_atomic_predicates = 1
                 query_graph.depth = 1
                 self.candidate_queries.append(query_graph)
-                score = self.compute_query_score(query_graph.program, query_graph.depth)
+                score = self.compute_query_score(query_graph.program)
                 print("initialization", print_program(query_graph.program), score)
                 self.answers.append([query_graph, score])
 
@@ -80,7 +89,7 @@ class VOCAL:
                 all_children = current_query_graph.get_all_children_bu(self.predicate_dict, self.max_duration)
                 # Compute F1 score of each candidate query
                 for child in all_children:
-                    score = self.compute_query_score(child.program, child.depth)
+                    score = self.compute_query_score(child.program)
                     if score > 0:
                         new_candidate_queries.append(child)
                         scores.append(score)
@@ -108,7 +117,7 @@ class VOCAL:
             # Retain the top k2 queries with the highest scores as answers
             _start_retain_top_k2_queries_time = time.time()
             for i in range(len(self.answers)):
-                self.answers[i][1] = self.compute_query_score(self.answers[i][0].program, self.answers[i][0].depth)
+                self.answers[i][1] = self.compute_query_score(self.answers[i][0].program)
             self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             self.answers = self.answers[:self.k2]
             print("top k2 queries", [(print_program(query.program), score) for query, score in self.answers])
@@ -173,9 +182,17 @@ class VOCAL:
         theta_lb = value_range[0]
         theta_ub = value_range[1]
         for i, (input, label) in enumerate(zip(inputs, labels)):
+            if self.lock:
+                self.lock.acquire()
             memoize = self.memoize_all_inputs[i]
-            result, memoize = new_query.execute(input, label, memoize)
-            self.memoize_all_inputs[i] = memoize
+            if self.lock:
+                self.lock.release()
+            result, new_memoize = new_query.execute(input, label, memoize, {})
+            if self.lock:
+                self.lock.acquire()
+            self.memoize_all_inputs[i].update(new_memoize)
+            if self.lock:
+                self.lock.release()
             if label == 1:
                 theta_ub = min(result[0, len(input[0])], theta_ub)
             if label == 0:
@@ -231,7 +248,7 @@ class VOCAL:
         print("LRU can maximally store {} results".format(10000))
 
         # Initialize program graph
-        self.candidate_queries = []
+        candidate_queries = []
 
         for pred in self.predicate_dict:
             pred_instances = []
@@ -245,17 +262,14 @@ class VOCAL:
                 query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred_instance), dsl.TrueStar())
                 query_graph.num_atomic_predicates = 1
                 query_graph.depth = 1
-                self.candidate_queries.append(query_graph)
+                candidate_queries.append(query_graph)
 
-        # with Pool(processes=num_workers) as pool:
-        #     for i, ret in enumerate(pool.imap_unordered(self.dfs, self.candidate_queries)):
-        #         self.answers.extend(ret)
-
-        # self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
-        # self.answers = self.answers[:self.k2]
-
-        for current_query_graph in self.candidate_queries:
-            self.dfs(current_query_graph)
+        if self.multithread > 1:
+            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                executor.map(self.dfs, candidate_queries)
+        else:
+            for current_query_graph in candidate_queries:
+                self.dfs(current_query_graph)
 
         # RETURN: the list.
         print("final_answers")
@@ -274,27 +288,36 @@ class VOCAL:
             # answers.extend(self.dfs(child))
             self.dfs(child)
         _start_time = time.time()
-        score = self.compute_query_score(current_query_graph.program, current_query_graph.depth)
+        score = self.compute_query_score(current_query_graph.program)
         print("add query: {}, score: {}, time:{}".format(print_program(current_query_graph.program), score, time.time() - _start_time))
-        if score > 0 and score > self.answers[-1][1]:
+        if self.lock:
+            self.lock.acquire()
+        if score > 0:
+            # if len(self.answers) == 0 or score >= self.answers[-1][1]:
             self.answers.append([current_query_graph, score])
             self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             self.answers = self.answers[:self.k2]
-            # answers.append([current_query_graph, score])
-            # answers = sorted(answers, key=lambda x: x[1], reverse=True)
-            # answers = answers[:self.k2]
-        # return answers
+        if self.lock:
+            self.lock.release()
 
-    def compute_query_score(self, current_query, depth):
+    def compute_query_score(self, current_query):
         y_pred = []
         # for i, (input, label) in enumerate(zip(self.inputs, self.labels)):
         for i in self.labeled_index:
             input = self.inputs[i]
             label = self.labels[i]
+            if self.lock:
+                self.lock.acquire()
             memoize = self.memoize_all_inputs[i]
-            result, memoize  = current_query.execute(input, label, memoize)
+            if self.lock:
+                self.lock.release()
+            result, new_memoize  = current_query.execute(input, label, memoize, {})
             y_pred.append(int(result[0, len(input[0])] > 0))
-            self.memoize_all_inputs[i] = memoize
+            if self.lock:
+                self.lock.acquire()
+            self.memoize_all_inputs[i].update(new_memoize)
+            if self.lock:
+                self.lock.release()
         # print(self.labels[self.labeled_index], y_pred)
         print("cache", len(self.memoize_all_inputs[0]))
         print(using("profile"))
@@ -313,13 +336,21 @@ class VOCAL:
             # print("prediction matrix", i)
             input = self.inputs[i]
             label = self.labels[i]
+            if self.lock:
+                self.lock.acquire()
             memoize = self.memoize_all_inputs[i]
+            if self.lock:
+                self.lock.release()
             pred_per_input = []
             for query_graph in self.candidate_queries:
                 query = query_graph.program
-                result, memoize = query.execute(input, label, memoize)
+                result, new_memoize = query.execute(input, label, memoize, {})
                 pred_per_input.append(int(result[0, len(input[0])] > 0))
-                self.memoize_all_inputs[i] = memoize
+                if self.lock:
+                    self.lock.acquire()
+                self.memoize_all_inputs[i].update(new_memoize)
+                if self.lock:
+                    self.lock.release()
             prediction_matrix.append(pred_per_input)
         prediction_matrix = np.array(prediction_matrix)
         print("constructing prediction matrix", time.time()-_start)
@@ -377,14 +408,22 @@ class VOCAL:
             # print("prediction matrix", i)
             input = self.inputs[i]
             label = self.labels[i]
+            if self.lock:
+                self.lock.acquire()
             memoize = self.memoize_all_inputs[i]
+            if self.lock:
+                self.lock.release()
             pred_per_input = []
             for query_graph in itertools.chain(self.candidate_queries, [item[0] for item in self.answers]):
                 query = query_graph.program
                 # print("test", print_program(query))
-                result, memoize = query.execute(input, label, memoize)
+                result, new_memoize = query.execute(input, label, memoize, {})
                 pred_per_input.append(int(result[0, len(input[0])] > 0))
-                self.memoize_all_inputs[i] = memoize
+                if self.lock:
+                    self.lock.acquire()
+                self.memoize_all_inputs[i].update(new_memoize)
+                if self.lock:
+                    self.lock.release()
             prediction_matrix.append(pred_per_input)
         prediction_matrix = np.array(prediction_matrix)
         print("constructing prediction matrix", time.time()-_start)
