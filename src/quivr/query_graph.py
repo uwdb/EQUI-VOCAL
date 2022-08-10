@@ -1,14 +1,18 @@
 import copy
 import dsl
+from utils import print_program
 
 class QueryGraph(object):
 
-    def __init__(self, max_num_atomic_predicates, max_depth):
+    def __init__(self, max_num_atomic_predicates, max_depth, topdown_or_bottomup="bottomup"):
         self.max_num_atomic_predicates = max_num_atomic_predicates
         self.max_depth = max_depth
-
-        start = dsl.StartOperator()
-        self.program = start
+        if topdown_or_bottomup == "bottomup":
+            self.program = None
+        elif topdown_or_bottomup == "topdown":
+            self.program = dsl.StartOperator()
+        else:
+            raise ValueError("Unknown algorithm:", topdown_or_bottomup)
         self.depth = 0
         self.num_atomic_predicates = 0
 
@@ -229,3 +233,88 @@ class QueryGraph(object):
                 candidate = functionclass()
                 candidates.append([candidate, 1])
         return candidates
+
+    def get_all_children_bu(self, predicate_dict, max_duration):
+        """
+        Example query:
+            q = True*; p11 ^ ... ^ p1i ^ d1; True*; p21 ^ ... ^ p2j ^ d2; True*
+            (Base case, one scene graph: True*; p11 ^ ... ^ p1i ^ d1; True*)
+        Verbose form:
+            q = Seq(Seq(Seq(Seq(True*, Duration(Conj(Conj(p13, p12), p11), theta1)), True*), Duration(Conj(Conj(p23, p22), p21), theta2)), True*)
+        """
+        all_children = []
+        # predicate_dict = {dsl.Near: [-0.85, -1.05, -1.25], dsl.Far: [0.9, 1.1, 1.3]}
+        # predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
+        # Action a: Scene graph construction: add a predicate to existing scene graph (i.e., the last scene graph in the sequence).
+        if self.num_atomic_predicates + 1 <= self.max_num_atomic_predicates:
+            for pred in predicate_dict:
+                pred_instances = []
+                if predicate_dict[pred]:
+                    for param in predicate_dict[pred]:
+                        pred_instances.append(pred(param))
+                else:
+                    pred_instances.append(pred())
+
+                for pred_instance in pred_instances:
+                    new_query_graph = copy.deepcopy(self)
+                    # 1. Find the last scene graph g2 = q.submodules["function1"].submodules["function2"] // Duration(Conj(Conj(p23, p22), p21), theta2)
+                    parent_graph = [new_query_graph.program.submodules["function1"], "function2"]
+                    last_graph = new_query_graph.program.submodules["function1"].submodules["function2"]
+                    # 2. If g2 has duration constraint, locate the scene graph only: n2 = g2.submodules["duration"] // n2 = Conj(Conj(p23, p22), p21)
+                    if last_graph.name == "Duration":
+                        parent_graph = [last_graph, "duration"]
+                        last_graph = last_graph.submodules["duration"]
+                    # 3. Find p23, which is the leftmost child of n2. If the predicate p24 already exists in the scene graph, skip.
+                    is_duplicate_predicate = False
+                    while last_graph.name == "Conjunction":
+                        if last_graph.submodules["function2"] >= pred_instance:
+                            is_duplicate_predicate = True
+                            break
+                        parent_graph = [parent_graph[0].submodules[parent_graph[1]], "function1"]
+                        last_graph = last_graph.submodules["function1"] # Leftmost child of last_graph
+                    if is_duplicate_predicate:
+                        continue
+                    if last_graph >= pred_instance:
+                        continue
+                    # 4. Replace p23 with Conj(p24, p23)
+                    parent_graph[0].submodules[parent_graph[1]] = dsl.ConjunctionOperator(pred_instance, last_graph)
+                    new_query_graph.num_atomic_predicates += 1
+                    print("Action A: ", print_program(new_query_graph.program))
+                    all_children.append(new_query_graph)
+
+        # Action b: Sequence construction: add a new scene graph (which consists of one predicate) to the end of the sequence.
+        # 1. q' = Seq(Seq(q, p31), True*)
+        if self.num_atomic_predicates + 1 <= self.max_num_atomic_predicates and self.depth + 1 <= self.max_depth:
+            for pred in predicate_dict:
+                pred_instances = []
+                if predicate_dict[pred]:
+                    for param in predicate_dict[pred]:
+                        pred_instances.append(pred(param))
+                else:
+                    pred_instances.append(pred())
+
+                for pred_instance in pred_instances:
+                    new_query_graph = copy.deepcopy(self)
+                    new_query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(new_query_graph.program, pred_instance), dsl.TrueStar())
+                    new_query_graph.num_atomic_predicates += 1
+                    new_query_graph.depth += 1
+                    print("Action B: ", print_program(new_query_graph.program))
+                    all_children.append(new_query_graph)
+
+        # Action c: Duration refinement: increase the duration of the last scene graph in the sequence
+        new_query_graph = copy.deepcopy(self)
+        # 1. Find the last scene graph g2 = q.submodules["function1"].submodules["function2"] // g2 = Duration(Conj(Conj(p23, p22), p21), theta2)
+        last_graph = new_query_graph.program.submodules["function1"].submodules["function2"]
+        # 2. If g2 has duration constraint, increment by 1: g2.theta += 1
+        if last_graph.name == "Duration":
+            if last_graph.theta < max_duration:
+                last_graph.theta += 1
+                all_children.append(new_query_graph)
+                print("Action C: ", print_program(new_query_graph.program))
+        # 3. Else, add a duration constraint: g2' = Duration(g2, 2)
+        else:
+            new_query_graph.program.submodules["function1"].submodules["function2"] = dsl.DurationOperator(last_graph, 2)
+            all_children.append(new_query_graph)
+            print("Action C: ", print_program(new_query_graph.program))
+
+        return all_children
