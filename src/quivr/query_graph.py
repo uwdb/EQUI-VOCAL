@@ -246,6 +246,7 @@ class QueryGraph(object):
         # predicate_dict = {dsl.Near: [-0.85, -1.05, -1.25], dsl.Far: [0.9, 1.1, 1.3]}
         # predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
         # Action a: Scene graph construction: add a predicate to existing scene graph (i.e., the last scene graph in the sequence).
+        # Require: the last scene graph must not have duration constraint.
         if self.num_atomic_predicates + 1 <= self.max_num_atomic_predicates:
             for pred in predicate_dict:
                 pred_instances = []
@@ -260,10 +261,12 @@ class QueryGraph(object):
                     # 1. Find the last scene graph g2 = q.submodules["function1"].submodules["function2"] // Duration(Conj(Conj(p23, p22), p21), theta2)
                     parent_graph = [new_query_graph.program.submodules["function1"], "function2"]
                     last_graph = new_query_graph.program.submodules["function1"].submodules["function2"]
-                    # 2. If g2 has duration constraint, locate the scene graph only: n2 = g2.submodules["duration"] // n2 = Conj(Conj(p23, p22), p21)
+                    # 2. If g2 has duration constraint, CONTINUE
+                    # NOT TRUE: locate the scene graph only: n2 = g2.submodules["duration"] // n2 = Conj(Conj(p23, p22), p21)
                     if last_graph.name == "Duration":
-                        parent_graph = [last_graph, "duration"]
-                        last_graph = last_graph.submodules["duration"]
+                        continue
+                        # parent_graph = [last_graph, "duration"]
+                        # last_graph = last_graph.submodules["duration"]
                     # 3. Find p23, which is the leftmost child of n2. If the predicate p24 already exists in the scene graph, skip.
                     is_duplicate_predicate = False
                     while last_graph.name == "Conjunction":
