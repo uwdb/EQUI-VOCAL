@@ -119,7 +119,7 @@ def test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, query_str=
     algorithm = VOCAL(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k1=k, k2=k, budget=100, thresh=0.5, max_duration=max_duration)
     algorithm.run(init_labeled_index)
 
-def test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration):
+def test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread):
     # read from json file
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_inputs_test.json", 'r') as f:
         inputs = json.load(f)
@@ -135,7 +135,7 @@ def test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_durati
     labels = labels[sampled_labeled_index]
 
     predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
-    algorithm = VOCAL(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k1=1000, k2=1000, budget=100, thresh=0.5, max_duration=max_duration)
+    algorithm = VOCAL(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k1=1000, k2=1000, budget=100, thresh=0.5, max_duration=max_duration, multithread=multithread)
     algorithm.exhaustive_search()
 
 
@@ -190,6 +190,7 @@ if __name__ == '__main__':
     ap.add_argument('--n_init_neg', type=int, default=50)
     ap.add_argument('--output_to_file', action="store_true")
     ap.add_argument('--query_str', type=str, default="collision")
+    ap.add_argument('--multithread', type=int, default=1)
     args = ap.parse_args()
     method_str = args.method
     n_labeled_pos = args.n_labeled_pos
@@ -202,9 +203,10 @@ if __name__ == '__main__':
     n_init_neg = args.n_init_neg
     output_to_file = args.output_to_file
     query_str = args.query_str
+    multithread = args.multithread
     # log_name = "{}-npos_{}-nneg_{}-npred_{}-depth_{}-k_{}-model_picker_include_answers".format(method_str, n_labeled_pos, n_labeled_neg, npred, depth, k)
     # log_name = "{}-npred_{}-depth_{}-k_{}-initpos_{}-initneg_{}-max_duration_{}".format(method_str, npred, depth, k, n_init_pos, n_init_neg, max_duration)
-    log_name = "{}-query_{}-npred_{}-depth_{}-k_{}-max_duration_{}-all_fragments".format(method_str, query_str, npred, depth, k, max_duration)
+    log_name = "{}-query_{}-npred_{}-depth_{}-k_{}-max_duration_{}-multithread_{}-all_fragments".format(method_str, query_str, npred, depth, k, max_duration, multithread)
     # if dir not exist, create it
     if not os.path.exists("outputs/{}".format(method_str)):
         os.makedirs("outputs/{}".format(method_str))
@@ -220,7 +222,7 @@ if __name__ == '__main__':
     elif method_str == 'vocal':
         test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, query_str)
     elif method_str == "vocal_exhaustive":
-        test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration)
+        test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread)
     elif method_str == 'quivr_soft':
         test_quivr_soft(npred, depth, k, log_name)
         # test_quivr_soft(n_labeled_pos, n_labeled_neg, npred, depth, k, log_name)
