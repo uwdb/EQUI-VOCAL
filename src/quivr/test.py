@@ -15,9 +15,9 @@ def compute_query_score(current_query, inputs, labels, memoize_all_inputs):
         input = inputs[i]
         label = labels[i]
         memoize = memoize_all_inputs[i]
-        result, memoize = current_query.execute(input, label, memoize)
+        result, new_memoize = current_query.execute(input, label, memoize, {})
         y_pred.append(int(result[0, len(input[0])] > 0))
-        memoize_all_inputs[i] = memoize
+        memoize_all_inputs[i].update(new_memoize)
         dist_list = []
         for obj_a, obj_b in zip(input[0], input[1]):
             dist = obj_distance(obj_a, obj_b)
@@ -170,7 +170,7 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, program_str):
 
 if __name__ == '__main__':
     # test_query_equivalent(100, 100, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Kleene(Far_1.1), MinLength_2)), True*), Near_1.05), True*), Conjunction(Kleene(Conjunction(Near_1.05, Far_0.9)), MinLength_10)), True*)", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.1, 2)), True*), Near_1.05), True*), Duration(Conjunction(Near_1.05, Far_0.9), 10)), True*)")
-    test_vocal(50, 250, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.3, 2)), True*), Near_0.85), True*), Duration(Near_1.05, 3)), True*)")
+    test_vocal(1, 5, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.3, 2)), True*), Near_0.85), True*), Duration(Near_1.05, 3)), True*)")
 
 
     # test_quivr_answer_correctness(10, 10)
