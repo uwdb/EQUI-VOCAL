@@ -1,8 +1,9 @@
 import os
-from utils import print_program, str_to_program
-from quivr import QUIVR
-from vocal import VOCAL
-from quivr_soft import QUIVRSoft
+from quivr.methods.exhaustive_search import ExhaustiveSearch
+from quivr.utils import print_program, str_to_program
+from quivr.methods.quivr_exact import QUIVR
+from quivr.methods.vocal import VOCAL
+from quivr.methods.quivr_soft import QUIVRSoft
 import json
 import random
 import math
@@ -10,7 +11,7 @@ import numpy as np
 from sklearn.metrics import f1_score
 import argparse
 import sys
-import dsl
+import quivr.dsl as dsl
 
 random.seed(10)
 
@@ -91,7 +92,7 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, max_num_atomic_predicates, max
     for q, s in answer:
         print(print_program(q), s)
 
-def test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, query_str="collision"):
+def test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, multithread, query_str="collision"):
     if query_str == "collision":
         # read from json file
         with open("inputs/collision_inputs_train.json", 'r') as f:
@@ -116,10 +117,10 @@ def test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, query_str=
         predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.Left: None, dsl.Right: None, dsl.Back: None, dsl.Front: None}
     n_pos = sum(labels)
     init_labeled_index = random.sample(list(range(n_pos)), n_init_pos) + random.sample(list(range(n_pos, len(labels))), n_init_neg)
-    algorithm = VOCAL(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k1=k, k2=k, budget=100, thresh=0.5, max_duration=max_duration)
+    algorithm = VOCAL(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k1=k, k2=k, budget=100, thresh=0.5, max_duration=max_duration, multithread=multithread)
     algorithm.run(init_labeled_index)
 
-def test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread):
+def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread):
     # read from json file
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_inputs_test.json", 'r') as f:
         inputs = json.load(f)
@@ -135,8 +136,8 @@ def test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_durati
     labels = labels[sampled_labeled_index]
 
     predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
-    algorithm = VOCAL(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k1=1000, k2=1000, budget=100, thresh=0.5, max_duration=max_duration, multithread=multithread)
-    algorithm.exhaustive_search()
+    algorithm = ExhaustiveSearch(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k=1000, max_duration=max_duration, multithread=multithread)
+    algorithm.run()
 
 
 def compute_query_score(current_query, inputs, labels):
@@ -206,7 +207,7 @@ if __name__ == '__main__':
     multithread = args.multithread
     # log_name = "{}-npos_{}-nneg_{}-npred_{}-depth_{}-k_{}-model_picker_include_answers".format(method_str, n_labeled_pos, n_labeled_neg, npred, depth, k)
     # log_name = "{}-npred_{}-depth_{}-k_{}-initpos_{}-initneg_{}-max_duration_{}".format(method_str, npred, depth, k, n_init_pos, n_init_neg, max_duration)
-    log_name = "{}-query_{}-npred_{}-depth_{}-k_{}-max_duration_{}-multithread_{}-all_fragments".format(method_str, query_str, npred, depth, k, max_duration, multithread)
+    log_name = "{}-query_{}-npred_{}-depth_{}-k_{}-max_duration_{}-multithread_{}".format(method_str, query_str, npred, depth, k, max_duration, multithread)
     # if dir not exist, create it
     if not os.path.exists("outputs/{}".format(method_str)):
         os.makedirs("outputs/{}".format(method_str))
@@ -220,9 +221,9 @@ if __name__ == '__main__':
         test_quivr_exact()
         # test_quivr_exact(n_labeled_pos, n_labeled_neg)
     elif method_str == 'vocal':
-        test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, query_str)
-    elif method_str == "vocal_exhaustive":
-        test_vocal_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread)
+        test_vocal(n_init_pos, n_init_neg, npred, depth, k, max_duration, multithread, query_str)
+    elif method_str == "exhaustive":
+        test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread)
     elif method_str == 'quivr_soft':
         test_quivr_soft(npred, depth, k, log_name)
         # test_quivr_soft(n_labeled_pos, n_labeled_neg, npred, depth, k, log_name)

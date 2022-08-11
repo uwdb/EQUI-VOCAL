@@ -2,7 +2,7 @@
 import math
 import copy
 import numpy as np
-import utils
+import quivr.utils as utils
 import functools
 
 # (predicate), conjunction, sequencing, Kleene star, finite k iteration

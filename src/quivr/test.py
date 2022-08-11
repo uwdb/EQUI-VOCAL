@@ -1,4 +1,4 @@
-from utils import print_program, str_to_program
+from quivr.utils import print_program, str_to_program
 import json
 import random
 import math
