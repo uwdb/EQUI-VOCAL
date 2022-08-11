@@ -1,6 +1,6 @@
 import copy
-import dsl
-from utils import print_program
+import quivr.dsl as dsl
+from quivr.utils import print_program
 
 class QueryGraph(object):
 

@@ -7,7 +7,7 @@ import itertools
 import random
 import numpy as np
 import os
-from utils import print_program, str_to_program
+from quivr.utils import print_program, str_to_program
 
 segment_length = 128
 n_chunks = int(128 / segment_length)
