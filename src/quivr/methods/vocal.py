@@ -22,22 +22,21 @@ random.seed(10)
 
 class VOCAL(BaseMethod):
 
-    def __init__(self, inputs, labels, predicate_dict, max_num_atomic_predicates=5, max_depth=2, k1=10, k2=20, budget=200, thresh=0.5, max_duration=2, multithread=1):
+    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, budget, multithread):
         self.inputs = np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
         self.predicate_dict = predicate_dict
-        self.max_num_atomic_predicates = max_num_atomic_predicates
+        self.max_npred = max_npred
         self.max_depth = max_depth
-        self.k1 = k1
-        self.k2 = k2
+        self.beam_width = beam_width
+        self.k = k
         self.budget = budget
-        self.thresh = thresh
         self.max_duration = max_duration
         self.multithread = multithread
 
         self.query_expansion_time = 0
         self.segment_selection_time = 0
-        self.retain_top_k2_queries_time = 0
+        self.retain_top_k_queries_time = 0
         self.answers = []
 
         if self.multithread > 1:
@@ -64,7 +63,7 @@ class VOCAL(BaseMethod):
             else:
                 pred_instances.append(pred())
             for pred_instance in pred_instances:
-                query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
+                query_graph = QueryGraph(self.max_npred, self.max_depth)
                 query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred_instance), dsl.TrueStar())
                 query_graph.num_atomic_predicates = 1
                 query_graph.depth = 1
@@ -88,29 +87,26 @@ class VOCAL(BaseMethod):
             self.answers.extend(new_candidate_queries)
             self.query_expansion_time += time.time() - _start_query_expansion_time
 
-            # Sample k1 queries
+            # Sample beam_width queries
             if len(new_candidate_queries):
                 new_candidate_queries = np.asarray(new_candidate_queries, dtype=object)
                 weight = new_candidate_queries[:, 1].astype(np.float)
                 weight = weight / np.sum(weight)
-                candidate_idx = np.random.choice(np.arange(new_candidate_queries.shape[0]), size=min(self.k1, new_candidate_queries.shape[0]), replace=False, p=weight)
+                candidate_idx = np.random.choice(np.arange(new_candidate_queries.shape[0]), size=min(self.beam_width, new_candidate_queries.shape[0]), replace=False, p=weight)
                 print("candidate_idx", candidate_idx)
                 self.candidate_queries = new_candidate_queries[candidate_idx].tolist()
-                print("k1 queries", [(print_program(query.program), score) for query, score in self.candidate_queries])
+                print("beam_width queries", [(print_program(query.program), score) for query, score in self.candidate_queries])
             else:
                 self.candidate_queries = []
 
-            # Baseline: keep all queries
-            # self.candidate_queries = new_candidate_queries
-
-            # Retain the top k2 queries with the highest scores as answers
-            _start_retain_top_k2_queries_time = time.time()
+            # Retain the top k queries with the highest scores as answers
+            _start_retain_top_k_queries_time = time.time()
             for i in range(len(self.answers)):
                 self.answers[i][1] = self.compute_query_score(self.answers[i][0].program)
             self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
-            self.answers = self.answers[:self.k2]
-            print("top k2 queries", [(print_program(query.program), score) for query, score in self.answers])
-            self.retain_top_k2_queries_time += time.time() - _start_retain_top_k2_queries_time
+            self.answers = self.answers[:self.k]
+            print("top k queries", [(print_program(query.program), score) for query, score in self.answers])
+            self.retain_top_k_queries_time += time.time() - _start_retain_top_k_queries_time
 
             # Select new video segments to label
             _start_segmnet_selection_time = time.time()
@@ -128,9 +124,10 @@ class VOCAL(BaseMethod):
         for query_graph, score in self.answers:
             print("answer", print_program(query_graph.program), score)
 
-        print("[Runtime] query expansion time: {}, segment selection time: {}, retain top k2 queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k2_queries_time, time.time() - _start_total_time))
+        total_time = time.time() - _start_total_time
+        print("[Runtime] query expansion time: {}, segment selection time: {}, retain top k queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k_queries_time, total_time))
 
-        return self.answers
+        return self.answers, total_time
 
     def expand_query_and_compute_score(self, current_query):
         current_query_graph, _ = current_query
@@ -149,103 +146,103 @@ class VOCAL(BaseMethod):
         return new_candidate_queries
 
 
-    def prune_parameter_values(self, current_query, inputs, labels):
-        # current_query is sketch (containing only parameter holes)
-        # 1. Find all parameter holes
-        # 2. For each parameter hole, fix it and fill in other holes with -inf or inf.
-        if QueryGraph.is_complete(current_query):
-            return
-            # self.consistent_queries.append(current_query)
-        queue = [current_query]
-        while len(queue) != 0:
-            current = queue.pop(0)
-            for submod, functionclass in current.submodules.items():
-                if isinstance(functionclass, dsl.ParameterHole):
-                    orig_fclass = copy.deepcopy(current.submodules[submod])
-                    value_range = functionclass.get_value_range()
-                    step = functionclass.get_step()
-                    # Update the current parameter hole to parameter class (but theta is still unset)
-                    predicate = copy.deepcopy(functionclass.get_predicate())
-                    predicate.with_hole = True
-                    current.submodules[submod] = predicate
-                    new_query = copy.deepcopy(current_query)
-                    value_interval = self.fill_other_parameter_holes(new_query, inputs, labels, value_range)
-                    print(value_interval)
-                    if value_interval[0] > value_interval[1]:
-                        return
-                    orig_fclass.value_range = value_interval
-                    current.submodules[submod] = orig_fclass
-                    continue
-                if issubclass(type(functionclass), dsl.Predicate):
-                    continue
-                else:
-                    #add submodules
-                    queue.append(functionclass)
-        # 3. Construct all (candidate) consistent queries
-        self.fill_all_parameter_holes(current_query)
+    # def prune_parameter_values(self, current_query, inputs, labels):
+    #     # current_query is sketch (containing only parameter holes)
+    #     # 1. Find all parameter holes
+    #     # 2. For each parameter hole, fix it and fill in other holes with -inf or inf.
+    #     if QueryGraph.is_complete(current_query):
+    #         return
+    #         # self.consistent_queries.append(current_query)
+    #     queue = [current_query]
+    #     while len(queue) != 0:
+    #         current = queue.pop(0)
+    #         for submod, functionclass in current.submodules.items():
+    #             if isinstance(functionclass, dsl.ParameterHole):
+    #                 orig_fclass = copy.deepcopy(current.submodules[submod])
+    #                 value_range = functionclass.get_value_range()
+    #                 step = functionclass.get_step()
+    #                 # Update the current parameter hole to parameter class (but theta is still unset)
+    #                 predicate = copy.deepcopy(functionclass.get_predicate())
+    #                 predicate.with_hole = True
+    #                 current.submodules[submod] = predicate
+    #                 new_query = copy.deepcopy(current_query)
+    #                 value_interval = self.fill_other_parameter_holes(new_query, inputs, labels, value_range)
+    #                 print(value_interval)
+    #                 if value_interval[0] > value_interval[1]:
+    #                     return
+    #                 orig_fclass.value_range = value_interval
+    #                 current.submodules[submod] = orig_fclass
+    #                 continue
+    #             if issubclass(type(functionclass), dsl.Predicate):
+    #                 continue
+    #             else:
+    #                 #add submodules
+    #                 queue.append(functionclass)
+    #     # 3. Construct all (candidate) consistent queries
+    #     self.fill_all_parameter_holes(current_query)
 
-    def fill_other_parameter_holes(self, new_query, inputs, labels, value_range):
-        theta_lb = value_range[0]
-        theta_ub = value_range[1]
-        for i, (input, label) in enumerate(zip(inputs, labels)):
-            if self.lock:
-                self.lock.acquire()
-            memoize = self.memoize_all_inputs[i]
-            if self.lock:
-                self.lock.release()
-            result, new_memoize = new_query.execute(input, label, memoize, {})
-            if self.lock:
-                self.lock.acquire()
-            self.memoize_all_inputs[i].update(new_memoize)
-            if self.lock:
-                self.lock.release()
-            if label == 1:
-                theta_ub = min(result[0, len(input[0])], theta_ub)
-            if label == 0:
-                theta_lb = max(result[0, len(input[0])], theta_lb)
-            if theta_lb > theta_ub:
-                break
-        return [theta_lb, theta_ub]
+    # def fill_other_parameter_holes(self, new_query, inputs, labels, value_range):
+    #     theta_lb = value_range[0]
+    #     theta_ub = value_range[1]
+    #     for i, (input, label) in enumerate(zip(inputs, labels)):
+    #         if self.lock:
+    #             self.lock.acquire()
+    #         memoize = self.memoize_all_inputs[i]
+    #         if self.lock:
+    #             self.lock.release()
+    #         result, new_memoize = new_query.execute(input, label, memoize, {})
+    #         if self.lock:
+    #             self.lock.acquire()
+    #         self.memoize_all_inputs[i].update(new_memoize)
+    #         if self.lock:
+    #             self.lock.release()
+    #         if label == 1:
+    #             theta_ub = min(result[0, len(input[0])], theta_ub)
+    #         if label == 0:
+    #             theta_lb = max(result[0, len(input[0])], theta_lb)
+    #         if theta_lb > theta_ub:
+    #             break
+    #     return [theta_lb, theta_ub]
 
-    def fill_all_parameter_holes(self, current_query):
-        if QueryGraph.is_complete(current_query):
-            score = self.compute_query_score(current_query)
-            if score > self.thresh:
-                # TODO: should be query graph instead of query
-                query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
-                query_graph.program = current_query
-                print("add complete query", print_program(current_query))
-                self.candidate_list.append([query_graph, score])
-            return
-        queue = [current_query]
-        while len(queue) != 0:
-            current = queue.pop(0)
-            for submod, functionclass in current.submodules.items():
-                if isinstance(functionclass, dsl.PredicateHole):
-                    raise ValueError
-                if issubclass(type(functionclass), dsl.Predicate):
-                    continue
-                if isinstance(functionclass, dsl.ParameterHole):
-                    assert(isinstance(functionclass.predicate, dsl.MinLength))
-                    orig_fclass = copy.deepcopy(current.submodules[submod])
-                    value_range = functionclass.get_value_range()
-                    step = functionclass.get_step()
-                    for theta in np.arange(value_range[0], value_range[1] + 1e-6, step):
-                        predicate = functionclass.fill_hole(theta)
-                        # print("fill hole", predicate.name, theta)
-                        # replace the parameter hole with a predicate
-                        current.submodules[submod] = predicate
-                        # create the correct child node
-                        new_query = copy.deepcopy(current_query)
-                        if not QueryGraph.is_sketch(new_query):
-                            raise ValueError
-                            # print("here1")
-                        self.fill_all_parameter_holes(new_query)
-                    current.submodules[submod] = orig_fclass
-                    return
-                else:
-                    #add submodules
-                    queue.append(functionclass)
+    # def fill_all_parameter_holes(self, current_query):
+    #     if QueryGraph.is_complete(current_query):
+    #         score = self.compute_query_score(current_query)
+    #         if score > self.thresh:
+    #             # TODO: should be query graph instead of query
+    #             query_graph = QueryGraph(self.max_npred, self.max_depth)
+    #             query_graph.program = current_query
+    #             print("add complete query", print_program(current_query))
+    #             self.candidate_list.append([query_graph, score])
+    #         return
+    #     queue = [current_query]
+    #     while len(queue) != 0:
+    #         current = queue.pop(0)
+    #         for submod, functionclass in current.submodules.items():
+    #             if isinstance(functionclass, dsl.PredicateHole):
+    #                 raise ValueError
+    #             if issubclass(type(functionclass), dsl.Predicate):
+    #                 continue
+    #             if isinstance(functionclass, dsl.ParameterHole):
+    #                 assert(isinstance(functionclass.predicate, dsl.MinLength))
+    #                 orig_fclass = copy.deepcopy(current.submodules[submod])
+    #                 value_range = functionclass.get_value_range()
+    #                 step = functionclass.get_step()
+    #                 for theta in np.arange(value_range[0], value_range[1] + 1e-6, step):
+    #                     predicate = functionclass.fill_hole(theta)
+    #                     # print("fill hole", predicate.name, theta)
+    #                     # replace the parameter hole with a predicate
+    #                     current.submodules[submod] = predicate
+    #                     # create the correct child node
+    #                     new_query = copy.deepcopy(current_query)
+    #                     if not QueryGraph.is_sketch(new_query):
+    #                         raise ValueError
+    #                         # print("here1")
+    #                     self.fill_all_parameter_holes(new_query)
+    #                 current.submodules[submod] = orig_fclass
+    #                 return
+    #             else:
+    #                 #add submodules
+    #                 queue.append(functionclass)
 
     def pick_next_segment(self):
         """
@@ -280,7 +277,7 @@ class VOCAL(BaseMethod):
         n_instances = len(true_labels)
 
         # # Initialize
-        # loss_t = np.zeros(self.k1)
+        # loss_t = np.zeros(self.beam_width)
         # for i in range(n_instances):
         #     if i not in self.labeled_index:
         #         continue
@@ -291,7 +288,7 @@ class VOCAL(BaseMethod):
         #     else:
         #         loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
 
-        # eta = np.sqrt(np.log(self.k1)/(2*(len(self.labeled_index)+1)))
+        # eta = np.sqrt(np.log(self.beam_width)/(2*(len(self.labeled_index)+1)))
 
         # posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
         # # Note that above equation is equivalent to np.exp(-eta * loss_t).
@@ -375,7 +372,7 @@ class VOCAL(BaseMethod):
             else:
                 loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
 
-        eta = np.sqrt(np.log(self.k1)/(2*(len(self.labeled_index)+1)))
+        eta = np.sqrt(np.log(self.beam_width)/(2*(len(self.labeled_index)+1)))
 
         posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
         # Note that above equation is equivalent to np.exp(-eta * loss_t).

@@ -34,9 +34,7 @@ import time
 
 class QUIVR:
 
-    def __init__(self, max_num_programs=100, max_num_atomic_predicates=5,
-        max_depth=2):
-        self.max_num_programs = max_num_programs
+    def __init__(self, max_num_atomic_predicates=5, max_depth=2):
         self.max_num_atomic_predicates = max_num_atomic_predicates
         self.max_depth = max_depth
 
