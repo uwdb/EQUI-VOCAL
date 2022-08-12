@@ -25,9 +25,9 @@ return answer_list
 
 # Adapted from https://github.com/trishullab/near
 
-import utils
+import quivr.utils as utils
 from quivr.query_graph import QueryGraph
-import quivr.dsl
+import quivr.dsl as dsl
 import copy
 import numpy as np
 import time
