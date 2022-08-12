@@ -83,6 +83,8 @@ def generate_one_query(npred, depth, max_duration, predicate_dict, ratio):
     scene_graphs = []
     for i in range(depth):
         predicate_list = random.sample(list(predicate_dict.keys()), npred_per_scene_graph[i])
+        # Sort predicate_list in descending order (alphabetically)
+        predicate_list.sort(key=lambda x: x(), reverse=True)
         scene_graph_str = print_scene_graph(predicate_list)
         if duration_per_scene_graph[i] > 1:
             scene_graph_str = "Duration({}, {})".format(scene_graph_str, duration_per_scene_graph[i])
