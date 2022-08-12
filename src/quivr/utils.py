@@ -1,10 +1,8 @@
 import json
 import random
-
 import numpy as np
 from sklearn.model_selection import train_test_split
 import quivr.dsl as dsl
-
 
 def print_program(program, as_dict_key=False):
     # if isinstance(program, dsl.Predicate) or isinstance(program, dsl.Hole):

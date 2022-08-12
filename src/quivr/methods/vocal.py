@@ -346,29 +346,6 @@ class VOCAL(BaseMethod):
         true_labels = np.array(self.labels)
         prediction_matrix = []
         _start = time.time()
-        # for i in range(len(self.inputs)):
-        #     # print("prediction matrix", i)
-        #     input = self.inputs[i]
-        #     label = self.labels[i]
-        #     if self.lock:
-        #         self.lock.acquire()
-        #     memoize = self.memoize_all_inputs[i]
-        #     if self.lock:
-        #         self.lock.release()
-        #     pred_per_input = []
-        #     for query_graph in itertools.chain(self.candidate_queries, [item[0] for item in self.answers]):
-        #         query = query_graph.program
-        #         # print("test", print_program(query))
-        #         result, new_memoize = query.execute(input, label, memoize, {})
-        #         pred_per_input.append(int(result[0, len(input[0])] > 0))
-        #         if self.lock:
-        #             self.lock.acquire()
-        #         self.memoize_all_inputs[i].update(new_memoize)
-        #         if self.lock:
-        #             self.lock.release()
-        #     prediction_matrix.append(pred_per_input)
-        # prediction_matrix = np.array(prediction_matrix)
-
 
         if self.multithread > 1:
             with ThreadPoolExecutor(max_workers=self.multithread) as executor:

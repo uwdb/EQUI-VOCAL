@@ -23,15 +23,13 @@ for Q, s in answer_list:
 return sorted answer_list
 """
 
-import utils
-from mimetypes import init
-from query_graph import QueryGraph
-import dsl
+import quivr.utils as utils
+from quivr.query_graph import QueryGraph
+import quivr.dsl as dsl
 import copy
 import numpy as np
 import time
 from sklearn.metrics import f1_score
-from scipy import stats
 import sqlite3
 import io
 
