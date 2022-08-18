@@ -1,4 +1,6 @@
+import csv
 import json
+import os
 import random
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -92,11 +94,14 @@ def str_to_program(program_str):
         submodule_list = [str_to_program(submodule) for submodule in submodule_list]
         return program_init(*submodule_list)
 
-def construct_train_test(inputs_filename, labels_filename, n_labeled_pos=None, n_labeled_neg=None, n_train=None):
+def construct_train_test(query_str, n_labeled_pos=None, n_labeled_neg=None, n_train=None):
+    inputs_filename = query_str + "_inputs"
+    labels_filename = query_str + "_labels"
+
     # read from json file
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}.json".format(inputs_filename), 'r') as f:
+    with open("inputs/synthetic/{}.json".format(inputs_filename), 'r') as f:
         inputs = json.load(f)
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}.json".format(labels_filename), 'r') as f:
+    with open("inputs/synthetic/{}.json".format(labels_filename), 'r') as f:
         labels = json.load(f)
 
     inputs = np.asarray(inputs, dtype=object)
@@ -131,13 +136,19 @@ def construct_train_test(inputs_filename, labels_filename, n_labeled_pos=None, n
             inputs_test = inputs_test[:int(n_neg/5)] + inputs_test[-int(n_neg/5)*5:]
             labels_test = labels_test[:int(n_neg/5)] + labels_test[-int(n_neg/5)*5:]
 
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}_train.json".format(inputs_filename), 'w') as f:
+    # if folder doesn't exist, create it
+    if not os.path.exists("inputs/synthetic/train/"):
+        os.makedirs("inputs/synthetic/train/")
+    if not os.path.exists("inputs/synthetic/test/"):
+        os.makedirs("inputs/synthetic/test/")
+
+    with open("inputs/synthetic/train/{}.json".format(inputs_filename), 'w') as f:
         json.dump(inputs_train.tolist(), f)
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}_train.json".format(labels_filename), 'w') as f:
+    with open("inputs/synthetic/train/{}.json".format(labels_filename), 'w') as f:
         json.dump(labels_train.tolist(), f)
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}_test.json".format(inputs_filename), 'w') as f:
+    with open("inputs/synthetic/test/{}.json".format(inputs_filename), 'w') as f:
         json.dump(inputs_test.tolist(), f)
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}_test.json".format(labels_filename), 'w') as f:
+    with open("inputs/synthetic/test/{}.json".format(labels_filename), 'w') as f:
         json.dump(labels_test.tolist(), f)
 
     print("inputs_train", len(inputs_train))
@@ -146,5 +157,94 @@ def construct_train_test(inputs_filename, labels_filename, n_labeled_pos=None, n
     print("labels_test", len(labels_test), sum(labels_test))
 
 
+def get_query_str_from_filename():
+    query_list = []
+    # for each file in the folder
+    for filename in os.listdir("inputs/synthetic/"):
+        if filename.endswith("_labels.json"):
+            query_str = filename[:-12]
+            with open("inputs/synthetic/{}_labels.json".format(query_str), 'r') as f:
+                labels = json.load(f)
+                query_list.append([query_str, sum(labels), len(labels) - sum(labels), sum(labels) / (len(labels) - sum(labels))])
+            # len(positive_inputs), len(negative_inputs), len(positive_inputs) / len(negative_inputs)
+            if not os.path.exists("inputs/synthetic/test/{}_labels.json".format(query_str)):
+                construct_train_test(query_str, n_train=300)
+    # write query_list to file
+    with open("inputs/synthetic/query_list.csv", "w") as csvfile:
+        writer = csv.writer(csvfile)
+        # write header
+        writer.writerow(["query", "npos", "nneg", "ratio"])
+        writer.writerows(query_list)
+
+def correct_filename():
+    """
+    correct the filename to ensure the query string is ordered properly.
+    """
+    # for each file in the folder
+    for filename in os.listdir("inputs/synthetic/"):
+        if filename.endswith("_labels.json"):
+            query_str = filename[:-12]
+            program = str_to_program(query_str)
+            new_query_str = rewrite_program(program)
+            # change filename
+            os.rename("inputs/synthetic/{}_inputs.json".format(query_str), "inputs/synthetic/{}_inputs.json".format(new_query_str))
+            os.rename("inputs/synthetic/{}_labels.json".format(query_str), "inputs/synthetic/{}_labels.json".format(new_query_str))
+            os.rename("inputs/synthetic/test/{}_inputs.json".format(query_str), "inputs/synthetic/test/{}_inputs.json".format(new_query_str))
+            os.rename("inputs/synthetic/test/{}_labels.json".format(query_str), "inputs/synthetic/test/{}_labels.json".format(new_query_str))
+            os.rename("inputs/synthetic/train/{}_inputs.json".format(query_str), "inputs/synthetic/train/{}_inputs.json".format(new_query_str))
+            os.rename("inputs/synthetic/train/{}_labels.json".format(query_str), "inputs/synthetic/train/{}_labels.json".format(new_query_str))
+
+
+
+def rewrite_program(program):
+    """
+    rewrite the query string to ensure the query string is ordered properly.
+    """
+    if issubclass(type(program), dsl.ConjunctionOperator):
+        predicate_list = rewrite_program_helper(program)
+        predicate_list.sort(key=lambda x: x, reverse=True)
+        return print_scene_graph(predicate_list)
+    if issubclass(type(program), dsl.Predicate):
+        if program.has_theta:
+            if program.with_hole:
+                return program.name + "_withHole"
+            else:
+                return program.name + "_" + str(abs(program.theta))
+        else:
+            return program.name
+    if issubclass(type(program), dsl.Hole):
+        return program.name
+    if issubclass(type(program), dsl.DurationOperator):
+        return program.name + "(" + rewrite_program(program.submodules["duration"]) + ", " + str(program.theta) + ")"
+    else:
+        collected_names = []
+        for submodule, functionclass in program.submodules.items():
+            collected_names.append(rewrite_program(functionclass))
+        joined_names = ', '.join(collected_names)
+        return program.name + "(" + joined_names + ")"
+
+def print_scene_graph(predicate_list):
+    # Conj(Conj(p13, p12), p11)
+    if len(predicate_list) == 1:
+        return predicate_list[0]
+    else:
+        return "Conjunction({}, {})".format(print_scene_graph(predicate_list[:-1]), predicate_list[-1])
+
+def rewrite_program_helper(program):
+    if issubclass(type(program), dsl.Predicate):
+        if program.has_theta:
+            if program.with_hole:
+                return [program.name + "_withHole"]
+            else:
+                return [program.name + "_" + str(abs(program.theta))]
+        else:
+            return [program.name]
+    elif issubclass(type(program), dsl.ConjunctionOperator):
+        predicate_list = []
+        for submodule, functionclass in program.submodules.items():
+            predicate_list.extend(rewrite_program_helper(functionclass))
+        return predicate_list
+
 if __name__ == '__main__':
-    construct_train_test("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Right, Front)), True*), Duration(Far_0.9, 2)), True*), Conjunction(Back, Left)), True*)_inputs", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Right, Front)), True*), Duration(Far_0.9, 2)), True*), Conjunction(Back, Left)), True*)_labels", n_train=300)
+    get_query_str_from_filename()
+    # construct_train_test("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Back), True*), Left), True*), Conjunction(Conjunction(Back, Left), Far_0.9)), True*)", n_train=300)
