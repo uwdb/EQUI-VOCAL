@@ -18,11 +18,11 @@ def using(point=""):
     return '''%s: mem=%s MB
            '''%(point, usage/1024.0 )
 
-random.seed(10)
-
+# random.seed(10)
+random.seed(time.time())
 class VOCAL(BaseMethod):
 
-    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, budget, multithread):
+    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy):
         self.inputs = np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
         self.predicate_dict = predicate_dict
@@ -30,9 +30,11 @@ class VOCAL(BaseMethod):
         self.max_depth = max_depth
         self.beam_width = beam_width
         self.k = k
+        self.samples_per_iter = samples_per_iter
         self.budget = budget
         self.max_duration = max_duration
         self.multithread = multithread
+        self.strategy = strategy
 
         self.query_expansion_time = 0
         self.segment_selection_time = 0
@@ -89,13 +91,17 @@ class VOCAL(BaseMethod):
 
             # Sample beam_width queries
             if len(new_candidate_queries):
-                new_candidate_queries = np.asarray(new_candidate_queries, dtype=object)
-                weight = new_candidate_queries[:, 1].astype(np.float)
-                weight = weight / np.sum(weight)
-                candidate_idx = np.random.choice(np.arange(new_candidate_queries.shape[0]), size=min(self.beam_width, new_candidate_queries.shape[0]), replace=False, p=weight)
-                print("candidate_idx", candidate_idx)
-                self.candidate_queries = new_candidate_queries[candidate_idx].tolist()
-                print("beam_width queries", [(print_program(query.program), score) for query, score in self.candidate_queries])
+                if self.strategy == "sampling":
+                    new_candidate_queries = np.asarray(new_candidate_queries, dtype=object)
+                    weight = new_candidate_queries[:, 1].astype(np.float)
+                    weight = weight / np.sum(weight)
+                    candidate_idx = np.random.choice(np.arange(new_candidate_queries.shape[0]), size=min(self.beam_width, new_candidate_queries.shape[0]), replace=False, p=weight)
+                    print("candidate_idx", candidate_idx)
+                    self.candidate_queries = new_candidate_queries[candidate_idx].tolist()
+                    print("beam_width queries", [(print_program(query.program), score) for query, score in self.candidate_queries])
+                elif self.strategy == "topk":
+                    self.candidate_queries = sorted(new_candidate_queries, key=lambda x: x[1], reverse=True)[:self.beam_width]
+                    print("beam_width queries", [(print_program(query.program), score) for query, score in self.candidate_queries])
             else:
                 self.candidate_queries = []
 
@@ -126,7 +132,7 @@ class VOCAL(BaseMethod):
 
         total_time = time.time() - _start_total_time
         print("[Runtime] query expansion time: {}, segment selection time: {}, retain top k queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k_queries_time, total_time))
-
+        print(using("profile"))
         return self.answers, total_time
 
     def expand_query_and_compute_score(self, current_query):
@@ -346,11 +352,11 @@ class VOCAL(BaseMethod):
 
         if self.multithread > 1:
             with ThreadPoolExecutor(max_workers=self.multithread) as executor:
-                query_list = [query_graph.program for query_graph, _ in itertools.chain(self.candidate_queries, self.answers)]
+                query_list = [query_graph.program for query_graph, _ in itertools.chain(self.candidate_queries, self.answers[:self.beam_width])]
                 for pred_per_query in executor.map(self.execute_over_all_inputs, query_list):
                     prediction_matrix.append(pred_per_query)
         else:
-            for query_graph, _ in itertools.chain(self.candidate_queries, self.answers):
+            for query_graph, _ in itertools.chain(self.candidate_queries, self.answers[:self.beam_width]):
                 query = query_graph.program
                 pred_per_query = self.execute_over_all_inputs(query)
                 prediction_matrix.append(pred_per_query)
@@ -386,8 +392,7 @@ class VOCAL(BaseMethod):
             else:
                 entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :], tuning_par=10)
         # find argmax of entropy (top k)
-        n_to_label = 1
-        video_segment_ids = np.argpartition(entropy_list, -n_to_label)[-n_to_label:]
+        video_segment_ids = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
         # max_entropy_index = np.argmax(entropy_list)
         return video_segment_ids.tolist()
 
