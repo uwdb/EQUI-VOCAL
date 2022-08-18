@@ -4,8 +4,8 @@ from quivr.utils import print_program
 
 class QueryGraph(object):
 
-    def __init__(self, max_num_atomic_predicates, max_depth, topdown_or_bottomup="bottomup"):
-        self.max_num_atomic_predicates = max_num_atomic_predicates
+    def __init__(self, max_npred, max_depth, topdown_or_bottomup="bottomup"):
+        self.max_npred = max_npred
         self.max_depth = max_depth
         if topdown_or_bottomup == "bottomup":
             self.program = None
@@ -14,7 +14,7 @@ class QueryGraph(object):
         else:
             raise ValueError("Unknown algorithm:", topdown_or_bottomup)
         self.depth = 0
-        self.num_atomic_predicates = 0
+        self.npred = 0
 
     def get_parameter_holes_and_value_space(self):
         parameter_holes = []
@@ -101,10 +101,10 @@ class QueryGraph(object):
                         # create the correct child node
                         new_query_graph = copy.deepcopy(self)
                         if (issubclass(type(child_candidate), dsl.Predicate) and not isinstance(child_candidate, dsl.TrueStar)) or isinstance(child_candidate, dsl.ParameterHole):
-                            new_query_graph.num_atomic_predicates += 1
+                            new_query_graph.npred += 1
                         new_query_graph.depth = self.depth + inc_depth
                         # check if child program can be completed within max_depth
-                        if new_query_graph.depth > new_query_graph.max_depth or new_query_graph.num_atomic_predicates > new_query_graph.max_num_atomic_predicates:
+                        if new_query_graph.depth > new_query_graph.max_depth or new_query_graph.npred > new_query_graph.max_npred:
                             continue
                         # if yes, compute costs and add to list of children
                         all_children.append(new_query_graph)
@@ -118,6 +118,13 @@ class QueryGraph(object):
 
 
     def construct_candidates_quivr(self, parent_functionclass, submod):
+        """
+        Example query:
+            q = True*; p11 ^ ... ^ p1i ^ d1; True*; p21 ^ ... ^ p2j ^ d2; True*
+            (Base case, one scene graph: True*; p11 ^ ... ^ p1i ^ d1; True*)
+        Verbose form:
+            q = Seq(Seq(Seq(Seq(True*, Duration(Conj(Conj(p13, p12), p11), theta1)), True*), Duration(Conj(Conj(p23, p22), p21), theta2)), True*)
+        """
         candidates = []
         if isinstance(parent_functionclass, dsl.KleeneOperator):
             # omit nested Kleene star operators and Kleene star around sequencing; also Kleene star around <True>* or MinLength doesn't make sense
@@ -247,7 +254,7 @@ class QueryGraph(object):
         # predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
         # Action a: Scene graph construction: add a predicate to existing scene graph (i.e., the last scene graph in the sequence).
         # Require: the last scene graph must not have duration constraint.
-        if self.num_atomic_predicates + 1 <= self.max_num_atomic_predicates:
+        if self.npred + 1 <= self.max_npred:
             for pred in predicate_dict:
                 pred_instances = []
                 if predicate_dict[pred]:
@@ -281,13 +288,13 @@ class QueryGraph(object):
                         continue
                     # 4. Replace p23 with Conj(p24, p23)
                     parent_graph[0].submodules[parent_graph[1]] = dsl.ConjunctionOperator(pred_instance, last_graph)
-                    new_query_graph.num_atomic_predicates += 1
+                    new_query_graph.npred += 1
                     print("Action A: ", print_program(new_query_graph.program))
                     all_children.append(new_query_graph)
 
         # Action b: Sequence construction: add a new scene graph (which consists of one predicate) to the end of the sequence.
         # 1. q' = Seq(Seq(q, p31), True*)
-        if self.num_atomic_predicates + 1 <= self.max_num_atomic_predicates and self.depth + 1 <= self.max_depth:
+        if self.npred + 1 <= self.max_npred and self.depth + 1 <= self.max_depth:
             for pred in predicate_dict:
                 pred_instances = []
                 if predicate_dict[pred]:
@@ -299,7 +306,7 @@ class QueryGraph(object):
                 for pred_instance in pred_instances:
                     new_query_graph = copy.deepcopy(self)
                     new_query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(new_query_graph.program, pred_instance), dsl.TrueStar())
-                    new_query_graph.num_atomic_predicates += 1
+                    new_query_graph.npred += 1
                     new_query_graph.depth += 1
                     print("Action B: ", print_program(new_query_graph.program))
                     all_children.append(new_query_graph)

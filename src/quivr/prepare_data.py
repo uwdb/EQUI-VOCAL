@@ -15,8 +15,8 @@ from threading import current_thread, get_ident, get_native_id
 import scipy.stats as stats
 
 segment_length = 128
-random.seed(1234)
-np.random.seed(10)
+# random.seed(1234)
+# np.random.seed(10)
 
 
 def generate_queries(n_queries, ratio, npred, depth, max_duration, predicate_dict, max_workers):
@@ -200,7 +200,7 @@ def prepare_trajectory_pairs_given_target_query(program_str, ratio=0.1):
         f.write(json.dumps(positive_inputs))
     with open("inputs/synthetic/{}_labels.json".format(program_str), 'w') as f:
         f.write(json.dumps(labels))
-    return program_str, len(positive_inputs), len(negative_inputs), len(positive_inputs) / len(negative_inputs)
+    return program_str, sum(labels), len(labels) - sum(labels), sum(labels) / (len(labels) - sum(labels))
 
 if __name__ == '__main__':
     predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.Left: None, dsl.Right: None, dsl.Back: None, dsl.Front: None}
