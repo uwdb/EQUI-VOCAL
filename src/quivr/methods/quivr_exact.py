@@ -25,43 +25,63 @@ return answer_list
 
 # Adapted from https://github.com/trishullab/near
 
-import quivr.utils as utils
+from quivr.utils import print_program
 from quivr.query_graph import QueryGraph
 import quivr.dsl as dsl
 import copy
 import numpy as np
 import time
-
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
+from lru import LRU
 class QUIVR:
 
-    def __init__(self, max_num_atomic_predicates=5, max_depth=2):
-        self.max_num_atomic_predicates = max_num_atomic_predicates
+    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy):
+        self.inputs = np.array(inputs, dtype=object)
+        self.labels = np.array(labels, dtype=object)
+        self.predicate_dict = predicate_dict
+        self.max_npred = max_npred
         self.max_depth = max_depth
+        self.beam_width = beam_width
+        self.k = k
+        self.samples_per_iter = samples_per_iter
+        self.budget = budget
+        self.max_duration = max_duration
+        self.multithread = multithread
+        self.strategy = strategy
 
         self.enumerate_all_candidates_time = 0
         self.prune_partial_query_time = 0
         self.prune_parameter_values_time = 0
         self.find_children_time = 0
+        self.answers = []
 
-    def run(self, inputs, labels):
-        self.memoize_all_inputs = [{} for _ in range(len(inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+        if self.multithread > 1:
+            self.m = multiprocessing.Manager()
+            self.lock = self.m.Lock()
+        elif self.multithread == 1:
+            self.lock = None
+        else:
+            raise ValueError("multithread must be 1 or greater")
+
+    def run(self):
+        self.memoize_all_inputs = [LRU(10000) for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
 
         # Initialize program graph
-        query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth, topdown_or_bottomup='topdown')
+        query_graph = QueryGraph(self.max_npred, self.max_depth, topdown_or_bottomup='topdown')
 
         queue = [query_graph]
         self.consistent_queries = []
         while len(queue) != 0:
             current_query_graph = queue.pop(0) # Pop the last element
             current_query = current_query_graph.program
-            # print("current_query", utils.print_program(current_query))
             # IF: overapproximation doesn't match, prune Q
             _start_prune_partial_query = time.time()
             overapproximation_for_all_inputs = True
-            for i, (input, label) in enumerate(zip(inputs, labels)):
+            for i, (input, label) in enumerate(zip(self.inputs, self.labels)):
                 memoize = self.memoize_all_inputs[i]
-                result, memoize = current_query.execute(input, label, memoize)
-                self.memoize_all_inputs[i] = memoize
+                result, new_memoize = current_query.execute(input, label, memoize, {})
+                self.memoize_all_inputs[i].update(new_memoize)
                 if (result[0, len(input[0])] > 0) != label:
                     overapproximation_for_all_inputs = False
                     break
@@ -71,9 +91,9 @@ class QUIVR:
             # ELSE IF: Q is sketch, computes all parameters for Q that are consistent with inputs, and adds them to the final list.
             if current_query_graph.is_sketch(current_query):
                 _start_prune_parameter_values = time.time()
-                print("current_query", utils.print_program(current_query))
+                print("current_query", print_program(current_query))
                 # self.fill_all_parameter_holes(current_query) # not pruning parameter values
-                self.prune_parameter_values(current_query, inputs, labels)
+                self.prune_parameter_values(current_query)
                 self.prune_parameter_values_time += time.time() - _start_prune_parameter_values
             # ELSE: adds all the children of Q to queue.
             else:
@@ -88,7 +108,7 @@ class QUIVR:
         # return answer
         _start = time.time()
         for candidate_query in self.consistent_queries:
-            print("candidate query", utils.print_program(candidate_query))
+            print("candidate query", print_program(candidate_query))
             matched = True
             for i, (input, label) in enumerate(zip(inputs, labels)):
                 memoize = self.memoize_all_inputs[i]
@@ -104,7 +124,7 @@ class QUIVR:
         print(self.memoize_all_inputs[0].keys())
         return answer
 
-    def prune_parameter_values(self, current_query, inputs, labels):
+    def prune_parameter_values(self, current_query):
         # current_query is sketch (containing only parameter holes)
         # 1. Find all parameter holes
         # 2. For each parameter hole, fix it and fill in other holes with -inf or inf.
@@ -124,7 +144,7 @@ class QUIVR:
                     predicate.with_hole = True
                     current.submodules[submod] = predicate
                     new_query = copy.deepcopy(current_query)
-                    value_interval = self.fill_other_parameter_holes(new_query, inputs, labels, value_range)
+                    value_interval = self.fill_other_parameter_holes(new_query, value_range)
                     print(value_interval)
                     if value_interval[0] > value_interval[1]:
                         return
@@ -139,13 +159,13 @@ class QUIVR:
         # 3. Construct all (candidate) consistent queries
         self.fill_all_parameter_holes(current_query)
 
-    def fill_other_parameter_holes(self, new_query, inputs, labels, value_range):
+    def fill_other_parameter_holes(self, new_query, value_range):
         theta_lb = value_range[0]
         theta_ub = value_range[1]
-        for i, (input, label) in enumerate(zip(inputs, labels)):
+        for i, (input, label) in enumerate(zip(self.inputs, self.labels)):
             memoize = self.memoize_all_inputs[i]
-            result, memoize = new_query.execute(input, label, memoize)
-            self.memoize_all_inputs[i] = memoize
+            result, new_memoize = new_query.execute(input, label, memoize, {})
+            self.memoize_all_inputs[i].update(new_memoize)
             if label == 1:
                 theta_ub = min(result[0, len(input[0])], theta_ub)
             if label == 0:

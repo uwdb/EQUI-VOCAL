@@ -29,7 +29,7 @@ class BaseMethod:
             if self.lock:
                 self.lock.release()
         # print(self.labels[self.labeled_index], y_pred)
-        print("cache", len(self.memoize_all_inputs[0]))
-        print(using("profile"))
+        # print("cache", len(self.memoize_all_inputs[0]))
+        # print(using("profile"))
         score = f1_score(list(self.labels[self.labeled_index]), y_pred)
         return score
