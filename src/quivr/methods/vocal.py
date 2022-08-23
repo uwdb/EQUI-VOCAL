@@ -74,7 +74,7 @@ class VOCAL(BaseMethod):
                 self.candidate_queries.append([query_graph, score])
                 self.answers.append([query_graph, score])
 
-        while len(self.candidate_queries) and len(self.labeled_index) < self.budget:
+        while len(self.candidate_queries):
             # Generate more queries
             _start_query_expansion_time = time.time()
             new_candidate_queries = []
@@ -115,15 +115,16 @@ class VOCAL(BaseMethod):
             self.retain_top_k_queries_time += time.time() - _start_retain_top_k_queries_time
 
             # Select new video segments to label
-            _start_segmnet_selection_time = time.time()
-            # video_segment_ids = self.pick_next_segment()
-            video_segment_ids = self.pick_next_segment_model_picker()
-            print("pick next segments", video_segment_ids)
-            self.labeled_index += video_segment_ids
-            print("# labeled segments", len(self.labeled_index))
-            # assert labeled_index does not contain duplicates
-            assert(len(self.labeled_index) == len(set(self.labeled_index)))
-            self.segment_selection_time += time.time() - _start_segmnet_selection_time
+            if len(self.labeled_index) < self.budget:
+                _start_segmnet_selection_time = time.time()
+                # video_segment_ids = self.pick_next_segment()
+                video_segment_ids = self.pick_next_segment_model_picker()
+                print("pick next segments", video_segment_ids)
+                self.labeled_index += video_segment_ids
+                print("# labeled segments", len(self.labeled_index))
+                # assert labeled_index does not contain duplicates
+                assert(len(self.labeled_index) == len(set(self.labeled_index)))
+                self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
         # RETURN: the list.
         print("final_answers")
