@@ -118,13 +118,6 @@ class QueryGraph(object):
 
 
     def construct_candidates_quivr(self, parent_functionclass, submod, has_paramter_hole):
-        """
-        Example query:
-            q = True*; p11 ^ ... ^ p1i ^ d1; True*; p21 ^ ... ^ p2j ^ d2; True*
-            (Base case, one scene graph: True*; p11 ^ ... ^ p1i ^ d1; True*)
-        Verbose form:
-            q = Seq(Seq(Seq(Seq(True*, Duration(Conj(Conj(p13, p12), p11), theta1)), True*), Duration(Conj(Conj(p23, p22), p21), theta2)), True*)
-        """
         candidates = []
         if isinstance(parent_functionclass, dsl.KleeneOperator):
             # omit nested Kleene star operators and Kleene star around sequencing; also Kleene star around <True>* or MinLength doesn't make sense
