@@ -15,11 +15,13 @@ import sys
 import quivr.dsl as dsl
 import pandas
 import time
+from sklearn.model_selection import train_test_split
 
 # random.seed(10)
 random.seed(time.time())
 
-def test_quivr_exact(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, k, budget, multithread, query_str):
+
+def test_quivr_exact(n_labeled, npred, depth, max_duration, multithread, query_str="collision"):
     if query_str == "collision":
         # read from json file
         with open("inputs/collision_inputs_train.json", 'r') as f:
@@ -30,23 +32,21 @@ def test_quivr_exact(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, k
         labels = np.asarray(labels, dtype=object)
         predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
     else:
-        with open("inputs/synthetic/train/{}_inputs.json".format(query_str), 'r') as f:
+        with open("inputs/synthetic-error_rate_0.05/train/{}_inputs.json".format(query_str), 'r') as f:
             inputs = json.load(f)
-        with open("inputs/synthetic/train/{}_labels.json".format(query_str), 'r') as f:
+        with open("inputs/synthetic-error_rate_0.05/train/{}_labels.json".format(query_str), 'r') as f:
             labels = json.load(f)
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
-        # argsort in descending order
-        sort_idx = np.argsort(labels)
-        inputs = inputs[sort_idx][::-1]
-        labels = labels[sort_idx][::-1]
-        print("labels", labels, sum(labels), len(labels))
         predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.Left: None, dsl.Right: None, dsl.Back: None, dsl.Front: None}
 
-    algorithm = QUIVR(max_depth=3)
-    answer = algorithm.run(inputs, labels)
+    inputs, _, labels, _ = train_test_split(inputs, labels, train_size=n_labeled, stratify=labels)
+    print("labels", sum(labels), len(labels))
 
-    answers = [[print_program(query_graph.program), score] for query_graph, score in answers]
+    algorithm = QUIVR(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, multithread=multithread)
+    answers, total_time = algorithm.run()
+
+    answers = [[print_program(query), 1.0] for query in answers]
     return answers, total_time
 
 
@@ -81,9 +81,9 @@ def test_vocal(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k
         labels = np.asarray(labels, dtype=object)
         predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
     else:
-        with open("inputs/synthetic/train/{}_inputs.json".format(query_str), 'r') as f:
+        with open("inputs/synthetic-error_rate_0.05/train/{}_inputs.json".format(query_str), 'r') as f:
             inputs = json.load(f)
-        with open("inputs/synthetic/train/{}_labels.json".format(query_str), 'r') as f:
+        with open("inputs/synthetic-error_rate_0.05/train/{}_labels.json".format(query_str), 'r') as f:
             labels = json.load(f)
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
@@ -117,7 +117,7 @@ def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, mu
     labels = labels[sampled_labeled_index]
 
     predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.Left: None, dsl.Right: None}
-    algorithm = ExhaustiveSearch(inputs, labels, predicate_dict, max_num_atomic_predicates=npred, max_depth=depth, k=1000, max_duration=max_duration, multithread=multithread)
+    algorithm = ExhaustiveSearch(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, k=1000, max_duration=max_duration, multithread=multithread)
     algorithm.run()
 
 def evaluate(method, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, budget, multithread, query_str="collision"):
@@ -200,19 +200,24 @@ if __name__ == '__main__':
 
     # log_name = "{}-npos_{}-nneg_{}-npred_{}-depth_{}-k_{}-model_picker_include_answers".format(method_str, n_labeled_pos, n_labeled_neg, npred, depth, k)
     # log_name = "{}-npred_{}-depth_{}-k_{}-initpos_{}-initneg_{}-max_duration_{}".format(method_str, npred, depth, k, n_init_pos, n_init_neg, max_duration)
+    if method_str == "vocal":
+        method_name = "{}-{}".format(method_str, strategy)
+        config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-k_{}-per_iter_{}-budget_{}-thread_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread)
+    elif method_str == "quivr":
+        method_name = method_str
+        config_name = "nlabeled_{}-npred_{}-depth_{}-max_d_{}-thread_{}".format(budget, npred, depth, max_duration, multithread)
     log_name = "{}-{}".format(query_str, run_id)
-    config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-k_{}-per_iter_{}-budget_{}-thread_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread)
     # if dir not exist, create it
-    if not os.path.exists("outputs/{}-{}/synthetic/{}/verbose".format(method_str, strategy, config_name)):
-        os.makedirs("outputs/{}-{}/synthetic/{}/verbose".format(method_str, strategy, config_name), exist_ok=True)
+    if not os.path.exists("outputs/{}/synthetic/{}/verbose".format(method_name, config_name)):
+        os.makedirs("outputs/{}/synthetic/{}/verbose".format(method_name, config_name), exist_ok=True)
     if output_to_file:
-        f = open("outputs/{}-{}/synthetic/{}/verbose/{}.log".format(method_str, strategy, config_name, log_name), 'w')
+        f = open("outputs/{}/synthetic/{}/verbose/{}.log".format(method_name, config_name, log_name), 'w')
         sys.stdout = f
 
     print(args)
 
     if method_str == 'quivr':
-        test_quivr_exact(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, k, budget, multithread, query_str)
+        answers, total_time = test_quivr_exact(budget, npred, depth, max_duration, multithread, query_str)
     elif method_str == 'vocal':
         answers, total_time = test_vocal(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str)
     elif method_str == "exhaustive":
@@ -222,7 +227,7 @@ if __name__ == '__main__':
         # test_quivr_soft(n_labeled_pos, n_labeled_neg, npred, depth, k, log_name)
 
 
-    with open("outputs/{}-{}/synthetic/{}/{}.log".format(method_str, strategy, config_name, log_name), 'w') as f:
+    with open("outputs/{}/synthetic/{}/{}.log".format(method_name, config_name, log_name), 'w') as f:
         for query_str, score in answers:
             f.write("{} {}\n".format(query_str, score))
         f.write("Total Time: {}\n".format(total_time))
