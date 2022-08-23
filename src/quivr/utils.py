@@ -94,14 +94,14 @@ def str_to_program(program_str):
         submodule_list = [str_to_program(submodule) for submodule in submodule_list]
         return program_init(*submodule_list)
 
-def construct_train_test(query_str, n_labeled_pos=None, n_labeled_neg=None, n_train=None):
+def construct_train_test(dir_name, query_str, n_labeled_pos=None, n_labeled_neg=None, n_train=None):
     inputs_filename = query_str + "_inputs"
     labels_filename = query_str + "_labels"
 
     # read from json file
-    with open("inputs/synthetic/{}.json".format(inputs_filename), 'r') as f:
+    with open(os.path.join(dir_name, "{}.json".format(inputs_filename)), 'r') as f:
         inputs = json.load(f)
-    with open("inputs/synthetic/{}.json".format(labels_filename), 'r') as f:
+    with open(os.path.join(dir_name, "{}.json".format(labels_filename)), 'r') as f:
         labels = json.load(f)
 
     inputs = np.asarray(inputs, dtype=object)
@@ -137,18 +137,18 @@ def construct_train_test(query_str, n_labeled_pos=None, n_labeled_neg=None, n_tr
             labels_test = labels_test[:int(n_neg/5)] + labels_test[-int(n_neg/5)*5:]
 
     # if folder doesn't exist, create it
-    if not os.path.exists("inputs/synthetic/train/"):
-        os.makedirs("inputs/synthetic/train/")
-    if not os.path.exists("inputs/synthetic/test/"):
-        os.makedirs("inputs/synthetic/test/")
+    if not os.path.exists(os.path.join(dir_name, "train/")):
+        os.makedirs(os.path.join(dir_name, "train/"))
+    if not os.path.exists(os.path.join(dir_name, "test/")):
+        os.makedirs(os.path.join(dir_name, "test/"))
 
-    with open("inputs/synthetic/train/{}.json".format(inputs_filename), 'w') as f:
+    with open(os.path.join(dir_name, "train/{}.json".format(inputs_filename)), 'w') as f:
         json.dump(inputs_train.tolist(), f)
-    with open("inputs/synthetic/train/{}.json".format(labels_filename), 'w') as f:
+    with open(os.path.join(dir_name, "train/{}.json".format(labels_filename)), 'w') as f:
         json.dump(labels_train.tolist(), f)
-    with open("inputs/synthetic/test/{}.json".format(inputs_filename), 'w') as f:
+    with open(os.path.join(dir_name, "test/{}.json".format(inputs_filename)), 'w') as f:
         json.dump(inputs_test.tolist(), f)
-    with open("inputs/synthetic/test/{}.json".format(labels_filename), 'w') as f:
+    with open(os.path.join(dir_name, "test/{}.json".format(labels_filename)), 'w') as f:
         json.dump(labels_test.tolist(), f)
 
     print("inputs_train", len(inputs_train))
@@ -157,20 +157,20 @@ def construct_train_test(query_str, n_labeled_pos=None, n_labeled_neg=None, n_tr
     print("labels_test", len(labels_test), sum(labels_test))
 
 
-def get_query_str_from_filename():
+def get_query_str_from_filename(dir_name):
     query_list = []
     # for each file in the folder
-    for filename in os.listdir("inputs/synthetic/"):
+    for filename in os.listdir(dir_name):
         if filename.endswith("_labels.json"):
             query_str = filename[:-12]
-            with open("inputs/synthetic/{}_labels.json".format(query_str), 'r') as f:
+            with open(os.path.join(dir_name, "{}_labels.json".format(query_str)), 'r') as f:
                 labels = json.load(f)
                 query_list.append([query_str, sum(labels), len(labels) - sum(labels), sum(labels) / (len(labels) - sum(labels))])
             # len(positive_inputs), len(negative_inputs), len(positive_inputs) / len(negative_inputs)
-            if not os.path.exists("inputs/synthetic/test/{}_labels.json".format(query_str)):
-                construct_train_test(query_str, n_train=300)
+            if not os.path.exists(os.path.join(dir_name, "test/{}_labels.json".format(query_str))):
+                construct_train_test(dir_name, query_str, n_train=300)
     # write query_list to file
-    with open("inputs/synthetic/query_list.csv", "w") as csvfile:
+    with open(os.path.join(dir_name, "queries.csv"), "w") as csvfile:
         writer = csv.writer(csvfile)
         # write header
         writer.writerow(["query", "npos", "nneg", "ratio"])
@@ -246,5 +246,5 @@ def rewrite_program_helper(program):
         return predicate_list
 
 if __name__ == '__main__':
-    get_query_str_from_filename()
+    get_query_str_from_filename("inputs/synthetic-error_rate_0.05/",)
     # construct_train_test("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Back), True*), Left), True*), Conjunction(Conjunction(Back, Left), Far_0.9)), True*)", n_train=300)
