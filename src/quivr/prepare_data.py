@@ -202,7 +202,22 @@ def prepare_trajectory_pairs_given_target_query(program_str, ratio=0.1):
         f.write(json.dumps(labels))
     return program_str, sum(labels), len(labels) - sum(labels), sum(labels) / (len(labels) - sum(labels))
 
+def prepare_noisy_data(error_rate):
+    for filename in os.listdir("inputs/synthetic-error_rate_0.05"):
+        if filename.endswith("_labels.json"):
+            query_str = filename[:-12]
+            with open("inputs/synthetic-error_rate_0.05/{}_labels.json".format(query_str), 'r') as f:
+                labels = json.load(f)
+            # flip the label with probability error_rate
+            for i in range(len(labels)):
+                if random.random() < error_rate:
+                    labels[i] = 1 - labels[i]
+            with open("inputs/synthetic-error_rate_0.05/{}_labels.json".format(query_str), 'w') as f:
+                f.write(json.dumps(labels))
+
 if __name__ == '__main__':
     predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.Left: None, dsl.Right: None, dsl.Back: None, dsl.Front: None}
     generate_queries(n_queries=50, ratio=0.1, npred=5, depth=3, max_duration=5, predicate_dict=predicate_dict, max_workers=20)
+
+    # prepare_noisy_data(error_rate=0.05)
     # prepare_trajectory_pairs_given_target_query("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Front, Left)), True*), Duration(Left, 2)), True*), Conjunction(Far_0.9, Left)), True*)")
