@@ -19,11 +19,11 @@ random.seed(10)
 
 class ExhaustiveSearch(BaseMethod):
 
-    def __init__(self, inputs, labels, predicate_dict, max_num_atomic_predicates=5, max_depth=2, k=20, max_duration=2, multithread=1):
+    def __init__(self, inputs, labels, predicate_dict, max_npred=5, max_depth=2, k=20, max_duration=2, multithread=1):
         self.inputs = np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
         self.predicate_dict = predicate_dict
-        self.max_num_atomic_predicates = max_num_atomic_predicates
+        self.max_npred = max_npred
         self.max_depth = max_depth
         self.k = k
         self.max_duration = max_duration
@@ -59,7 +59,7 @@ class ExhaustiveSearch(BaseMethod):
             else:
                 pred_instances.append(pred())
             for pred_instance in pred_instances:
-                query_graph = QueryGraph(self.max_num_atomic_predicates, self.max_depth)
+                query_graph = QueryGraph(self.max_npred, self.max_depth)
                 query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred_instance), dsl.TrueStar())
                 query_graph.num_atomic_predicates = 1
                 query_graph.depth = 1
