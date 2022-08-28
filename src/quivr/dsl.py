@@ -335,7 +335,7 @@ class QuadrantPredicate(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if quadrant_relationship(input[0][i], input[1][i], quadrant_name):
+            if quadrant_relationship(input[0][i], quadrant_name):
                 result[i, i + 1] = np.inf
 
         new_memoize[subquery_str] = result
@@ -379,41 +379,41 @@ class LeftQuadrant(QuadrantPredicate):
     def execute(self, input, label, memoize, new_memoize):
         return super().execute("LeftQuadrant", input, label, memoize, new_memoize)
 
-class Front(DirectionPredicate):
+class FrontOf(DirectionPredicate):
     has_theta=False
 
     def __init__(self):
-        super().__init__("Front")
+        super().__init__("FrontOf")
 
     def execute(self, input, label, memoize, new_memoize):
-        return super().execute("Front", input, label, memoize, new_memoize)
+        return super().execute("FrontOf", input, label, memoize, new_memoize)
 
-class Back(DirectionPredicate):
+class BackOf(DirectionPredicate):
     has_theta=False
 
     def __init__(self):
-        super().__init__("Back")
+        super().__init__("BackOf")
 
     def execute(self, input, label, memoize, new_memoize):
-        return super().execute("Back", input, label, memoize, new_memoize)
+        return super().execute("BackOf", input, label, memoize, new_memoize)
 
-class Right(DirectionPredicate):
+class RightOf(DirectionPredicate):
     has_theta=False
 
     def __init__(self):
-        super().__init__("Right")
+        super().__init__("RightOf")
 
     def execute(self, input, label, memoize, new_memoize):
-        return super().execute("Right", input, label, memoize, new_memoize)
+        return super().execute("RightOf", input, label, memoize, new_memoize)
 
-class Left(DirectionPredicate):
+class LeftOf(DirectionPredicate):
     has_theta=False
 
     def __init__(self):
-        super().__init__("Left")
+        super().__init__("LeftOf")
 
     def execute(self, input, label, memoize, new_memoize):
-        return super().execute("Left", input, label, memoize, new_memoize)
+        return super().execute("LeftOf", input, label, memoize, new_memoize)
 
 
 class TrueStar(Predicate):
@@ -497,13 +497,13 @@ def direction_relationship(bbox1, bbox2, direction):
     cy1 = (y1 + y2) / 2
     cx2 = (x3 + x4) / 2
     cy2 = (y3 + y4) / 2
-    if direction == "Left":
+    if direction == "LeftOf":
         return cx1 < cx2
-    elif direction == "Right":
+    elif direction == "RightOf":
         return cx1 > cx2
-    elif direction == "Back":
+    elif direction == "BackOf":
         return cy1 < cy2
-    elif direction == "Front":
+    elif direction == "FrontOf":
         return cy1 > cy2
     else:
         raise ValueError("Invalid direction")
