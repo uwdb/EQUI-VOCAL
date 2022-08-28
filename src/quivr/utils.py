@@ -46,14 +46,14 @@ def str_to_program(program_str):
         return dsl.MinLength(theta=float(program_str.split("_")[1]))
     elif program_str.startswith("True*"):
         return dsl.TrueStar()
-    elif program_str.startswith("Right"):
-        return dsl.Right()
-    elif program_str.startswith("Left"):
-        return dsl.Left()
-    elif program_str.startswith("Front"):
-        return dsl.Front()
-    elif program_str.startswith("Back"):
-        return dsl.Back()
+    elif program_str.startswith("RightOf"):
+        return dsl.RightOf()
+    elif program_str.startswith("LeftOf"):
+        return dsl.LeftOf()
+    elif program_str.startswith("FrontOf"):
+        return dsl.FrontOf()
+    elif program_str.startswith("BackOf"):
+        return dsl.BackOf()
     elif program_str.startswith("TopQuadrant"):
         return dsl.TopQuadrant()
     elif program_str.startswith("BottomQuadrant"):
@@ -176,25 +176,25 @@ def get_query_str_from_filename(dir_name):
         writer.writerow(["query", "npos", "nneg", "ratio"])
         writer.writerows(query_list)
 
-def correct_filename():
+def correct_filename(dataset_name):
     """
     correct the filename to ensure the query string is ordered properly.
     """
     # for each file in the folder
-    for filename in os.listdir("inputs/synthetic/"):
+    for filename in os.listdir(os.path.join("inputs", dataset_name)):
         if filename.endswith("_labels.json"):
             query_str = filename[:-12]
-            program = str_to_program(query_str)
-            new_query_str = rewrite_program(program)
+            new_query_str = query_str.replace("Back", "BackOf")
+            new_query_str = new_query_str.replace("Front", "FrontOf")
+            new_query_str = new_query_str.replace("Left", "LeftOf")
+            new_query_str = new_query_str.replace("Right", "RightOf")
             # change filename
-            os.rename("inputs/synthetic/{}_inputs.json".format(query_str), "inputs/synthetic/{}_inputs.json".format(new_query_str))
-            os.rename("inputs/synthetic/{}_labels.json".format(query_str), "inputs/synthetic/{}_labels.json".format(new_query_str))
-            os.rename("inputs/synthetic/test/{}_inputs.json".format(query_str), "inputs/synthetic/test/{}_inputs.json".format(new_query_str))
-            os.rename("inputs/synthetic/test/{}_labels.json".format(query_str), "inputs/synthetic/test/{}_labels.json".format(new_query_str))
-            os.rename("inputs/synthetic/train/{}_inputs.json".format(query_str), "inputs/synthetic/train/{}_inputs.json".format(new_query_str))
-            os.rename("inputs/synthetic/train/{}_labels.json".format(query_str), "inputs/synthetic/train/{}_labels.json".format(new_query_str))
-
-
+            os.rename("inputs/{}/{}_inputs.json".format(dataset_name, query_str), "inputs/{}/{}_inputs.json".format(dataset_name, new_query_str))
+            os.rename("inputs/{}/{}_labels.json".format(dataset_name, query_str), "inputs/{}/{}_labels.json".format(dataset_name, new_query_str))
+            os.rename("inputs/{}/test/{}_inputs.json".format(dataset_name, query_str), "inputs/{}/test/{}_inputs.json".format(dataset_name, new_query_str))
+            os.rename("inputs/{}/test/{}_labels.json".format(dataset_name, query_str), "inputs/{}/test/{}_labels.json".format(dataset_name, new_query_str))
+            os.rename("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), "inputs/{}/train/{}_inputs.json".format(dataset_name, new_query_str))
+            os.rename("inputs/{}/train/{}_labels.json".format(dataset_name, query_str), "inputs/{}/train/{}_labels.json".format(dataset_name, new_query_str))
 
 def rewrite_program(program):
     """
@@ -246,5 +246,6 @@ def rewrite_program_helper(program):
         return predicate_list
 
 if __name__ == '__main__':
-    get_query_str_from_filename("inputs/synthetic-error_rate_0.05/",)
+    correct_filename("synthetic-fn_error_rate_0.3-fp_error_rate_0.075")
+    # get_query_str_from_filename("inputs/synthetic_rare",)
     # construct_train_test("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Back), True*), Left), True*), Conjunction(Conjunction(Back, Left), Far_0.9)), True*)", n_train=300)
