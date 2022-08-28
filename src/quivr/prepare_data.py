@@ -2,6 +2,7 @@ import json
 from operator import neg
 import random
 import itertools
+import shutil
 import numpy as np
 from sklearn.model_selection import train_test_split
 import quivr.dsl as dsl
@@ -19,26 +20,26 @@ segment_length = 128
 # np.random.seed(10)
 
 
-def generate_queries(n_queries, ratio, npred, depth, max_duration, predicate_dict, max_workers):
+def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, depth, max_duration, predicate_dict, max_workers, dataset_name):
     """
     Generate (n_queries) queries with the same complexity (npred, depth), removing those that don't have enough positive data (i.e., highly imbalanced)
     """
     queries = []
     while len(queries) < n_queries:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for res in executor.map(generate_one_query, repeat(npred, max_workers), repeat(depth, max_workers), repeat(max_duration, max_workers), repeat(predicate_dict, max_workers), repeat(ratio, max_workers)):
+            for res in executor.map(generate_one_query, repeat(npred, max_workers), repeat(depth, max_workers), repeat(max_duration, max_workers), repeat(predicate_dict, max_workers), repeat(ratio_lower_bound, max_workers), repeat(ratio_upper_bound, max_workers), repeat(dataset_name, max_workers)):
                 if res:
                     queries.append(res)
                     print("Generated {} queries".format(len(queries)))
     # write queries to csv file
-    with open("inputs/synthetic/queries.csv", "w") as csvfile:
+    with open("inputs/{}/queries.csv".format(dataset_name), "w") as csvfile:
         writer = csv.writer(csvfile)
         # write header
         writer.writerow(["query", "npos", "nneg", "ratio"])
         writer.writerows(queries)
 
 
-def generate_one_query(npred, depth, max_duration, predicate_dict, ratio):
+def generate_one_query(npred, depth, max_duration, predicate_dict, ratio_lower_bound, ratio_upper_bound, dataset_name):
     """
     Generate one query with the specific complexity (npred, depth), using predicates from predicate_dict.
     """
@@ -91,7 +92,7 @@ def generate_one_query(npred, depth, max_duration, predicate_dict, ratio):
         scene_graphs.append(scene_graph_str)
     query = print_query(scene_graphs)
     print(query)
-    return prepare_trajectory_pairs_given_target_query(query, ratio)
+    return prepare_trajectory_pairs_given_target_query(query, ratio_lower_bound, ratio_upper_bound, dataset_name)
 
 
 
@@ -156,7 +157,7 @@ def prepare_trajectory_pairs():
     with open(os.path.join("inputs/trajectory_pairs.json"), 'w') as f:
         f.write(json.dumps(sample_inputs))
 
-def prepare_trajectory_pairs_given_target_query(program_str, ratio=0.1):
+def prepare_trajectory_pairs_given_target_query(program_str, ratio_lower_bound, ratio_upper_bound, dataset_name):
     """
     Given the target query (in string format), generate inputs.json and labels.json files containing
     inputs.json.
@@ -168,7 +169,8 @@ def prepare_trajectory_pairs_given_target_query(program_str, ratio=0.1):
     with open(os.path.join("inputs/trajectory_pairs.json"), 'r') as f:
         sample_inputs = json.loads(f.read())
 
-    min_npos = int(len(sample_inputs) * ratio)
+    min_npos = int(len(sample_inputs) * ratio_lower_bound)
+    max_npos = int(len(sample_inputs) * ratio_upper_bound)
     max_nneg = len(sample_inputs) - min_npos
 
     positive_inputs = []
@@ -186,7 +188,7 @@ def prepare_trajectory_pairs_given_target_query(program_str, ratio=0.1):
         if len(negative_inputs) > max_nneg:
             print("Query {} doesn't have enough positive examples".format(program_str))
             return None
-        if len(positive_inputs) > max_nneg:
+        if len(positive_inputs) > max_npos:
             print("Query {} doesn't have enough negative examples".format(program_str))
             return None
         if i % 100 == 0:
@@ -194,30 +196,40 @@ def prepare_trajectory_pairs_given_target_query(program_str, ratio=0.1):
     print("Generated {} positive inputs and {} negative inputs".format(len(positive_inputs), len(negative_inputs)))
 
     labels = [1] * len(positive_inputs) + [0] * len(negative_inputs)
+    if not os.path.exists("inputs/{}".format(dataset_name)):
+        os.makedirs("inputs/{}".format(dataset_name), exist_ok=True)
     # write positive and negative inputs to one file
-    with open("inputs/synthetic/{}_inputs.json".format(program_str), 'w') as f:
+    with open("inputs/{}/{}_inputs.json".format(dataset_name, program_str), 'w') as f:
         positive_inputs.extend(negative_inputs)
         f.write(json.dumps(positive_inputs))
-    with open("inputs/synthetic/{}_labels.json".format(program_str), 'w') as f:
+    with open("inputs/{}/{}_labels.json".format(dataset_name, program_str), 'w') as f:
         f.write(json.dumps(labels))
     return program_str, sum(labels), len(labels) - sum(labels), sum(labels) / (len(labels) - sum(labels))
 
-def prepare_noisy_data(error_rate):
-    for filename in os.listdir("inputs/synthetic-error_rate_0.05"):
+def prepare_noisy_data(fn_error_rate, fp_error_rate, dataset_name):
+    source_folder_name = os.path.join("inputs", dataset_name)
+    target_folder_name = "inputs/{}-fn_error_rate_{}-fp_error_rate_{}".format(dataset_name, fn_error_rate, fp_error_rate)
+    if not os.path.exists(target_folder_name):
+        os.makedirs(target_folder_name, exist_ok=True)
+
+    for filename in os.listdir(source_folder_name):
         if filename.endswith("_labels.json"):
-            query_str = filename[:-12]
-            with open("inputs/synthetic-error_rate_0.05/{}_labels.json".format(query_str), 'r') as f:
+            with open(os.path.join(source_folder_name, filename), 'r') as f:
                 labels = json.load(f)
             # flip the label with probability error_rate
             for i in range(len(labels)):
-                if random.random() < error_rate:
-                    labels[i] = 1 - labels[i]
-            with open("inputs/synthetic-error_rate_0.05/{}_labels.json".format(query_str), 'w') as f:
+                if labels[i] and random.random() < fn_error_rate:
+                    labels[i] = 0
+                elif not labels[i] and random.random() < fp_error_rate:
+                    labels[i] = 1
+            with open(os.path.join(target_folder_name, filename), 'w') as f:
                 f.write(json.dumps(labels))
+            # copy file
+            shutil.copy(os.path.join(source_folder_name, filename.replace("_labels", "_inputs")), os.path.join(target_folder_name, filename.replace("_labels", "_inputs")))
 
 if __name__ == '__main__':
-    predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.Left: None, dsl.Right: None, dsl.Back: None, dsl.Front: None}
-    generate_queries(n_queries=50, ratio=0.1, npred=5, depth=3, max_duration=5, predicate_dict=predicate_dict, max_workers=20)
+    # predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.BackOf: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None}
+    # generate_queries(n_queries=50, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=5, depth=3, max_duration=5, predicate_dict=predicate_dict, max_workers=32, dataset_name="synthetic_rare")
 
-    # prepare_noisy_data(error_rate=0.05)
+    prepare_noisy_data(fn_error_rate=0.1, fp_error_rate=0.01, dataset_name="synthetic")
     # prepare_trajectory_pairs_given_target_query("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Front, Left)), True*), Duration(Left, 2)), True*), Conjunction(Far_0.9, Left)), True*)")
