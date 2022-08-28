@@ -102,6 +102,11 @@ class VOCAL(BaseMethod):
                 elif self.strategy == "topk":
                     self.candidate_queries = sorted(new_candidate_queries, key=lambda x: x[1], reverse=True)[:self.beam_width]
                     print("beam_width queries", [(print_program(query.program), score) for query, score in self.candidate_queries])
+                elif self.strategy == "topk_including_ties":
+                    new_candidate_queries = sorted(new_candidate_queries, key=lambda x: x[1], reverse=True)
+                    utility_bound = new_candidate_queries[:self.beam_width][-1][1]
+                    self.candidate_queries = [e for e in new_candidate_queries if e[1] >= utility_bound]
+                    print("beam_width {} queries".format(len(self.candidate_queries)), [(print_program(query.program), score) for query, score in self.candidate_queries])
             else:
                 self.candidate_queries = []
 
