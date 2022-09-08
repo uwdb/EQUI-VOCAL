@@ -315,29 +315,51 @@ class QueryGraph(object):
                         all_children.append(new_query_graph)
                         parent_graph[0].submodules[parent_graph[1]] = orig_fclass
 
-                if predicate_before_last_graph.name == "True*":
+                if current_program.submodules["function1"].submodules["function1"].name == "True*":
                     break
                 else:
-                    current_program = predicate_before_last_graph
+                    current_program = current_program.submodules["function1"].submodules["function1"]
 
         # Action b: Sequence construction: add a new scene graph (which consists of one predicate) to the end of the sequence.
         # 1. q' = Seq(Seq(q, p31), True*)
         if self.npred + 1 <= self.max_npred and self.depth + 1 <= self.max_depth:
-            for pred in predicate_dict:
-                pred_instances = []
-                if predicate_dict[pred]:
-                    for param in predicate_dict[pred]:
-                        pred_instances.append(pred(param))
-                else:
-                    pred_instances.append(pred())
+            first_iter = True
+            while True:
+                for pred in predicate_dict:
+                    pred_instances = []
+                    if predicate_dict[pred]:
+                        for param in predicate_dict[pred]:
+                            pred_instances.append(pred(param))
+                    else:
+                        pred_instances.append(pred())
 
-                for pred_instance in pred_instances:
-                    new_query_graph = copy.deepcopy(self)
-                    new_query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(new_query_graph.program, pred_instance), dsl.TrueStar())
-                    new_query_graph.npred += 1
-                    new_query_graph.depth += 1
-                    print("Action B: ", print_program(new_query_graph.program))
-                    all_children.append(new_query_graph)
+                    # Seq(Seq(Seq(Seq(True*, Duration(Conj(Conj(p13, p12), p11), theta1)), True*), Duration(Conj(Conj(p23, p22), p21), theta2)), True*)
+                    for pred_instance in pred_instances:
+                        if first_iter:
+                            new_query_graph = copy.deepcopy(self)
+                            new_query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(new_query_graph.program, pred_instance), dsl.TrueStar())
+                            new_query_graph.npred += 1
+                            new_query_graph.depth += 1
+                            print("Action B: ", print_program(new_query_graph.program))
+                            all_children.append(new_query_graph)
+                        else:
+                            predicate_before_last_graph = current_program.submodules["function1"].submodules["function1"]
+                            orig_fclass = copy.deepcopy(predicate_before_last_graph)
+                            current_program.submodules["function1"].submodules["function1"] = dsl.SequencingOperator(dsl.SequencingOperator(predicate_before_last_graph, pred_instance), dsl.TrueStar())
+                            new_query_graph = copy.deepcopy(self)
+                            new_query_graph.npred += 1
+                            new_query_graph.depth += 1
+                            print("Action B: ", print_program(new_query_graph.program))
+                            all_children.append(new_query_graph)
+                            current_program.submodules["function1"].submodules["function1"] = orig_fclass
+                if first_iter:
+                    first_iter = False
+                    current_program = self.program
+                else:
+                    if current_program.submodules["function1"].submodules["function1"].name == "True*":
+                        break
+                    else:
+                        current_program = current_program.submodules["function1"].submodules["function1"]
 
         # Action c: Duration refinement: increase the duration of the last scene graph in the sequence
         current_program = self.program
@@ -363,23 +385,9 @@ class QueryGraph(object):
                 print("Action C: ", print_program(new_query_graph.program))
                 current_program.submodules["function1"].submodules["function2"] = orig_fclass
 
-            if predicate_before_last_graph.name == "True*":
+            if current_program.submodules["function1"].submodules["function1"].name == "True*":
                 break
             else:
-                current_program = predicate_before_last_graph
+                current_program = current_program.submodules["function1"].submodules["function1"]
 
-        all_children_removing_duplicates = []
-        print("before removing duplicates:", len(all_children))
-        for child in all_children:
-            print(print_program(child.program))
-        signatures = set()
-        for child in all_children:
-            signature = rewrite_program(child.program)
-            if signature not in signatures:
-                child.program = str_to_program(signature)
-                all_children_removing_duplicates.append(child)
-                signatures.add(signature)
-        print("after removing duplicates:", len(all_children_removing_duplicates))
-        for child in all_children_removing_duplicates:
-            print(print_program(child.program))
-        return all_children_removing_duplicates
+        return all_children
