@@ -14,6 +14,10 @@ from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 from threading import current_thread, get_ident, get_native_id
 import scipy.stats as stats
+from glob import glob
+from torchvision.ops import masks_to_boxes
+import pycocotools._mask as _mask
+import torch
 
 segment_length = 128
 # random.seed(1234)
@@ -227,9 +231,122 @@ def prepare_noisy_data(fn_error_rate, fp_error_rate, dataset_name):
             # copy file
             shutil.copy(os.path.join(source_folder_name, filename.replace("_labels", "_inputs")), os.path.join(target_folder_name, filename.replace("_labels", "_inputs")))
 
+
+def prepare_postgres_data():
+    def decode(rleObjs):
+        if type(rleObjs) == list:
+            return _mask.decode(rleObjs)
+        else:
+            return _mask.decode([rleObjs])[:,:,0]
+    # schema: oid, vid, fid, shape, color, material, x1, y1, x2, y2
+    csv_data = []
+    # iterate all files in the folder
+    for file in glob("/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/*.json"):
+        encountered_objects = {}
+        video_basename = os.path.basename(file).replace(".json", "").replace("sim_", "")
+        if int(video_basename) >= 10000:
+            continue
+        # read in the json file
+        with open(file, 'r') as f:
+            data = json.loads(f.read())
+
+        if len(data['frames']) != 128:
+            print("Video {} has {} frames".format(video_basename, len(data['frames'])))
+        # iterate all videos in the json file
+        for frame in data['frames']:
+            frame_id = frame['frame_index']
+            objects = frame['objects']
+            for i in range(len(objects)):
+                # print(objects[i]['material'], objects[i]['color'], objects[i]['shape'])
+                mask = decode(objects[i]['mask'])
+                # O represents black, 1 represents white.
+                box = masks_to_boxes(torch.from_numpy(mask[np.newaxis, :]))
+                box = np.squeeze(box.numpy(), axis=0).tolist()
+                obj_name = objects[i]['shape'] + "_" + objects[i]['color'] + "_" + objects[i]['material']
+                if obj_name not in encountered_objects:
+                    encountered_objects[obj_name] = len(encountered_objects)
+                csv_data.append([encountered_objects[obj_name], int(video_basename), frame_id, objects[i]['shape'], objects[i]['color'], objects[i]['material'], box[0], box[1], box[2], box[3]])
+
+    with open('postgres/obj_clevrer.csv', 'w') as f:
+        writer = csv.writer(f)
+        # write multiple rows
+        writer.writerows(csv_data)
+
+
+def prepare_video_scene_graph():
+    def decode(rleObjs):
+        if type(rleObjs) == list:
+            return _mask.decode(rleObjs)
+        else:
+            return _mask.decode([rleObjs])[:,:,0]
+
+    inputs = []
+    # iterate all files in the folder
+    for file in glob("/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/*.json"):
+        video_basename = os.path.basename(file).replace(".json", "").replace("sim_", "")
+        if int(video_basename) >= 10000:
+            continue
+        # read in the json file
+        with open(file, 'r') as f:
+            data = json.loads(f.read())
+
+        input = []
+        if len(data['frames']) != 128:
+            print("Video {} has {} frames".format(video_basename, len(data['frames'])))
+        # iterate all videos in the json file
+        current_fid = 0
+        for frame in data['frames']:
+            local_frame_id = frame['frame_index']
+            while local_frame_id > current_fid:
+                input.append([])
+                current_fid += 1
+            objects = frame['objects']
+            region_graph = []
+            for i in range(len(objects)):
+                # print(objects[i]['material'], objects[i]['color'], objects[i]['shape'])
+                mask = decode(objects[i]['mask'])
+                # O represents black, 1 represents white.
+                box = masks_to_boxes(torch.from_numpy(mask[np.newaxis, :]))
+                box = np.squeeze(box.numpy(), axis=0).tolist()
+                box.extend([objects[i]['material'], objects[i]['color'], objects[i]['shape']])
+                region_graph.append(box)
+            input.append(region_graph)
+            current_fid += 1
+        while current_fid < 128:
+            input.append([])
+            current_fid += 1
+        if len(input) != 128:
+            print("Input {} has {} frames".format(video_basename, len(input)))
+            exit(1)
+
+        inputs.append(input)
+    # write dict to file
+    with open("inputs/clevrer_scene_graphs.json", 'w') as f:
+        f.write(json.dumps(inputs))
+
+def prepare_postgres_data_test_trajectories():
+    # schema: oid, vid, fid, shape, color, material, x1, y1, x2, y2
+    csv_data = []
+    with open("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)_inputs.json", 'r') as f:
+        data = json.loads(f.read())
+
+    for vid, pair in enumerate(data):
+        t1 = pair[0]
+        t2 = pair[1]
+        assert(len(t1) == len(t2))
+        for fid, (bbox1, bbox2) in enumerate(zip(t1, t2)):
+            csv_data.append([0, vid, fid, "cube", "red", "metal", bbox1[0], bbox1[1], bbox1[2], bbox1[3]])
+            csv_data.append([1, vid, fid, "cube", "red", "metal", bbox2[0], bbox2[1], bbox2[2], bbox2[3]])
+
+    with open('postgres/test_trajectories.csv', 'w') as f:
+        writer = csv.writer(f)
+        # write multiple rows
+        writer.writerows(csv_data)
+
 if __name__ == '__main__':
+    prepare_postgres_data_test_trajectories()
     # predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.BackOf: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None}
     # generate_queries(n_queries=50, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=5, depth=3, max_duration=5, predicate_dict=predicate_dict, max_workers=32, dataset_name="synthetic_rare")
 
-    prepare_noisy_data(fn_error_rate=0.1, fp_error_rate=0.01, dataset_name="synthetic")
+    # prepare_noisy_data(fn_error_rate=0.1, fp_error_rate=0.01, dataset_name="synthetic")
     # prepare_trajectory_pairs_given_target_query("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Front, Left)), True*), Duration(Left, 2)), True*), Conjunction(Far_0.9, Left)), True*)")
