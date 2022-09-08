@@ -1,0 +1,2 @@
+COPY Obj_clevrer FROM '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/obj_clevrer_test.csv' DELIMITER ',' CSV;
+-- COPY Obj_trajectories FROM '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/test_trajectories.csv' DELIMITER ',' CSV;
