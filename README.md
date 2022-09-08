@@ -69,6 +69,7 @@ export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}`pwd`
 - User-defined functors:
 ```
 cc -I /usr/include/postgresql/10/server -fpic -c functors.c
+cc -I /mmfs1/gscratch/balazinska/enhaoz/env/include/server/ -fpic -c functors.c
 cc -shared -o functors.so functors.o
 ```
 
