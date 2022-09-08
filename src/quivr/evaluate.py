@@ -1,3 +1,4 @@
+import argparse
 from doctest import testfile
 from functools import partial
 from posixpath import dirname
@@ -87,23 +88,25 @@ def _helper(file, dir_name, dataset_name, k):
             rank = i
             break
     f1_score = get_f1_score(answers[:10], target_query, dataset_name)
+    # f1_score = -1
     return f1_score, rank, total_time, is_positive_at_10, is_positive_at_100
 
 def get_f1_score(test_queries, target_query, dataset_name):
+    _start = time()
     with open("inputs/{}/test/{}_inputs.json".format(dataset_name, target_query), 'r') as f:
         inputs = json.load(f)
     with open("inputs/{}/test/{}_labels.json".format(dataset_name, target_query), 'r') as f:
         labels = json.load(f)
     inputs = np.asarray(inputs, dtype=object)
     labels = np.asarray(labels, dtype=object)
-    inputs, _, labels, _ = train_test_split(inputs, labels, train_size=500, random_state=42, stratify=labels)
+    inputs, _, labels, _ = train_test_split(inputs, labels, train_size=300, random_state=42, stratify=labels)
 
     # Top-10 queries, majority vote
     y_pred = []
     for i in range(len(inputs)):
         input = inputs[i]
         label = labels[i]
-        memoize = LRU(5000)
+        memoize = LRU(10000)
         y_pred_per_query = []
         weights = []
         for test_query, train_score in test_queries:
@@ -117,14 +120,41 @@ def get_f1_score(test_queries, target_query, dataset_name):
         y_pred.append(np.average(y_pred_per_query, weights=weights) >= 0.5)
     score = f1_score(list(labels), y_pred)
     print("score: {}".format(score))
+    print("time: {}".format(time() - _start))
     return score
 
 
 if __name__ == '__main__':
-    # with open("outputs/{}/synthetic/eval-nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-k_{}-per_iter_{}-budget_{}-thread_{}.txt".format("quivr_soft-sampling", 10, 10, 5, 3, 5, 128, 100, 5, 100, 8), 'w') as f:
-    args = ["random", "synthetic_rare", 10, 10, 5, 3, 5, 32, 100, 5, 100, 8]
-    with open("outputs/{}/{}/eval-nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-k_{}-per_iter_{}-budget_{}-thread_{}.txt".format(*args), 'w') as f:
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--method', type=str)
+    ap.add_argument('--n_init_pos', type=int)
+    ap.add_argument('--n_init_neg', type=int)
+    ap.add_argument('--dataset_name', type=str)
+    ap.add_argument('--npred', type=int)
+    ap.add_argument('--depth', type=int)
+    ap.add_argument('--max_duration', type=int)
+    ap.add_argument('--beam_width', type=int)
+    ap.add_argument('--k', type=int)
+    ap.add_argument('--samples_per_iter', type=int)
+    ap.add_argument('--budget', type=int)
+    ap.add_argument('--multithread', type=int)
+
+    args = ap.parse_args()
+    method_str = args.method
+    n_init_pos = args.n_init_pos
+    n_init_neg = args.n_init_neg
+    dataset_name = args.dataset_name
+    npred = args.npred
+    depth = args.depth
+    max_duration = args.max_duration
+    beam_width = args.beam_width
+    k = args.k
+    samples_per_iter = args.samples_per_iter
+    budget = args.budget
+    multithread = args.multithread
+    # args = ["random-unrestricted_v2", "synthetic_rare", 10, 10, 5, 3, 5, 2, 100, 5, 100, 8]
+    with open("outputs/{}/{}/eval-nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-k_{}-per_iter_{}-budget_{}-thread_{}.txt".format(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread), 'w') as f:
         sys.stdout = f
         _start = time()
-        test_synthetic_queries(*args)
+        test_synthetic_queries(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread)
         print("Time: {}".format(time() - _start))
