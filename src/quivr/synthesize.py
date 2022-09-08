@@ -22,7 +22,7 @@ from sklearn.model_selection import train_test_split
 random.seed(time.time())
 
 
-def test_quivr_exact(dataset_name, n_labeled, npred, depth, max_duration, multithread, query_str="collision"):
+def test_quivr_exact(dataset_name, n_labeled, npred, depth, max_duration, multithread, query_str, predicate_dict):
     if query_str == "collision":
         # read from json file
         with open("inputs/collision_inputs_train.json", 'r') as f:
@@ -31,7 +31,6 @@ def test_quivr_exact(dataset_name, n_labeled, npred, depth, max_duration, multit
             labels = json.load(f)
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
-        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.LeftOf: None, dsl.RightOf: None}
     else:
         with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
             inputs = json.load(f)
@@ -39,7 +38,6 @@ def test_quivr_exact(dataset_name, n_labeled, npred, depth, max_duration, multit
             labels = json.load(f)
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
-        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.RightOf: None, dsl.BackOf: None, dsl.FrontOf: None}
 
     inputs, _, labels, _ = train_test_split(inputs, labels, train_size=n_labeled, stratify=labels)
     print("labels", sum(labels), len(labels))
@@ -50,7 +48,7 @@ def test_quivr_exact(dataset_name, n_labeled, npred, depth, max_duration, multit
     answers = [[print_program(query), 1.0] for query in answers]
     return answers, total_time
 
-def test_random(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str="collision"):
+def test_random(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str, predicate_dict):
     if query_str == "collision":
         # read from json file
         with open("inputs/collision_inputs_train.json", 'r') as f:
@@ -59,7 +57,6 @@ def test_random(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration
             labels = json.load(f)
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
-        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.LeftOf: None, dsl.RightOf: None}
     else:
         with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
             inputs = json.load(f)
@@ -72,7 +69,6 @@ def test_random(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration
         inputs = inputs[sort_idx][::-1]
         labels = labels[sort_idx][::-1]
         print("labels", labels, sum(labels), len(labels))
-        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.RightOf: None, dsl.BackOf: None, dsl.FrontOf: None}
 
     init_labeled_index = random.sample(list(range(sum(labels))), n_init_pos) + random.sample(list(range(sum(labels), len(labels))), n_init_neg)
     algorithm = Random(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread)
@@ -82,7 +78,7 @@ def test_random(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration
     return answers, total_time
 
 
-def test_quivr_soft(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str="collision"):
+def test_quivr_soft(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str, predicate_dict):
     if query_str == "collision":
         # read from json file
         with open("inputs/collision_inputs_train.json", 'r') as f:
@@ -91,7 +87,6 @@ def test_quivr_soft(dataset_name, n_init_pos, n_init_neg, npred, depth, max_dura
             labels = json.load(f)
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
-        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.LeftOf: None, dsl.RightOf: None}
     else:
         with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
             inputs = json.load(f)
@@ -104,7 +99,6 @@ def test_quivr_soft(dataset_name, n_init_pos, n_init_neg, npred, depth, max_dura
         inputs = inputs[sort_idx][::-1]
         labels = labels[sort_idx][::-1]
         print("labels", labels, sum(labels), len(labels))
-        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.RightOf: None, dsl.BackOf: None, dsl.FrontOf: None}
 
     init_labeled_index = random.sample(list(range(sum(labels))), n_init_pos) + random.sample(list(range(sum(labels), len(labels))), n_init_neg)
     algorithm = QUIVRSoft(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy)
@@ -113,7 +107,7 @@ def test_quivr_soft(dataset_name, n_init_pos, n_init_neg, npred, depth, max_dura
     answers = [[print_program(query_graph.program), score] for query_graph, score in answers]
     return answers, total_time
 
-def test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str="collision"):
+def test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str, predicate_dict):
     if query_str == "collision":
         # read from json file
         with open("inputs/collision_inputs_train.json", 'r') as f:
@@ -122,7 +116,6 @@ def test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration,
             labels = json.load(f)
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
-        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.LeftOf: None, dsl.RightOf: None}
     else:
         with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
             inputs = json.load(f)
@@ -135,7 +128,6 @@ def test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration,
         inputs = inputs[sort_idx][::-1]
         labels = labels[sort_idx][::-1]
         print("labels", labels, sum(labels), len(labels))
-        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.RightOf: None, dsl.BackOf: None, dsl.FrontOf: None}
 
     init_labeled_index = random.sample(list(range(sum(labels))), n_init_pos) + random.sample(list(range(sum(labels), len(labels))), n_init_neg)
     algorithm = VOCAL(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy)
@@ -144,7 +136,7 @@ def test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration,
     answers = [[print_program(query_graph.program), score] for query_graph, score in answers]
     return answers, total_time
 
-def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread):
+def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict):
     # read from json file
     with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_inputs_test.json", 'r') as f:
         inputs = json.load(f)
@@ -159,7 +151,6 @@ def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, mu
     inputs = inputs[sampled_labeled_index]
     labels = labels[sampled_labeled_index]
 
-    predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.LeftOf: None, dsl.RightOf: None}
     algorithm = ExhaustiveSearch(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, k=1000, max_duration=max_duration, multithread=multithread)
     algorithm.run()
 
@@ -207,7 +198,7 @@ if __name__ == '__main__':
     # samples_per_iter should be >= (budget - n_init_pos - n_init_neg) / (npred + max_duration * depth), to ensure the search algorithm can reach to the leaf node.
 
     if method_str == "vocal":
-        method_name = "{}-{}".format(method_str, strategy)
+        method_name = "{}-{}-unrestricted_v4".format(method_str, strategy)
         config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-k_{}-per_iter_{}-budget_{}-thread_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread)
     elif method_str == "quivr":
         method_name = method_str
@@ -216,8 +207,16 @@ if __name__ == '__main__':
         method_name = "{}-{}".format(method_str, strategy)
         config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-k_{}-per_iter_{}-budget_{}-thread_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread)
     elif method_str == "random":
-        method_name = "{}".format(method_str)
+        method_name = "{}-unrestricted_v4".format(method_str)
         config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-k_{}-per_iter_{}-budget_{}-thread_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread)
+
+    if dataset_name == "collision":
+        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [1.1], dsl.LeftOf: None, dsl.RightOf: None}
+    elif dataset_name.startswith("synthetic-") or dataset_name == "synthetic":
+        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.RightOf: None, dsl.BackOf: None, dsl.FrontOf: None}
+    elif dataset_name.startswith("synthetic_rare"):
+        predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.BackOf: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None}
+    print("predicate_dict", predicate_dict)
 
     log_name = "{}-{}".format(query_str, run_id)
     # if dir not exist, create it
@@ -230,15 +229,15 @@ if __name__ == '__main__':
     print(args)
 
     if method_str == 'quivr':
-        answers, total_time = test_quivr_exact(dataset_name, budget, npred, depth, max_duration, multithread, query_str)
+        answers, total_time = test_quivr_exact(dataset_name, budget, npred, depth, max_duration, multithread, query_str, predicate_dict)
     elif method_str == 'vocal':
-        answers, total_time = test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str)
+        answers, total_time = test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str, predicate_dict)
     elif method_str == "exhaustive":
-        test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread)
+        test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict)
     elif method_str == 'quivr_soft':
-        answers, total_time = test_quivr_soft(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str)
+        answers, total_time = test_quivr_soft(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, query_str, predicate_dict)
     elif method_str == 'random':
-        answers, total_time = test_random(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str)
+        answers, total_time = test_random(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str, predicate_dict)
 
     if output_to_file:
         with open("outputs/{}/{}/{}/{}.log".format(method_name, dataset_name, config_name, log_name), 'w') as f:
