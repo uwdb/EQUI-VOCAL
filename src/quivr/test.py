@@ -5,6 +5,7 @@ import math
 import numpy as np
 from sklearn.metrics import f1_score
 import time
+from lru import LRU
 
 random.seed(10)
 
@@ -167,10 +168,32 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, program_str):
     score, memoize_all_inputs = compute_query_score(program, inputs, labels, memoize_all_inputs)
     print("score: ", score)
 
+def test_query(dataset_name, target_query, test_query):
+    _start = time.time()
+    with open("inputs/{}/train/{}_inputs.json".format(dataset_name, target_query), 'r') as f:
+        inputs = json.load(f)
+    # with open("inputs/{}/train/{}_labels.json".format(dataset_name, target_query), 'r') as f:
+    #     labels = json.load(f)
+    inputs = np.asarray(inputs, dtype=object)
+    # labels = np.asarray(labels, dtype=object)
+
+    # Top-10 queries, majority vote
+    y_pred = []
+    for i in range(len(inputs)):
+        input = inputs[i]
+        memoize = LRU(10000)
+        program = str_to_program(test_query)
+        result, new_memoize = program.execute(input, -1, memoize, {})
+        y_pred.append(int(result[0, len(input[0])] > 0))
+        memoize.update(new_memoize)
+
+    print("y_pred: {}".format(y_pred))
+    print("time: {}".format(time.time() - _start))
 
 if __name__ == '__main__':
     # test_query_equivalent(100, 100, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Kleene(Far_1.1), MinLength_2)), True*), Near_1.05), True*), Conjunction(Kleene(Conjunction(Near_1.05, Far_0.9)), MinLength_10)), True*)", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.1, 2)), True*), Near_1.05), True*), Duration(Conjunction(Near_1.05, Far_0.9), 10)), True*)")
-    test_vocal(1, 5, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.3, 2)), True*), Near_0.85), True*), Duration(Near_1.05, 3)), True*)")
+    # test_vocal(1, 5, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)")
+    test_query("synthetic_rare", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)")
 
 
     # test_quivr_answer_correctness(10, 10)
