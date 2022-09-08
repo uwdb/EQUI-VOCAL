@@ -68,7 +68,7 @@ class QUIVRSoft(BaseMethod):
             for pred_instance in pred_instances:
                 query_graph = QueryGraph(self.max_npred, self.max_depth)
                 query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), pred_instance), dsl.TrueStar())
-                query_graph.num_atomic_predicates = 1
+                query_graph.npred = 1
                 query_graph.depth = 1
                 # Compute query utility
                 utility = self.compute_query_f1_score_upper_bound(query_graph.program)
@@ -131,6 +131,7 @@ class QUIVRSoft(BaseMethod):
                 print("pick next segments", video_segment_ids)
                 self.labeled_index += video_segment_ids
                 print("# labeled segments", len(self.labeled_index))
+                print("# positive: {}, # negative: {}".format(sum(self.labels[self.labeled_index]), len(self.labels[self.labeled_index]) - sum(self.labels[self.labeled_index])))
                 # assert labeled_index does not contain duplicates
                 assert(len(self.labeled_index) == len(set(self.labeled_index)))
                 self.segment_selection_time += time.time() - _start_segmnet_selection_time
