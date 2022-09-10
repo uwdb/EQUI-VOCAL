@@ -3,49 +3,52 @@ Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.
 */
 \timing
 
-DROP FUNCTION IF EXISTS near, far, left_of, behind, right_quadrant, top_quadrant;
-DROP INDEX IF EXISTS idx_obj_trajectories, idx_g1, idx_g2, idx_g3, idx_g1_seq_view, idx_g2_seq_view, idx_g3_seq_view, idx_q1;
+DROP FUNCTION IF EXISTS Near, Far, LeftOf, BackOf, RightQuadrant, TopQuadrant;
+DROP INDEX IF EXISTS idx_obj_filtered, idx_g1, idx_g2, idx_g3, idx_g1_seq_view, idx_g2_seq_view, idx_g3_seq_view, idx_q1;
 
-CREATE FUNCTION near(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
+CREATE FUNCTION Near(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
     AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'near'
     LANGUAGE C STRICT;
 
-CREATE FUNCTION far(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
+CREATE FUNCTION Far(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
     AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'far'
     LANGUAGE C STRICT;
 
-CREATE FUNCTION left_of(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
+CREATE FUNCTION LeftOf(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
     AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'left_of'
     LANGUAGE C STRICT;
 
-CREATE FUNCTION behind(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
+CREATE FUNCTION BackOf(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
     AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'behind'
     LANGUAGE C STRICT;
 
-CREATE FUNCTION right_quadrant(double precision, double precision, double precision, double precision) RETURNS boolean
+CREATE FUNCTION RightQuadrant(double precision, double precision, double precision, double precision) RETURNS boolean
     AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'right_quadrant'
     LANGUAGE C STRICT;
 
-CREATE FUNCTION top_quadrant(double precision, double precision, double precision, double precision) RETURNS boolean
+CREATE FUNCTION TopQuadrant(double precision, double precision, double precision, double precision) RETURNS boolean
     AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'top_quadrant'
     LANGUAGE C STRICT;
 
-CREATE INDEX idx_obj_trajectories
-ON Obj_trajectories (vid, fid);
+CREATE TEMPORARY TABLE Obj_filtered AS
+SELECT * FROM Obj_trajectories WHERE vid in generate_series(0, 299);
+
+CREATE INDEX idx_obj_filtered
+ON Obj_filtered (vid, fid);
 
 CREATE TEMPORARY TABLE g1 AS
 SELECT a.oid as oid1, b.oid as oid2, a.vid, a.fid
-FROM Obj_trajectories a, Obj_trajectories b
+FROM Obj_filtered a, Obj_filtered b
 WHERE a.vid = b.vid and a.fid = b.fid and near(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1, b.x2, b.y2) = true and a.oid = 0 and b.oid = 1;
 
 CREATE TEMPORARY TABLE g2 AS
 SELECT a.oid as oid1, b.oid as oid2, a.vid, a.fid
-FROM Obj_trajectories a, Obj_trajectories b
+FROM Obj_filtered a, Obj_filtered b
 WHERE a.vid = b.vid and a.fid = b.fid and left_of(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1, b.x2, b.y2) = true and behind(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1, b.x2, b.y2) = true and a.oid = 0 and b.oid = 1;
 
 CREATE TEMPORARY TABLE g3 AS
 SELECT a.oid as oid1, b.oid as oid2, a.vid, a.fid
-FROM Obj_trajectories a, Obj_trajectories b
+FROM Obj_filtered a, Obj_filtered b
 WHERE a.vid = b.vid and a.fid = b.fid and top_quadrant(a.x1, a.y1, a.x2, a.y2) = true and far(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1, b.x2, b.y2) = true and a.oid = 0 and b.oid = 1;
 
 CREATE INDEX idx_g1
@@ -116,9 +119,11 @@ CREATE INDEX idx_q1
 ON q1 (vid, fid1, fid2, oid1, oid2);
 
 CREATE TEMPORARY TABLE q AS
-SELECT DISTINCT g1.vid as vid, g1.oid1 as oid1, g1.oid2 as oid2
+SELECT DISTINCT g1.vid as vid, g1.fid1 as fid1, g2.fid2 as fid2, g1.oid1 as oid1, g1.oid2 as oid2
 FROM q1 as g1, g3_seq_view g2
 WHERE g1.vid = g2.vid AND g1.oid1 = g2.oid1 AND g1.oid2 = g2.oid2 AND g1.fid2 < g2.fid1;
 
-\copy (SELECT * FROM q) TO '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/q1_clevrer.csv' (format csv);
+-- SELECT distinct vid from q;
+
+-- \copy (SELECT * FROM q) TO '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/q1_clevrer.csv' (format csv);
 -- select * from q;
