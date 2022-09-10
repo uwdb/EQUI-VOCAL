@@ -123,12 +123,12 @@ def test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration,
             labels = json.load(f)
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
-        # argsort in descending order
-        sort_idx = np.argsort(labels)
-        inputs = inputs[sort_idx][::-1]
-        labels = labels[sort_idx][::-1]
-        print("labels", labels, sum(labels), len(labels))
+        pos_idx = np.where(labels == 1)[0]
+        neg_idx = np.where(labels == 0)[0]
+        print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
 
+    init_labeled_index = random.sample(list(pos_idx), n_init_pos) + random.sample(list(neg_idx), n_init_neg)
+    print(init_labeled_index)
     init_labeled_index = random.sample(list(range(sum(labels))), n_init_pos) + random.sample(list(range(sum(labels), len(labels))), n_init_neg)
     algorithm = VOCAL(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy)
     answers, total_time = algorithm.run(init_labeled_index)
