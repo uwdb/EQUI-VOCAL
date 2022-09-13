@@ -429,6 +429,114 @@ def postgres_execute(current_query, input_vids):
     print("output_vids", output_vids)
     return output_vids
 
+def rewrite_program_postgres(program):
+    """
+    Input:
+    program: query in the dictionary format
+    Output: query in string format, which is ordered properly (uniquely).
+    """
+    def print_scene_graph(predicate_list):
+        if len(predicate_list) == 1:
+            if predicate_list[0]["parameter"]:
+                predicate_name = predicate_list[0]["predicate"] + "_" + str(predicate_list[0]["parameter"])
+            else:
+                predicate_name = predicate_list[0]["predicate"]
+            predicate_variables = ", ".join(predicate_list[0]["variables"])
+            return "{}({})".format(predicate_name, predicate_variables)
+        else:
+            if predicate_list[-1]["parameter"]:
+                predicate_name = predicate_list[-1]["predicate"] + "_" + str(predicate_list[-1]["parameter"])
+            else:
+                predicate_name = predicate_list[-1]["predicate"]
+            predicate_variables = ", ".join(predicate_list[-1]["variables"])
+            return "Conjunction({}, {}({}))".format(print_scene_graph(predicate_list[:-1]), predicate_name, predicate_variables)
+
+    def print_query(scene_graphs):
+        if len(scene_graphs) == 1:
+            return scene_graphs[0]
+        else:
+            return "{}; {}".format(print_query(scene_graphs[:-1]), scene_graphs[-1])
+
+    # Rewrite the program
+    encountered_variables = []
+    for dict in program:
+        scene_graph = dict["scene_graph"]
+        scene_graph = sorted(scene_graph, key=lambda x: x["predicate"])
+        for i, p in enumerate(scene_graph):
+            rewritten_variables = []
+            for v in p["variables"]:
+                if v not in encountered_variables:
+                    encountered_variables.append(v)
+                    rewritten_variables.append("o" + str(len(encountered_variables) - 1))
+                else:
+                    rewritten_variables.append("o" + str(encountered_variables.index(v)))
+            scene_graph[i]["variables"] = rewritten_variables
+        dict["scene_graph"] = scene_graph
+
+    scene_graphs = []
+    for dict in program:
+        scene_graph = dict["scene_graph"]
+        duration_constraint = int(dict["duration_constraint"])
+        scene_graph_str = print_scene_graph(scene_graph)
+        if duration_constraint > 1:
+            scene_graph_str = "Duration({}, {})".format(scene_graph_str, duration_constraint)
+        scene_graphs.append(scene_graph_str)
+
+    query = print_query(scene_graphs)
+    return query
+
+
+def str_to_program_postgres(program_str):
+    def parse_submodules(scene_graph_str):
+        idx = scene_graph_str.find("(")
+        idx_r = scene_graph_str.rfind(")")
+        submodules = scene_graph_str[idx+1:idx_r]
+        counter = 0
+        submodule_list = []
+        submodule_start = 0
+        for i, char in enumerate(submodules):
+            if char == "," and counter == 0:
+                submodule_list.append(submodules[submodule_start:i])
+                submodule_start = i+2
+            elif char == "(":
+                counter += 1
+            elif char == ")":
+                counter -= 1
+        submodule_list.append(submodules[submodule_start:])
+        return submodule_list
+
+    def parse_conjunction(scene_graph_str):
+        if scene_graph_str.startswith("Conjunction"):
+            submodule_list = parse_submodules(scene_graph_str)
+            return [*parse_conjunction(submodule_list[0]), *parse_conjunction(submodule_list[1])]
+        else:
+            return [parse_predicate(scene_graph_str)]
+
+    def parse_predicate(predicate_str):
+        dict = {}
+        # Near_0.95(o0, o1)
+        idx = predicate_str.find("(")
+        idx_r = predicate_str.rfind(")")
+        predicate_name = predicate_str[:idx].split("_")
+        dict["predicate"] = predicate_name[0]
+        dict["parameter"] = float(predicate_name[1]) if len(predicate_name) > 1 else None
+        predicate_variables = predicate_str[idx+1:idx_r]
+        dict["variables"] = predicate_variables.split(", ")
+        return dict
+
+    scene_graphs_str = program_str.split("; ")
+    program = []
+    for scene_graph_str in scene_graphs_str:
+        duration_constraint = 1
+        if scene_graph_str.startswith("Duration"):
+            submodule_list = parse_submodules(scene_graph_str)
+            duration_constraint = int(submodule_list[-1])
+            scene_graph_str = submodule_list[0]
+        scene_graph = {"scene_graph": parse_conjunction(scene_graph_str), "duration_constraint": duration_constraint}
+        program.append(scene_graph)
+    return program
+
+
 if __name__ == '__main__':
     # correct_filename("synthetic-fn_error_rate_0.3-fp_error_rate_0.075")
     # get_query_str_from_filename("inputs/synthetic_rare",)
@@ -438,7 +546,8 @@ if __name__ == '__main__':
             "scene_graph": [
                 {
                     "predicate": "Near",
-                    "variables": ["o1", "o2"]
+                    "parameter": -1.05,
+                    "variables": ["o3", "o2"]
                 }
             ],
             "duration_constraint": 1
@@ -447,10 +556,12 @@ if __name__ == '__main__':
             "scene_graph": [
                 {
                     "predicate": "LeftOf",
+                    "parameter": None,
                     "variables": ["o1", "o2"]
                 },
                 {
                     "predicate": "BackOf",
+                    "parameter": None,
                     "variables": ["o1", "o2"]
                 }
             ],
@@ -460,16 +571,21 @@ if __name__ == '__main__':
             "scene_graph": [
                 {
                     "predicate": "TopQuadrant",
+                    "parameter": None,
                     "variables": ["o1"]
                 },
                 {
                     "predicate": "Far",
+                    "parameter": 0.9,
                     "variables": ["o1", "o2"]
                 }
             ],
             "duration_constraint": 5
         }
     ]
-    _start = time.time()
-    postgres_execute(current_query, list(range(0, 100)))
-    print("time", time.time() - _start)
+    query_str = rewrite_program_postgres(current_query)
+    print(query_str)
+    print(str_to_program_postgres(query_str))
+    # _start = time.time()
+    # postgres_execute(current_query, list(range(0, 100)))
+    # print("time", time.time() - _start)
