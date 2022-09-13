@@ -129,7 +129,6 @@ def test_vocal(dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration,
 
     init_labeled_index = random.sample(list(pos_idx), n_init_pos) + random.sample(list(neg_idx), n_init_neg)
     print(init_labeled_index)
-    init_labeled_index = random.sample(list(range(sum(labels))), n_init_pos) + random.sample(list(range(sum(labels), len(labels))), n_init_neg)
     algorithm = VOCAL(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy)
     answers, total_time = algorithm.run(init_labeled_index)
 
