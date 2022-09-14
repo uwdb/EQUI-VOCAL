@@ -1,10 +1,10 @@
 import copy
 import quivr.dsl as dsl
-from quivr.utils import print_program, rewrite_program, str_to_program
-
+from quivr.utils import print_program, rewrite_program_postgres, str_to_program_postgres
+import itertools
 class QueryGraph(object):
 
-    def __init__(self, max_npred, max_depth, topdown_or_bottomup="bottomup"):
+    def __init__(self, max_npred, max_depth, max_vars=2, topdown_or_bottomup="bottomup"):
         self.max_npred = max_npred
         self.max_depth = max_depth
         if topdown_or_bottomup == "bottomup":
@@ -15,7 +15,7 @@ class QueryGraph(object):
             raise ValueError("Unknown algorithm:", topdown_or_bottomup)
         self.depth = 0
         self.npred = 0
-        self.nvars = 0
+        self.variables = ["o{}".format(i) for i in range(max_vars)]
 
     def get_parameter_holes_and_value_space(self):
         parameter_holes = []
@@ -394,51 +394,9 @@ class QueryGraph(object):
         return all_children
 
 
-    def get_all_children_unrestricted_postgres(self, predicate_list, max_duration, max_variables):
+    def get_all_children_unrestricted_postgres(self, predicate_list, max_duration):
         """
         predicate_list = [{"name": "Near", "parameters": [-1.05], "nargs": 2}, {...}, ...]
-        [
-            {
-                "scene_graph": [
-                    {
-                        "predicate": "Near",
-                        "parameter": -1.05,
-                        "variables": ["o3", "o2"]
-                    }
-                ],
-                "duration_constraint": 1
-            },
-            {
-                "scene_graph": [
-                    {
-                        "predicate": "LeftOf",
-                        "parameter": None,
-                        "variables": ["o1", "o2"]
-                    },
-                    {
-                        "predicate": "BackOf",
-                        "parameter": None,
-                        "variables": ["o1", "o2"]
-                    }
-                ],
-                "duration_constraint": 1
-            },
-            {
-                "scene_graph": [
-                    {
-                        "predicate": "TopQuadrant",
-                        "parameter": None,
-                        "variables": ["o1"]
-                    },
-                    {
-                        "predicate": "Far",
-                        "parameter": 0.9,
-                        "variables": ["o1", "o2"]
-                    }
-                ],
-                "duration_constraint": 5
-            }
-        ]
         Output: a list of all possible children of the current query graph. Each child is rewriten into the ordered format to avoid duplicates.
         """
         all_children = []
@@ -446,141 +404,91 @@ class QueryGraph(object):
         # Require: the last scene graph must not have duration constraint.
         if self.npred + 1 <= self.max_npred:
             pred_instances = []
-            for pred in predicate_dict:
-                if predicate_dict[pred]:
-                    for param in predicate_dict[pred]:
-                        pred_instances.append([pred, param])
+            for pred in predicate_list:
+                # {"name": "Near", "parameters": [-1.05], "nargs": 2}
+                if pred["parameters"]:
+                    for param in pred["parameters"]:
+                        pred_instances.append({"name": pred["name"], "parameter": param, "nargs": pred["nargs"]})
                 else:
-                    pred_instances.append([pred, None])
+                    pred_instances.append({"name": pred["name"], "parameter": None, "nargs": pred["nargs"]})
             for pred_instance in pred_instances:
                 for scene_graph_idx, dict in enumerate(self.program):
                     scene_graph = dict["scene_graph"]
                     is_duplicate_predicate = False
                     for p in scene_graph:
-                        if p["predicate"] == pred_instance[0]:
+                        if p["predicate"] == pred_instance["name"]:
                             is_duplicate_predicate = True
                             break
                     if is_duplicate_predicate:
                         continue
-                    new_query_graph = copy.deepcopy(self)
-                    new_query_graph.program[scene_graph_idx]["scene_graph"].append({"predicate": pred_instance[0], "parameter": pred_instance[1], "variables": []})
-
-            current_program = self.program
-            while True:
-                for pred in predicate_dict:
-                    pred_instances = []
-                    if predicate_dict[pred]:
-                        for param in predicate_dict[pred]:
-                            pred_instances.append(pred(param))
-                    else:
-                        pred_instances.append(pred())
-
-                    for pred_instance in pred_instances:
-                        # 1. Find the last scene graph g2 = q.submodules["function1"].submodules["function2"] // Duration(Conj(Conj(p23, p22), p21), theta2)
-                        parent_graph = [current_program.submodules["function1"], "function2"]
-                        last_graph = current_program.submodules["function1"].submodules["function2"]
-                        predicate_before_last_graph = current_program.submodules["function1"].submodules["function1"]
-                        # 2. If g2 has duration constraint, CONTINUE
-                        # NOT TRUE: locate the scene graph only: n2 = g2.submodules["duration"] // n2 = Conj(Conj(p23, p22), p21)
-                        if last_graph.name == "Duration":
-                            parent_graph = [last_graph, "duration"]
-                            last_graph = last_graph.submodules["duration"]
-                        # 3. Find p23, which is the leftmost child of n2. If the predicate p24 already exists in the scene graph, skip.
-                        is_duplicate_predicate = False
-                        while last_graph.name == "Conjunction":
-                            if last_graph.submodules["function2"] == pred_instance:
-                                is_duplicate_predicate = True
-                                break
-                            # print("test", parent_graph)
-                            parent_graph = [parent_graph[0].submodules[parent_graph[1]], "function1"]
-                            last_graph = last_graph.submodules["function1"] # Leftmost child of last_graph
-                        if is_duplicate_predicate:
-                            continue
-                        if last_graph == pred_instance:
-                            continue
-                        # 4. Replace p23 with Conj(p24, p23)
-                        orig_fclass = copy.deepcopy(last_graph)
-                        parent_graph[0].submodules[parent_graph[1]] = dsl.ConjunctionOperator(pred_instance, last_graph)
-                        # last_graph = dsl.ConjunctionOperator(pred_instance, last_graph)
-                        new_query_graph = copy.deepcopy(self)
-                        new_query_graph.npred += 1
-                        print("Action A: ", print_program(new_query_graph.program))
-                        all_children.append(new_query_graph)
-                        parent_graph[0].submodules[parent_graph[1]] = orig_fclass
-
-                if current_program.submodules["function1"].submodules["function1"].name == "True*":
-                    break
-                else:
-                    current_program = current_program.submodules["function1"].submodules["function1"]
+                    nvars = pred_instance["nargs"]
+                    if nvars > len(self.variables):
+                        raise ValueError("The predicate has more variables than the number of variables in the query.")
+                    # Special case: for trajectory experiment only
+                    if nvars == 1:
+                        variables_list = ["o0"]
+                    elif nvars == 2:
+                        variables_list = ["o0", "o1"]
+                    # Gneral case:
+                        # variables_list = itertools.permutations(self.variables, nvars)
+                    for variables in variables_list:
+                        new_query = copy.deepcopy(self)
+                        new_query.program[scene_graph_idx]["scene_graph"].append({"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)})
+                        new_query.npred += 1
+                        print("Action A: ", rewrite_program_postgres(new_query.program))
+                        all_children.append(new_query)
 
         # Action b: Sequence construction: add a new scene graph (which consists of one predicate) to the end of the sequence.
         # 1. q' = Seq(Seq(q, p31), True*)
         if self.npred + 1 <= self.max_npred and self.depth + 1 <= self.max_depth:
-            first_iter = True
-            while True:
-                for pred in predicate_dict:
-                    pred_instances = []
-                    if predicate_dict[pred]:
-                        for param in predicate_dict[pred]:
-                            pred_instances.append(pred(param))
-                    else:
-                        pred_instances.append(pred())
-
-                    # Seq(Seq(Seq(Seq(True*, Duration(Conj(Conj(p13, p12), p11), theta1)), True*), Duration(Conj(Conj(p23, p22), p21), theta2)), True*)
-                    for pred_instance in pred_instances:
-                        if first_iter:
-                            new_query_graph = copy.deepcopy(self)
-                            new_query_graph.program = dsl.SequencingOperator(dsl.SequencingOperator(new_query_graph.program, pred_instance), dsl.TrueStar())
-                            new_query_graph.npred += 1
-                            new_query_graph.depth += 1
-                            print("Action B: ", print_program(new_query_graph.program))
-                            all_children.append(new_query_graph)
-                        else:
-                            predicate_before_last_graph = current_program.submodules["function1"].submodules["function1"]
-                            orig_fclass = copy.deepcopy(predicate_before_last_graph)
-                            current_program.submodules["function1"].submodules["function1"] = dsl.SequencingOperator(dsl.SequencingOperator(predicate_before_last_graph, pred_instance), dsl.TrueStar())
-                            new_query_graph = copy.deepcopy(self)
-                            new_query_graph.npred += 1
-                            new_query_graph.depth += 1
-                            print("Action B: ", print_program(new_query_graph.program))
-                            all_children.append(new_query_graph)
-                            current_program.submodules["function1"].submodules["function1"] = orig_fclass
-                if first_iter:
-                    first_iter = False
-                    current_program = self.program
+            pred_instances = []
+            for pred in predicate_list:
+                # {"name": "Near", "parameters": [-1.05], "nargs": 2}
+                if pred["parameters"]:
+                    for param in pred["parameters"]:
+                        pred_instances.append({"name": pred["name"], "parameter": param, "nargs": pred["nargs"]})
                 else:
-                    if current_program.submodules["function1"].submodules["function1"].name == "True*":
-                        break
-                    else:
-                        current_program = current_program.submodules["function1"].submodules["function1"]
+                    pred_instances.append({"name": pred["name"], "parameter": None, "nargs": pred["nargs"]})
+            for pred_instance in pred_instances:
+                nvars = pred_instance["nargs"]
+                if nvars > len(self.variables):
+                    raise ValueError("The predicate has more variables than the number of variables in the query.")
+                # Special case: for trajectory experiment only
+                if nvars == 1:
+                    variables_list = ["o0"]
+                elif nvars == 2:
+                    variables_list = ["o0", "o1"]
+                # Gneral case:
+                    # variables_list = itertools.permutations(self.variables, nvars)
+                for variables in variables_list:
+                    predicate = {"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)}
+                    new_scene_graph = {"scene_graph": [predicate], "duration_constraint": 1}
+                    for insert_idx in range(self.depth + 1):
+                        new_query = copy.deepcopy(self)
+                        new_query.program.insert(insert_idx, new_scene_graph)
+                        new_query.npred += 1
+                        new_query.depth += 1
+                        print("Action B: ", rewrite_program_postgres(new_query.program))
+                        all_children.append(new_query)
 
-        # Action c: Duration refinement: increase the duration of the last scene graph in the sequence
-        current_program = self.program
-        while True:
-            # 1. Find the last scene graph g2 = q.submodules["function1"].submodules["function2"] // g2 = Duration(Conj(Conj(p23, p22), p21), theta2)
-            last_graph = current_program.submodules["function1"].submodules["function2"]
-            predicate_before_last_graph = current_program.submodules["function1"].submodules["function1"]
-            # 2. If g2 has duration constraint, increment by 1: g2.theta += 1
-            if last_graph.name == "Duration":
-                if last_graph.theta < max_duration:
-                    last_graph.theta += 1
-                    new_query_graph = copy.deepcopy(self)
-                    all_children.append(new_query_graph)
-                    print("Action C: ", print_program(new_query_graph.program))
-                    last_graph.theta -= 1
-            # 3. Else, add a duration constraint: g2' = Duration(g2, 2)
-            else:
-                orig_fclass = copy.deepcopy(last_graph)
-                current_program.submodules["function1"].submodules["function2"] = dsl.DurationOperator(last_graph, 2)
-                # last_graph = dsl.DurationOperator(last_graph, 2)
-                new_query_graph = copy.deepcopy(self)
-                all_children.append(new_query_graph)
-                print("Action C: ", print_program(new_query_graph.program))
-                current_program.submodules["function1"].submodules["function2"] = orig_fclass
+        # Action c: Duration refinement: increase the duration of the a scene graph
+        for scene_graph_idx, dict in enumerate(self.program):
+            scene_graph = dict["scene_graph"]
+            if dict["duration_constraint"] < max_duration:
+                new_query = copy.deepcopy(self)
+                new_query.program[scene_graph_idx]["duration_constraint"] += 1
+                print("Action C: ", rewrite_program_postgres(new_query.program))
+                all_children.append(new_query)
 
-            if current_program.submodules["function1"].submodules["function1"].name == "True*":
-                break
-            else:
-                current_program = current_program.submodules["function1"].submodules["function1"]
-
-        return all_children
+        # Remove duplicates
+        all_children_removing_duplicates = []
+        print("[all_children] before removing duplicates:", len(all_children))
+        signatures = set()
+        for query in all_children:
+            signature = rewrite_program_postgres(query.program)
+            if signature not in signatures:
+                query.program = str_to_program_postgres(signature)
+                all_children_removing_duplicates.append(query)
+                signatures.add(signature)
+        print("[all_children] after removing duplicates:", len(all_children_removing_duplicates))
+        return all_children_removing_duplicates
