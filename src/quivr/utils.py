@@ -8,7 +8,7 @@ import quivr.dsl as dsl
 import psycopg
 import copy
 import time
-
+import itertools
 
 def print_program(program, as_dict_key=False):
     # if isinstance(program, dsl.Predicate) or isinstance(program, dsl.Hole):
@@ -260,7 +260,8 @@ def postgres_execute(current_query, input_vids):
             "scene_graph": [
                 {
                     "predicate": "Near",
-                    "variables": ["o1", "o2"]
+                    "parameter": 1.05,
+                    "variables": ["o0", "o1"]
                 }
             ],
             "duration_constraint": 1
@@ -269,11 +270,13 @@ def postgres_execute(current_query, input_vids):
             "scene_graph": [
                 {
                     "predicate": "LeftOf",
-                    "variables": ["o1", "o2"]
+                    "parameter": None,
+                    "variables": ["o0", "o1"]
                 },
                 {
                     "predicate": "BackOf",
-                    "variables": ["o1", "o2"]
+                    "parameter": None,
+                    "variables": ["o0", "o1"]
                 }
             ],
             "duration_constraint": 1
@@ -282,11 +285,13 @@ def postgres_execute(current_query, input_vids):
             "scene_graph": [
                 {
                     "predicate": "TopQuadrant",
-                    "variables": ["o1"]
+                    "parameter": None,
+                    "variables": ["o0"]
                 },
                 {
                     "predicate": "Far",
-                    "variables": ["o1", "o2"]
+                    "parameter": 0.9,
+                    "variables": ["o0", "o1"]
                 }
             ],
             "duration_constraint": 5
@@ -297,7 +302,7 @@ def postgres_execute(current_query, input_vids):
     index_names = []
     # select input videos
     stmts.append(["CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM Obj_trajectories WHERE vid = ANY(%s);", [input_vids]])
-    stmts.append(["CREATE INDEX idx_obj_filtered ON Obj_filtered (vid, fid);", None])
+    stmts.append(["CREATE INDEX IF NOT EXISTS idx_obj_filtered ON Obj_filtered (vid, fid);", None])
     encountered_variables_all_graphs = []
     for graph_idx, dict in enumerate(current_query):
         # Generate scene graph:
@@ -313,117 +318,108 @@ def postgres_execute(current_query, input_vids):
         where_clauses = []
         encountered_variables_list = list(encountered_variables)
         for i in range(len(encountered_variables_list)-1):
-            where_clauses.append("{v1}.vid = {v2}.vid and {v1}.fid = {v2}.fid".format(v1=encountered_variables_list[i], v2=encountered_variables_list[i+1])) # join conditions
+            where_clauses.append("{v1}.vid = {v2}.vid and {v1}.fid = {v2}.fid".format(v1=encountered_variables_list[i], v2=encountered_variables_list[i+1])) # join variables
         for p in scene_graph:
             predicate = p["predicate"]
+            parameter = p["parameter"]
             variables = p["variables"]
             args = []
             for v in variables:
-                args.append("{}.x1, {}.y1, {}.x2, {}.y2".format(v, v, v, v))
+                args.append("{v}.x1, {v}.y1, {v}.x2, {v}.y2".format(v=v))
             args = ", ".join(args)
+            if parameter:
+                args = "{}, {}".format(parameter, args)
             where_clauses.append("{}({}) = true".format(predicate, args))
         # NOTE: only for trajectory example
-        for v in encountered_variables:
-            where_clauses.append("{}.oid = {}".format(v, int(v[1:]) - 1)) # 0-indexed
+        for v in encountered_variables_list:
+            where_clauses.append("{}.oid = {}".format(v, v[1:]))
+        # For general case
+        # for var_pair in itertools.combinations(encountered_variables_list, 2):
+        #     where_clauses.append("{}.oid <> {}.oid".format(var_pair[0], var_pair[1]))
         where_clauses = " and ".join(where_clauses)
-        fields = ["{v}.vid as vid, {v}.fid as fid".format(v=encountered_variables_list[0])]
-        oids = ["{}.oid as {}_oid".format(v, v) for v in encountered_variables]
-        fields.extend(oids)
-        fields = ", ".join(fields)
-        index_fields = "vid, fid, " + ", ".join(["{}_oid".format(v) for v in encountered_variables])
-        sql_sring = "CREATE TEMPORARY TABLE g{} AS SELECT {} FROM {} WHERE {};".format(graph_idx, fields, tables, where_clauses)
+        fields = "{v}.vid as vid, {v}.fid as fid, ".format(v=encountered_variables_list[0])
+        fields += ", ".join(["{v}.oid as {v}_oid".format(v=v) for v in encountered_variables_list])
+        oid_list = ["{}_oid".format(v) for v in encountered_variables_list]
+        oids = ", ".join(oid_list)
+        index_fields = "vid, fid, " + oids
+        sql_sring = """CREATE TEMPORARY TABLE g{} AS SELECT {} FROM {} WHERE {};""".format(graph_idx, fields, tables, where_clauses)
         stmts.append([sql_sring, None])
-        # Create index for g{graph_idx}:
-        stmts.append(["CREATE INDEX idx_g{} ON g{} ({});".format(graph_idx, graph_idx, index_fields), None])
+
+        # Create index for g{i}:
+        stmts.append(["CREATE INDEX IF NOT EXISTS idx_g{i} ON g{i} ({fields});".format(i=graph_idx, fields=index_fields), None])
         index_names.append("idx_g{}".format(graph_idx))
+
         # Generate scene graph sequence:
-        oids = ["{}_oid".format(v, v) for v in encountered_variables]
-        base_fields = "vid, fid, fid, {}".format(", ".join(oids))
-        step_fields = "s.vid, s.fid1, g.fid, {}".format(", ".join(["s.{}".format(oid) for oid in oids]))
-        view_fields = "vid, fid1, fid2, {}".format(", ".join(oids))
-        where_clauses = "s.vid = g.vid and g.fid = s.fid2 + 1 and {}".format(" and ".join(["s.{} = g.{}".format(oid, oid) for oid in oids]))
+        base_fields = "vid, fid, fid, {}".format(oids)
+        step_fields = "s.vid, s.fid1, g.fid, {}".format(", ".join(["s.{}".format(oid) for oid in oid_list]))
+        view_fields = "vid, fid1, fid2, {}".format(oids)
+        where_clauses = "s.vid = g.vid and g.fid = s.fid2 + 1 and {}".format(" and ".join(["s.{oid} = g.{oid}".format(oid=oid) for oid in oid_list]))
         duration_clause = "fid2 - fid1 + 1 >= {}".format(duration_constraint)
         sql_string = """
             CREATE TEMPORARY TABLE g{graph_idx}_seq_view AS
-            WITH RECURSIVE g{graph_idx}_seq (vid, fid1, fid2, {oids}) AS (
-                -- base case
+            WITH RECURSIVE g{graph_idx}_seq ({view_fields}) AS (
                 SELECT {base_fields} FROM g{graph_idx}
                     UNION ALL
-                -- step case
                 SELECT {step_fields}
                 FROM g{graph_idx}_seq s, g{graph_idx} g
                 WHERE {where_clauses}
             )
             SELECT DISTINCT {view_fields} FROM g{graph_idx}_seq
             WHERE {duration_clause};
-            """.format(graph_idx=graph_idx, oids=", ".join(oids), base_fields=base_fields, step_fields=step_fields, where_clauses=where_clauses, view_fields=view_fields, duration_clause=duration_clause)
+            """.format(graph_idx=graph_idx, view_fields=view_fields, base_fields=base_fields, step_fields=step_fields, where_clauses=where_clauses, duration_clause=duration_clause)
         stmts.append([sql_string, None])
-        # Create index for g{graph_idx}_seq_view:
-        stmts.append(["CREATE INDEX idx_g{}_seq_view ON g{}_seq_view ({});".format(graph_idx, graph_idx, view_fields), None])
+
+        # Create index for g{i}_seq_view:
+        stmts.append(["CREATE INDEX IF NOT EXISTS idx_g{i}_seq_view ON g{i}_seq_view ({fields});".format(i=graph_idx, fields=view_fields), None])
         index_names.append("idx_g{}_seq_view".format(graph_idx))
+
     # Sequencing
+    # TODO: alternative: join all scene graphs in one sql statement (how to cache?)
     current_seq = "g0_seq_view"
     current_encountered_variables = copy.deepcopy(encountered_variables_all_graphs[0])
     for graph_idx in range(len(current_query) - 1):
-        where_clauses = "t1.vid = t2.vid and t1.fid2 < t2.fid1"
+        where_clauses = "t0.vid = t1.vid and t0.fid2 < t1.fid1"
         obj_fields = []
         index_obj_fields = []
         for v in current_encountered_variables:
-            obj_fields.append("t1.{}_oid as {}_oid".format(v, v))
+            obj_fields.append("t0.{}_oid as {}_oid".format(v, v))
             index_obj_fields.append("{}_oid".format(v))
         for v in encountered_variables_all_graphs[graph_idx+1]:
             if v in current_encountered_variables:
-                where_clauses += " and t1.{v}_oid = t2.{v}_oid".format(v=v)
+                where_clauses += " and t0.{v}_oid = t1.{v}_oid".format(v=v)
             else:
                 current_encountered_variables.add(v)
-                obj_fields.append("t2.{v}_oid as {v}_oid".format(v=v))
+                obj_fields.append("t1.{v}_oid as {v}_oid".format(v=v))
                 index_obj_fields.append("{}_oid".format(v))
         obj_fields = ", ".join(obj_fields)
         index_obj_fields = ", ".join(index_obj_fields)
-        fields = "t1.vid as vid, t1.fid1 as fid1, t2.fid2 as fid2, {}".format(obj_fields)
+        fields = "t0.vid as vid, t0.fid1 as fid1, t1.fid2 as fid2, {}".format(obj_fields)
         index_fields = "vid, fid1, fid2, {}".format(index_obj_fields)
         sql_string = """
-        CREATE TEMPORARY TABLE q{graph_idx} AS
+        CREATE TEMPORARY TABLE q{i} AS
         SELECT DISTINCT {fields}
-        FROM {current_seq} as t1, g{graph_idx2}_seq_view as t2
+        FROM {current_seq} as t0, g{j}_seq_view as t1
         WHERE {where_clauses};
-        """.format(graph_idx=graph_idx, graph_idx2=graph_idx+1, fields=fields, where_clauses=where_clauses, current_seq=current_seq)
+        """.format(i=graph_idx, j=graph_idx+1, fields=fields, where_clauses=where_clauses, current_seq=current_seq)
         stmts.append([sql_string, None])
-        current_seq = "q{}".format(graph_idx)
+
         # Create index
-        stmts.append(["CREATE INDEX idx_q{} ON q{} ({});".format(graph_idx, graph_idx, index_fields), None])
+        stmts.append(["CREATE INDEX IF NOT EXISTS idx_q{} ON q{} ({});".format(graph_idx, graph_idx, index_fields), None])
         index_names.append("idx_q{}".format(graph_idx))
+
+        current_seq = "q{}".format(graph_idx)
+
     stmts.append(["SELECT DISTINCT vid FROM {}".format(current_seq), None])
     print("stmts", stmts)
     with psycopg.connect("dbname=myinner_db user=enhaoz host=localhost") as conn:
         # Open a cursor to perform database operations
         with conn.cursor() as cur:
-            # NOTE: temp
-            cur.execute("DROP FUNCTION IF EXISTS Near, Far, LeftOf, BackOf, RightQuadrant, TopQuadrant;")
-            cur.execute("DROP INDEX IF EXISTS idx_obj_filtered, idx_g1, idx_g2, idx_g3, idx_g1_seq_view, idx_g2_seq_view, idx_g3_seq_view, idx_q1;")
-            cur.execute("""CREATE FUNCTION Near(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'near'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION Far(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'far'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION LeftOf(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'left_of'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION BackOf(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'behind'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION RightQuadrant(double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'right_quadrant'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION TopQuadrant(double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'top_quadrant'
-            LANGUAGE C STRICT;""")
+            # cur.execute("DROP INDEX IF EXISTS idx_obj_filtered, idx_g1, idx_g2, idx_g3, idx_g1_seq_view, idx_g2_seq_view, idx_g3_seq_view, idx_q1;")
             for stmt, vars in stmts:
                 cur.execute(stmt, vars)
             output_vids = cur.fetchall()
             output_vids = [row[0] for row in output_vids]
-            cur.execute("DROP INDEX IF EXISTS {};".format(", ".join(index_names)))
+            # cur.execute("DROP INDEX IF EXISTS {};".format(", ".join(index_names)))
             # Make the changes to the database persistent
             conn.commit()
     print("output_vids", output_vids)
@@ -470,6 +466,8 @@ def rewrite_program_postgres(program):
                     rewritten_variables.append("o" + str(len(encountered_variables) - 1))
                 else:
                     rewritten_variables.append("o" + str(encountered_variables.index(v)))
+            # Sort rewritten variables
+            rewritten_variables = sorted(rewritten_variables)
             scene_graph[i]["variables"] = rewritten_variables
         dict["scene_graph"] = scene_graph
 
@@ -546,8 +544,8 @@ if __name__ == '__main__':
             "scene_graph": [
                 {
                     "predicate": "Near",
-                    "parameter": -1.05,
-                    "variables": ["o3", "o2"]
+                    "parameter": 1.05,
+                    "variables": ["o0", "o1"]
                 }
             ],
             "duration_constraint": 1
@@ -557,12 +555,12 @@ if __name__ == '__main__':
                 {
                     "predicate": "LeftOf",
                     "parameter": None,
-                    "variables": ["o1", "o2"]
+                    "variables": ["o0", "o1"]
                 },
                 {
-                    "predicate": "BackOf",
+                    "predicate": "Behind",
                     "parameter": None,
-                    "variables": ["o1", "o2"]
+                    "variables": ["o0", "o1"]
                 }
             ],
             "duration_constraint": 1
@@ -572,20 +570,31 @@ if __name__ == '__main__':
                 {
                     "predicate": "TopQuadrant",
                     "parameter": None,
-                    "variables": ["o1"]
+                    "variables": ["o0"]
                 },
                 {
                     "predicate": "Far",
                     "parameter": 0.9,
-                    "variables": ["o1", "o2"]
+                    "variables": ["o0", "o1"]
                 }
             ],
             "duration_constraint": 5
         }
     ]
-    query_str = rewrite_program_postgres(current_query)
-    print(query_str)
-    print(str_to_program_postgres(query_str))
-    # _start = time.time()
-    # postgres_execute(current_query, list(range(0, 100)))
-    # print("time", time.time() - _start)
+    # query_str = rewrite_program_postgres(current_query)
+    # print(query_str)
+    # print(str_to_program_postgres(query_str))
+
+    predicate_list = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}]
+    with psycopg.connect("dbname=myinner_db user=enhaoz host=localhost") as conn:
+        # Open a cursor to perform database operations
+        with conn.cursor() as cur:
+            for predicate in predicate_list:
+                # TODO: update args to include all scene graph information (e.g., attributes)
+                args = ", ".join(["double precision, double precision, double precision, double precision"] * predicate["nargs"])
+                if predicate["parameters"]:
+                    args = "double precision, " + args
+                cur.execute("CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}' LANGUAGE C STRICT;".format(name=predicate["name"], args=args))
+    _start = time.time()
+    postgres_execute(current_query, list(range(0, 300)))
+    print("time", time.time() - _start)
