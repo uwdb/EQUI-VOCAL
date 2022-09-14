@@ -15,8 +15,6 @@ import quivr.dsl as dsl
 from functools import cmp_to_key
 import psycopg
 
-# TODO: get_all_children_unrestricted_postgres
-
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return '''%s: mem=%s MB
@@ -34,10 +32,10 @@ def compare_with_ties(x, y):
 random.seed(time.time())
 class VOCALPostgres(BaseMethod):
 
-    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy):
+    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, max_vars):
         self.inputs = np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
-        self.predicate_dict = predicate_dict
+        self.predicate_list = predicate_dict
         self.max_npred = max_npred
         self.max_depth = max_depth
         self.beam_width = beam_width
@@ -47,6 +45,7 @@ class VOCALPostgres(BaseMethod):
         self.max_duration = max_duration
         self.multithread = multithread
         self.strategy = strategy
+        self.max_vars = max_vars
 
         self.query_expansion_time = 0
         self.segment_selection_time = 0
@@ -94,33 +93,36 @@ class VOCALPostgres(BaseMethod):
 
         # Initialize candidate queries: [query_graph, score]
         self.candidate_queries = []
-        for pred in self.predicate_dict:
-            pred_instances = []
-            if self.predicate_dict[pred]:
-                for param in self.predicate_dict[pred]:
-                    pred_instances.append("{}_{}".format(pred, param))
+        pred_instances = []
+        for pred in self.predicate_list:
+            if pred["parameters"]:
+                for param in pred["parameters"]:
+                    pred_instances.append({"name": pred["name"], "parameter": param, "nargs": pred["nargs"]})
             else:
-                pred_instances.append(pred)
-            for pred_instance in pred_instances:
-                query_graph = QueryGraph(self.max_npred, self.max_depth)
-                query_graph.program = [
-                    {
-                        "scene_graph": [
-                            {
-                                "predicate": pred_instance,
-                                "variables": ["o0", "o1"]
-                            }
-                        ],
-                        "duration_constraint": 1
-                    }
-                ]
-                query_graph.npred = 1
-                query_graph.depth = 1
-                query_graph.nvars = 2
-                score = self.compute_query_score_postgres(query_graph.program)
-                print("initialization", rewrite_program_postgres(query_graph.program), score)
-                self.candidate_queries.append([query_graph, score])
-                self.answers.append([query_graph, score])
+                pred_instances.append({"name": pred["name"], "parameter": None, "nargs": pred["nargs"]})
+        for pred_instance in pred_instances:
+            nvars = pred_instance["nargs"]
+            if nvars > self.max_vars:
+                raise ValueError("The predicate has more variables than the number of variables in the query.")
+            variables = ["o{}".format(i) for i in range(nvars)]
+            query_graph = QueryGraph(self.max_npred, self.max_depth, self.max_vars)
+            query_graph.program = [
+                {
+                    "scene_graph": [
+                        {
+                            "predicate": pred_instance,
+                            "variables": list(variables)
+                        }
+                    ],
+                    "duration_constraint": 1
+                }
+            ]
+            query_graph.npred = 1
+            query_graph.depth = 1
+            score = self.compute_query_score_postgres(query_graph.program)
+            print("initialization", rewrite_program_postgres(query_graph.program), score)
+            self.candidate_queries.append([query_graph, score])
+            self.answers.append([query_graph, score])
 
         _start_segmnet_selection_time = time.time()
         # video_segment_ids = self.pick_next_segment()
@@ -263,8 +265,8 @@ class VOCALPostgres(BaseMethod):
         current_query_graph, _ = current_query
         current_query = current_query_graph.program
         print("expand search space", rewrite_program_postgres(current_query))
-        # all_children = current_query_graph.get_all_children_bu(self.predicate_dict, self.max_duration)
-        all_children = current_query_graph.get_all_children_unrestricted_postgres(self.predicate_dict, self.max_duration)
+        # all_children = current_query_graph.get_all_children_bu(self.predicate_list, self.max_duration)
+        all_children = current_query_graph.get_all_children_unrestricted_postgres(self.predicate_list, self.max_duration)
 
         new_candidate_queries = []
 
