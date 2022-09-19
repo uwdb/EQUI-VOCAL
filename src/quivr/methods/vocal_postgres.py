@@ -14,6 +14,7 @@ import random
 import quivr.dsl as dsl
 from functools import cmp_to_key
 import psycopg
+import uuid
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -32,9 +33,9 @@ def compare_with_ties(x, y):
 random.seed(time.time())
 class VOCALPostgres(BaseMethod):
 
-    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, max_vars):
-        self.inputs = np.array(inputs, dtype=object)
-        self.labels = np.array(labels, dtype=object)
+    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, max_vars, host):
+        self.inputs = inputs
+        self.labels = labels
         self.predicate_list = predicate_dict
         self.max_npred = max_npred
         self.max_depth = max_depth
@@ -60,30 +61,47 @@ class VOCALPostgres(BaseMethod):
         else:
             raise ValueError("multithread must be 1 or greater")
 
-        self.conn = psycopg.connect("dbname=myinner_db user=enhaoz host=localhost")
-        # Open a cursor to perform database operations
-        with self.conn.cursor() as cur:
-            # Create predicates
-            cur.execute("DROP FUNCTION IF EXISTS Near, Far, LeftOf, BackOf, RightQuadrant, TopQuadrant;")
-            cur.execute("""CREATE FUNCTION Near(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'near'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION Far(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'far'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION LeftOf(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'left_of'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION BackOf(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'behind'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION RightQuadrant(double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'right_quadrant'
-            LANGUAGE C STRICT;""")
-            cur.execute("""CREATE FUNCTION TopQuadrant(double precision, double precision, double precision, double precision) RETURNS boolean
-            AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', 'top_quadrant'
-            LANGUAGE C STRICT;""")
-            self.conn.commit()
+        self.dsn = "dbname=myinner_db user=enhaoz host={}".format(host)
+        self.inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
+        with psycopg.connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                # Create temporary table for inputs
+                cur.execute("""
+                CREATE TABLE {} (
+                    oid INT,
+                    vid INT,
+                    fid INT,
+                    shape varchar,
+                    color varchar,
+                    material varchar,
+                    x1 float,
+                    y1 float,
+                    x2 float,
+                    y2 float
+                );
+                """.format(self.inputs_table_name))
+
+                # Load inputs into temporary table
+                csv_data = []
+                for vid, pair in enumerate(self.inputs):
+                    t1 = pair[0]
+                    t2 = pair[1]
+                    assert(len(t1) == len(t2))
+                    for fid, (bbox1, bbox2) in enumerate(zip(t1, t2)):
+                        csv_data.append((0, vid, fid, "cube", "red", "metal", bbox1[0], bbox1[1], bbox1[2], bbox1[3]))
+                        csv_data.append((1, vid, fid, "cube", "red", "metal", bbox2[0], bbox2[1], bbox2[2], bbox2[3]))
+                with cur.copy("COPY {} FROM STDIN".format(self.inputs_table_name)) as cur_copy:
+                    for row in csv_data:
+                        cur_copy.write_row(row)
+
+                # Create predicate functions (if not exists)
+                for predicate in self.predicate_list:
+                    # TODO: update args to include all scene graph information (e.g., attributes)
+                    args = ", ".join(["double precision, double precision, double precision, double precision"] * predicate["nargs"])
+                    if predicate["parameters"]:
+                        args = "double precision, " + args
+                    cur.execute("CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}' LANGUAGE C STRICT;".format(name=predicate["name"], args=args))
+                conn.commit()
 
     def run(self, init_labeled_index):
         _start_total_time = time.time()
@@ -110,7 +128,8 @@ class VOCALPostgres(BaseMethod):
                 {
                     "scene_graph": [
                         {
-                            "predicate": pred_instance,
+                            "predicate": pred_instance["name"],
+                            "parameter": pred_instance["parameter"],
                             "variables": list(variables)
                         }
                     ],
@@ -126,15 +145,23 @@ class VOCALPostgres(BaseMethod):
 
         _start_segmnet_selection_time = time.time()
         # video_segment_ids = self.pick_next_segment()
-        video_segment_ids = self.pick_next_segment_model_picker()
+        video_segment_ids = self.pick_next_segment_model_picker_postgres()
         print("pick next segments", video_segment_ids)
         self.labeled_index += video_segment_ids
         print("# labeled segments", len(self.labeled_index))
         print("# positive: {}, # negative: {}".format(sum(self.labels[self.labeled_index]), len(self.labels[self.labeled_index]) - sum(self.labels[self.labeled_index])))
         # assert labeled_index does not contain duplicates
         assert(len(self.labeled_index) == len(set(self.labeled_index)))
-        for i in range(len(self.candidate_queries)):
-            self.candidate_queries[i][1] = self.compute_query_score_postgres(self.candidate_queries[i][0].program)
+        if self.multithread > 1:
+            updated_scores = []
+            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                for result in executor.map(self.compute_query_score_postgres, [query.program for query, _ in self.candidate_queries]):
+                    updated_scores.append(result)
+            for i in range(len(self.candidate_queries)):
+                self.candidate_queries[i][1] = updated_scores[i]
+        else:
+            for i in range(len(self.candidate_queries)):
+                self.candidate_queries[i][1] = self.compute_query_score_postgres(self.candidate_queries[i][0].program)
         self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
         # Sample beam_width queries
@@ -192,7 +219,7 @@ class VOCALPostgres(BaseMethod):
             if len(self.labeled_index) < self.budget and len(self.candidate_queries):
                 _start_segmnet_selection_time = time.time()
                 # video_segment_ids = self.pick_next_segment()
-                video_segment_ids = self.pick_next_segment_model_picker()
+                video_segment_ids = self.pick_next_segment_model_picker_postgres()
                 print("pick next segments", video_segment_ids)
                 self.labeled_index += video_segment_ids
                 print("# labeled segments", len(self.labeled_index))
@@ -201,8 +228,18 @@ class VOCALPostgres(BaseMethod):
                 assert(len(self.labeled_index) == len(set(self.labeled_index)))
                 self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
-            for i in range(len(self.candidate_queries)):
-                self.candidate_queries[i][1] = self.compute_query_score_postgres(self.candidate_queries[i][0].program)
+            _start_segmnet_selection_time = time.time()
+            if self.multithread > 1:
+                updated_scores = []
+                with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                    for result in executor.map(self.compute_query_score_postgres, [query.program for query, _ in self.candidate_queries]):
+                        updated_scores.append(result)
+                for i in range(len(self.candidate_queries)):
+                    self.candidate_queries[i][1] = updated_scores[i]
+            else:
+                for i in range(len(self.candidate_queries)):
+                    self.candidate_queries[i][1] = self.compute_query_score_postgres(self.candidate_queries[i][0].program)
+            self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
             # Sample beam_width queries
             if len(self.candidate_queries):
@@ -244,8 +281,16 @@ class VOCALPostgres(BaseMethod):
 
             # Retain the top k queries with the highest scores as answers
             _start_retain_top_k_queries_time = time.time()
-            for i in range(len(self.answers)):
-                self.answers[i][1] = self.compute_query_score_postgres(self.answers[i][0].program)
+            if self.multithread > 1:
+                updated_scores = []
+                with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                    for result in executor.map(self.compute_query_score_postgres, [query.program for query, _ in self.answers]):
+                        updated_scores.append(result)
+                for i in range(len(self.answers)):
+                    self.answers[i][1] = updated_scores[i]
+            else:
+                for i in range(len(self.answers)):
+                    self.answers[i][1] = self.compute_query_score_postgres(self.answers[i][0].program)
             self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             self.answers = self.answers[:self.k]
             print("top k queries", [(rewrite_program_postgres(query.program), score) for query, score in self.answers])
@@ -259,6 +304,12 @@ class VOCALPostgres(BaseMethod):
         total_time = time.time() - _start_total_time
         print("[Runtime] query expansion time: {}, segment selection time: {}, retain top k queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k_queries_time, total_time))
         print(using("profile"))
+
+        # Drop input table
+        with psycopg.connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute("DROP TABLE {};".format(self.inputs_table_name))
+
         return self.answers, total_time
 
     def expand_query_and_compute_score(self, current_query):
