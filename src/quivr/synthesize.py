@@ -1,7 +1,7 @@
 import csv
 import os
 from quivr.methods.exhaustive_search import ExhaustiveSearch
-from quivr.utils import print_program, str_to_program
+from quivr.utils import print_program, rewrite_program_postgres, str_to_program
 from quivr.methods.quivr_exact import QUIVR
 from quivr.methods.vocal import VOCAL
 from quivr.methods.quivr_soft import QUIVRSoft
@@ -69,7 +69,7 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
         neg_idx = np.where(labels == 0)[0]
         print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
 
-    init_labeled_index = random.sample(list(pos_idx), n_init_pos) + random.sample(list(neg_idx), n_init_neg)
+    init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
     print(init_labeled_index)
     if method == "vocal":
         algorithm = VOCAL(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy)
@@ -78,10 +78,15 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     elif method == "random":
         algorithm = Random(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread)
     elif method == "vocal_postgres":
-        algorithm = VOCALPostgres(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars)
+        with open("/mmfs1/gscratch/balazinska/enhaoz/postgres_server.info", 'r') as f:
+            host = f.readlines()[0].strip().split(" ")[0]
+        algorithm = VOCALPostgres(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, host=host)
 
     answers, total_time = algorithm.run(init_labeled_index)
-    answers = [[print_program(query_graph.program), score] for query_graph, score in answers]
+    if method == "vocal_postgres":
+        answers = [[rewrite_program_postgres(query_graph.program), score] for query_graph, score in answers]
+    elif method in ["vocal", "quivr_soft", "random"]:
+        answers = [[print_program(query_graph.program), score] for query_graph, score in answers]
     return answers, total_time
 
 
@@ -170,7 +175,7 @@ if __name__ == '__main__':
         predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.RightOf: None, dsl.BackOf: None, dsl.FrontOf: None}
     elif dataset_name.startswith("synthetic_rare"):
         if method_str == "vocal_postgres":
-            predicate_dict = [{"name": "Near", "parameters": [-1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "BackOf", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}]
+            predicate_dict = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}]
         else:
             predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.BackOf: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None}
     print("predicate_dict", predicate_dict)
@@ -189,7 +194,7 @@ if __name__ == '__main__':
         answers, total_time = test_quivr_exact(dataset_name, budget, npred, depth, max_duration, multithread, query_str, predicate_dict)
     elif method_str == "exhaustive":
         test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict)
-    elif method_str in ['vocal', 'quivr_soft', 'random']:
+    elif method_str in ['vocal', 'quivr_soft', 'random', 'vocal_postgres']:
         answers, total_time = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str, predicate_dict, strategy, max_vars)
 
     if output_to_file:
