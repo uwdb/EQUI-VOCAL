@@ -426,9 +426,9 @@ class QueryGraph(object):
                         raise ValueError("The predicate has more variables than the number of variables in the query.")
                     # Special case: for trajectory experiment only
                     if nvars == 1:
-                        variables_list = ["o0"]
+                        variables_list = [["o0"]]
                     elif nvars == 2:
-                        variables_list = ["o0", "o1"]
+                        variables_list = [["o0", "o1"]]
                     # Gneral case:
                         # variables_list = itertools.permutations(self.variables, nvars)
                     for variables in variables_list:
@@ -455,9 +455,9 @@ class QueryGraph(object):
                     raise ValueError("The predicate has more variables than the number of variables in the query.")
                 # Special case: for trajectory experiment only
                 if nvars == 1:
-                    variables_list = ["o0"]
+                    variables_list = [["o0"]]
                 elif nvars == 2:
-                    variables_list = ["o0", "o1"]
+                    variables_list = [["o0", "o1"]]
                 # Gneral case:
                     # variables_list = itertools.permutations(self.variables, nvars)
                 for variables in variables_list:
