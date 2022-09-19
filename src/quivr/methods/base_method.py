@@ -5,7 +5,7 @@ import numpy as np
 import time
 from scipy import stats
 from concurrent.futures import ThreadPoolExecutor
-from quivr.utils import print_program, rewrite_program, str_to_program, postgres_execute
+from quivr.utils import print_program, rewrite_program, str_to_program, postgres_execute, rewrite_program_postgres, str_to_program_postgres
 import itertools
 
 def using(point=""):
@@ -14,7 +14,7 @@ def using(point=""):
            '''%(point, usage/1024.0 )
 
 random.seed(time.time())
-
+# random.seed(10)
 class BaseMethod:
     def compute_query_score(self, current_query):
         y_pred = []
@@ -41,13 +41,20 @@ class BaseMethod:
         return score
 
     def compute_query_score_postgres(self, current_query):
-        vids = postgres_execute(current_query, self.labeled_index)
         y_pred = []
+        result, new_memoize = postgres_execute(self.dsn, current_query, self.labeled_index, self.memoize_all_inputs, self.inputs_table_name)
+        if self.lock:
+            self.lock.acquire()
+        for i, v in enumerate(new_memoize):
+            self.memoize_all_inputs[i].update(v)
+        if self.lock:
+            self.lock.release()
         for i in self.labeled_index:
-            if i in vids:
+            if i in result:
                 y_pred.append(1)
             else:
                 y_pred.append(0)
+
         score = f1_score(list(self.labels[self.labeled_index]), y_pred)
         return score
 
@@ -221,3 +228,80 @@ class BaseMethod:
         u_t = np.max(u_t_list)
 
         return u_t
+
+    def pick_next_segment_model_picker_postgres(self):
+        """
+        Pick the next segment to be labeled, using the Model Picker algorithm.
+        """
+        true_labels = np.array(self.labels)
+        prediction_matrix = []
+        _start = time.time()
+
+        # query_list = [query_graph.program for query_graph, _ in itertools.chain(self.candidate_queries, self.answers[:max(self.beam_width, 10)])]
+        query_list = [query_graph.program for query_graph, _ in self.candidate_queries]
+        query_list_removing_duplicates = []
+        signatures = set()
+        for program in query_list:
+            signature = rewrite_program_postgres(program)
+            if signature not in signatures:
+                new_program = str_to_program_postgres(signature)
+                query_list_removing_duplicates.append(new_program)
+                signatures.add(signature)
+        query_list = query_list_removing_duplicates
+        print("query pool", [rewrite_program_postgres(query) for query in query_list])
+        if self.multithread > 1:
+            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                for pred_per_query in executor.map(self.execute_over_all_inputs_postgres, query_list):
+                    prediction_matrix.append(pred_per_query)
+        else:
+            for query in query_list:
+                pred_per_query = self.execute_over_all_inputs_postgres(query)
+                prediction_matrix.append(pred_per_query)
+            prediction_matrix.append(pred_per_query)
+        prediction_matrix = np.array(prediction_matrix).transpose()
+        print("constructing prediction matrix", time.time()-_start)
+        # print(prediction_matrix.shape)
+        n_instances = len(true_labels)
+
+        # Initialize
+        loss_t = np.zeros(prediction_matrix.shape[1])
+        for i in range(n_instances):
+            if i not in self.labeled_index:
+                continue
+            if true_labels[i]:
+                loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
+            else:
+                loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
+
+        eta = np.sqrt(np.log(prediction_matrix.shape[1])/(2*(len(self.labeled_index)-self.init_nlabels+1)))
+        posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
+        # Note that above equation is equivalent to np.exp(-eta * loss_t).
+        # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
+        posterior_t  /= np.sum(posterior_t)  # normalized weight
+        print("query weights", posterior_t)
+        entropy_list = np.zeros(n_instances)
+        for i in range(n_instances):
+            if i in self.labeled_index:
+                entropy_list[i] = -1
+            else:
+                entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :])
+        # find argmax of entropy (top k)
+        video_segment_ids = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
+        # max_entropy_index = np.argmax(entropy_list)
+        return video_segment_ids.tolist()
+
+    def execute_over_all_inputs_postgres(self, query):
+        pred_per_query = []
+        result, new_memoize = postgres_execute(self.dsn, query, list(range(len(self.inputs))), self.memoize_all_inputs, self.inputs_table_name)
+        if self.lock:
+            self.lock.acquire()
+        for i, v in enumerate(new_memoize):
+            self.memoize_all_inputs[i].update(v)
+        if self.lock:
+            self.lock.release()
+        for i in range(len(self.inputs)):
+            if i in result:
+                pred_per_query.append(1)
+            else:
+                pred_per_query.append(0)
+        return pred_per_query
