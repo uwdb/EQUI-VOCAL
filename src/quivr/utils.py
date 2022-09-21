@@ -268,10 +268,13 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
             new_memoize = [LRU(10000) for _ in range(len(memoize))]
             index_names = []
             # select input videos
+            _start = time.time()
             cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid = ANY(%s);".format(inputs_table_name), [input_vids])
             cur.execute("CREATE INDEX IF NOT EXISTS idx_obj_filtered ON Obj_filtered (vid, fid);")
+            print("select input videos: ", time.time() - _start)
             encountered_variables_all_graphs = []
             for graph_idx, dict in enumerate(current_query):
+                _start = time.time()
                 # Generate scene graph:
                 scene_graph = dict["scene_graph"]
                 duration_constraint = dict["duration_constraint"]
@@ -305,17 +308,17 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                     variables = p["variables"]
                     args = []
                     for v in variables:
-                        args.append("{v}.x1, {v}.y1, {v}.x2, {v}.y2".format(v=v))
+                        args.append("{v}.shape, {v}.color, {v}.material, {v}.x1, {v}.y1, {v}.x2, {v}.y2".format(v=v))
                     args = ", ".join(args)
                     if parameter:
                         args = "{}, {}".format(parameter, args)
                     where_clauses.append("{}({}) = true".format(predicate, args))
                 # NOTE: only for trajectory example
-                for v in encountered_variables_list:
-                    where_clauses.append("{}.oid = {}".format(v, v[1:]))
-                # For general case
-                # for var_pair in itertools.combinations(encountered_variables_list, 2):
-                #     where_clauses.append("{}.oid <> {}.oid".format(var_pair[0], var_pair[1]))
+                # for v in encountered_variables_list:
+                #     where_clauses.append("{}.oid = {}".format(v, v[1:]))
+                # NOTE: For general case
+                for var_pair in itertools.combinations(encountered_variables_list, 2):
+                    where_clauses.append("{}.oid <> {}.oid".format(var_pair[0], var_pair[1]))
                 where_clauses = " and ".join(where_clauses)
                 fields = "{v}.vid as vid, {v}.fid as fid, ".format(v=encountered_variables_list[0])
                 fields += ", ".join(["{v}.oid as {v}_oid".format(v=v) for v in encountered_variables_list])
@@ -324,12 +327,16 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                 index_fields = "vid, fid, " + oids
                 sql_sring = """CREATE TEMPORARY TABLE g{} AS SELECT {} FROM {} WHERE {};""".format(graph_idx, fields, tables, where_clauses)
                 cur.execute(sql_sring, [delta_input_vids])
+                print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
+                _start = time.time()
 
                 # Create index for g{i}:
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_g{i} ON g{i} ({fields});".format(i=graph_idx, fields=index_fields))
                 index_names.append("idx_g{}".format(graph_idx))
+                print("Time for index {}: {}".format(graph_idx, time.time() - _start))
 
                 # Generate scene graph sequence:
+                _start = time.time()
                 base_fields = "vid, fid, fid, {}".format(oids)
                 step_fields = "s.vid, s.fid1, g.fid, {}".format(", ".join(["s.{}".format(oid) for oid in oid_list]))
                 view_fields = "vid, fid1, fid2, {}".format(oids)
@@ -346,8 +353,10 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                     SELECT DISTINCT * FROM g{graph_idx}_seq WHERE fid2 - fid1 + 1 = {duration_constraint};
                     """.format(graph_idx=graph_idx, view_fields=view_fields, base_fields=base_fields, step_fields=step_fields, where_clauses=where_clauses, duration_constraint=duration_constraint)
                 cur.execute(sql_string)
+                print("Time for graph_seq {}: {}".format(graph_idx, time.time() - _start))
 
                 # Store new cached results
+                _start = time.time()
                 cur.execute("SELECT * FROM g{}_seq_view".format(graph_idx))
                 df = pd.DataFrame(cur.fetchall())
                 if df.shape[0]: # if results not empty
@@ -359,15 +368,19 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                 if cached_results.shape[0]:
                     placeholder = '(' + ','.join(['%s' for i in range(3 + len(oid_list))]) + ')'
                     cur.executemany("INSERT INTO g{}_seq_view VALUES {};".format(graph_idx, placeholder), cached_results)
+                print("Time for inserting cached results {}: {}".format(graph_idx, time.time() - _start))
 
                 # Create index for g{i}_seq_view:
+                _start = time.time()
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_g{i}_seq_view ON g{i}_seq_view ({fields});".format(i=graph_idx, fields=view_fields))
                 index_names.append("idx_g{}_seq_view".format(graph_idx))
+                print("time for idx graph seq {}: {}".format(graph_idx, time.time() - _start))
 
             # Sequencing
             current_seq = "g0_seq_view"
             current_encountered_variables = copy.deepcopy(encountered_variables_all_graphs[0])
             for graph_idx in range(len(current_query) - 1):
+                _start = time.time()
                 # Read cached results
                 delta_input_vids = []
                 df_list = [pd.DataFrame()]
@@ -437,6 +450,8 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                 index_names.append("idx_q{}".format(graph_idx))
 
                 current_seq = "q{}".format(graph_idx)
+                print("time for seq {}: {}".format(graph_idx, time.time() - _start))
+
             cur.execute("SELECT DISTINCT vid FROM {}".format(current_seq))
             output_vids = cur.fetchall()
             output_vids = [row[0] for row in output_vids]
@@ -734,6 +749,81 @@ if __name__ == '__main__':
         {
             "scene_graph": [
                 {
+                    "predicate": "Red",
+                    "parameter": None,
+                    "variables": ["o0"]
+                },
+                {
+                    "predicate": "Metal",
+                    "parameter": None,
+                    "variables": ["o0"]
+                },
+                {
+                    "predicate": "Cube",
+                    "parameter": None,
+                    "variables": ["o0"]
+                },
+                {
+                    "predicate": "Green",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
+                    "predicate": "Metal",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
+                    "predicate": "Cylinder",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
+                    "predicate": "Far",
+                    "parameter": 0.9,
+                    "variables": ["o0", "o1"]
+                },
+                {
+                    "predicate": "Blue",
+                    "parameter": None,
+                    "variables": ["o2"]
+                }
+            ],
+            "duration_constraint": 1
+        },
+        {
+            "scene_graph": [
+                {
+                    "predicate": "Red",
+                    "parameter": None,
+                    "variables": ["o0"]
+                },
+                {
+                    "predicate": "Metal",
+                    "parameter": None,
+                    "variables": ["o0"]
+                },
+                {
+                    "predicate": "Cube",
+                    "parameter": None,
+                    "variables": ["o0"]
+                },
+                {
+                    "predicate": "Green",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
+                    "predicate": "Metal",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
+                    "predicate": "Cylinder",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
                     "predicate": "Near",
                     "parameter": 1.05,
                     "variables": ["o0", "o1"]
@@ -744,86 +834,64 @@ if __name__ == '__main__':
         {
             "scene_graph": [
                 {
-                    "predicate": "LeftOf",
-                    "parameter": None,
-                    "variables": ["o0", "o1"]
-                },
-                {
-                    "predicate": "Behind",
-                    "parameter": None,
-                    "variables": ["o0", "o1"]
-                }
-            ],
-            "duration_constraint": 1
-        },
-        {
-            "scene_graph": [
-                {
-                    "predicate": "TopQuadrant",
+                    "predicate": "Red",
                     "parameter": None,
                     "variables": ["o0"]
                 },
                 {
+                    "predicate": "Metal",
+                    "parameter": None,
+                    "variables": ["o0"]
+                },
+                {
+                    "predicate": "Cube",
+                    "parameter": None,
+                    "variables": ["o0"]
+                },
+                {
+                    "predicate": "Green",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
+                    "predicate": "Metal",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
+                    "predicate": "Cylinder",
+                    "parameter": None,
+                    "variables": ["o1"]
+                },
+                {
                     "predicate": "Far",
-                    "parameter": 0.9,
+                    "parameter": 1.05,
                     "variables": ["o0", "o1"]
                 }
             ],
-            "duration_constraint": 5
+            "duration_constraint": 1
         }
     ]
-    # query_str = rewrite_program_postgres(current_query)
-    # print(query_str)
-    # print(str_to_program_postgres(query_str))
-    _start = time.time()
-    current_query = str_to_program_postgres("LeftOf(o0, o1); Near_1.05(o0, o1)")
-    predicate_list = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}]
-    with open("/mmfs1/gscratch/balazinska/enhaoz/postgres_server.info", 'r') as f:
-        host = f.readlines()[0].strip().split(" ")[0]
-    dsn = "dbname=myinner_db user=enhaoz host={}".format(host)
-    memoize = [LRU(10000) for _ in range(300)]
-    with open("inputs/synthetic_rare/train/Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)_inputs.json", 'r') as f:
-        inputs = json.load(f)
-    inputs = np.asarray(inputs, dtype=object)
-    inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
+    query_str = rewrite_program_postgres(current_query)
+    print(query_str)
+    current_query = str_to_program_postgres(query_str)
+    predicate_list = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "Gray", "parameters": None, "nargs": 1}, {"name": "Red", "parameters": None, "nargs": 1}, {"name": "Blue", "parameters": None, "nargs": 1}, {"name": "Green", "parameters": None, "nargs": 1}, {"name": "Brown", "parameters": None, "nargs": 1}, {"name": "Cyan", "parameters": None, "nargs": 1}, {"name": "Purple", "parameters": None, "nargs": 1}, {"name": "Yellow", "parameters": None, "nargs": 1}, {"name": "Cube", "parameters": None, "nargs": 1}, {"name": "Sphere", "parameters": None, "nargs": 1}, {"name": "Cylinder", "parameters": None, "nargs": 1}, {"name": "Metal", "parameters": None, "nargs": 1}, {"name": "Rubber", "parameters": None, "nargs": 1}]
+    dsn = "dbname=myinner_db user=enhaoz host=localhost"
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
-            # Create temporary table for inputs
-            cur.execute("""
-            CREATE TABLE {} (
-                oid INT,
-                vid INT,
-                fid INT,
-                shape varchar,
-                color varchar,
-                material varchar,
-                x1 float,
-                y1 float,
-                x2 float,
-                y2 float
-            );
-            """.format(inputs_table_name))
-
-            # Load inputs into temporary table
-            csv_data = []
-            for vid, pair in enumerate(inputs):
-                t1 = pair[0]
-                t2 = pair[1]
-                assert(len(t1) == len(t2))
-                for fid, (bbox1, bbox2) in enumerate(zip(t1, t2)):
-                    csv_data.append((0, vid, fid, "cube", "red", "metal", bbox1[0], bbox1[1], bbox1[2], bbox1[3]))
-                    csv_data.append((1, vid, fid, "cube", "red", "metal", bbox2[0], bbox2[1], bbox2[2], bbox2[3]))
-            with cur.copy("COPY {} FROM STDIN".format(inputs_table_name)) as cur_copy:
-                for row in csv_data:
-                    cur_copy.write_row(row)
+            # Create predicate functions (if not exists)
+            for predicate in predicate_list:
+                # TODO: update args to include all scene graph information (e.g., attributes)
+                args = ", ".join(["text, text, text, double precision, double precision, double precision, double precision"] * predicate["nargs"])
+                if predicate["parameters"]:
+                    args = "double precision, " + args
+                cur.execute("CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}' LANGUAGE C STRICT;".format(name=predicate["name"], args=args))
             conn.commit()
-    print("prepare time", time.time() - _start)
+
+    memoize = [LRU(10000) for _ in range(10000)]
+    inputs_table_name = "Obj_clevrer"
     _start = time.time()
-    outputs, _ = postgres_execute(dsn, current_query, list(range(0, 300)), memoize, inputs_table_name)
+    outputs, _ = postgres_execute(dsn, current_query, list(range(0, 10000)), memoize, inputs_table_name)
     print(len(outputs))
+    print(outputs)
     print("time", time.time() - _start)
-    _start = time.time()
-    with psycopg.connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute("DROP TABLE {};".format(inputs_table_name))
-    print("clean up time", time.time() - _start)
