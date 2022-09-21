@@ -555,6 +555,68 @@ if __name__ == '__main__':
     # correct_filename("synthetic-fn_error_rate_0.3-fp_error_rate_0.075")
     # get_query_str_from_filename("inputs/synthetic_rare",)
     # construct_train_test("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Back), True*), Left), True*), Conjunction(Conjunction(Back, Left), Far_0.9)), True*)", n_train=300)
+    # current_query = [
+    #     {
+    #         "scene_graph": [
+    #             {
+    #                 "predicate": "Near",
+    #                 "parameter": 1.05,
+    #                 "variables": ["o0", "o1"]
+    #             },
+    #             {
+    #                 "predicate": "Near",
+    #                 "parameter": 1.05,
+    #                 "variables": ["o0", "o2"]
+    #             },
+    #             {
+    #                 "predicate": "Near",
+    #                 "parameter": 1.05,
+    #                 "variables": ["o2", "o1"]
+    #             }
+    #         ],
+    #         "duration_constraint": 5
+    #     },
+    #     {
+    #         "scene_graph": [
+    #             {
+    #                 "predicate": "Far",
+    #                 "parameter": 0.9,
+    #                 "variables": ["o1", "o0"]
+    #             },
+    #             {
+    #                 "predicate": "Far",
+    #                 "parameter": 0.9,
+    #                 "variables": ["o2", "o0"]
+    #             },
+    #             {
+    #                 "predicate": "Far",
+    #                 "parameter": 0.9,
+    #                 "variables": ["o1", "o2"]
+    #             }
+    #         ],
+    #         "duration_constraint": 5
+    #     },
+    #     {
+    #         "scene_graph": [
+    #             {
+    #                 "predicate": "Near",
+    #                 "parameter": 1.05,
+    #                 "variables": ["o0", "o1"]
+    #             },
+    #             {
+    #                 "predicate": "Near",
+    #                 "parameter": 1.05,
+    #                 "variables": ["o0", "o2"]
+    #             },
+    #             {
+    #                 "predicate": "Near",
+    #                 "parameter": 1.05,
+    #                 "variables": ["o2", "o1"]
+    #             }
+    #         ],
+    #         "duration_constraint": 5
+    #     }
+    # ]
     current_query = [
         {
             "scene_graph": [
