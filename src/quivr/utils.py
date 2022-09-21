@@ -441,7 +441,7 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
             conn.commit()
     return output_vids, new_memoize
 
-def rewrite_program_postgres(program):
+def rewrite_program_postgres(orig_program):
     """
     Input:
     program: query in the dictionary format
@@ -469,6 +469,7 @@ def rewrite_program_postgres(program):
         else:
             return "{}; {}".format(print_query(scene_graphs[:-1]), scene_graphs[-1])
 
+    program = copy.deepcopy(orig_program)
     # Rewrite the program
     encountered_variables = []
     for dict in program:
