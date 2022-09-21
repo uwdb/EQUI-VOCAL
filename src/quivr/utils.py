@@ -350,9 +350,10 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                 # Store new cached results
                 cur.execute("SELECT * FROM g{}_seq_view".format(graph_idx))
                 df = pd.DataFrame(cur.fetchall())
-                df.columns = [x.name for x in cur.description]
-                for vid, group in df.groupby("vid"):
-                    new_memoize[vid][signature] = group
+                if df.shape[0]: # if results not empty
+                    df.columns = [x.name for x in cur.description]
+                    for vid, group in df.groupby("vid"):
+                        new_memoize[vid][signature] = group
 
                 # Appending cached results of seen videos:
                 if cached_results.shape[0]:
@@ -421,9 +422,10 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                 # Store new cached results
                 cur.execute("SELECT * FROM q{}".format(graph_idx))
                 df = pd.DataFrame(cur.fetchall())
-                df.columns = [x.name for x in cur.description]
-                for vid, group in df.groupby("vid"):
-                    new_memoize[vid][signature] = group
+                if df.shape[0]: # if results not empty
+                    df.columns = [x.name for x in cur.description]
+                    for vid, group in df.groupby("vid"):
+                        new_memoize[vid][signature] = group
 
                 # Appending cached results of seen videos:
                 if cached_results.shape[0]:
