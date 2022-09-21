@@ -49,7 +49,7 @@ def test_quivr_exact(dataset_name, n_labeled, npred, depth, max_duration, multit
     answers = [[print_program(query), 1.0] for query in answers]
     return answers, total_time
 
-def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str, predicate_dict, strategy, max_vars):
+def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str, predicate_dict, strategy, max_vars, port):
     if query_str == "collision":
         # read from json file
         with open("inputs/collision_inputs_train.json", 'r') as f:
@@ -78,9 +78,7 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     elif method == "random":
         algorithm = Random(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread)
     elif method == "vocal_postgres":
-        with open("/mmfs1/gscratch/balazinska/enhaoz/postgres_server.info", 'r') as f:
-            host = f.readlines()[0].strip().split(" ")[0]
-        algorithm = VOCALPostgres(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, host=host)
+        algorithm = VOCALPostgres(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port)
 
     answers, total_time = algorithm.run(init_labeled_index)
     if method == "vocal_postgres":
@@ -129,6 +127,7 @@ if __name__ == '__main__':
     ap.add_argument('--query_str', type=str, default="collision")
     ap.add_argument('--run_id', type=int)
     ap.add_argument('--output_to_file', action="store_true")
+    ap.add_argument('--port', type=int)
 
     args = ap.parse_args()
     method_str = args.method
@@ -150,6 +149,7 @@ if __name__ == '__main__':
     query_str = args.query_str
     run_id = args.run_id
     output_to_file = args.output_to_file
+    port = args.port
 
     # samples_per_iter should be >= (budget - n_init_pos - n_init_neg) / (npred + max_duration * depth), to ensure the search algorithm can reach to the leaf node.
 
@@ -195,7 +195,7 @@ if __name__ == '__main__':
     elif method_str == "exhaustive":
         test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict)
     elif method_str in ['vocal', 'quivr_soft', 'random', 'vocal_postgres']:
-        answers, total_time = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str, predicate_dict, strategy, max_vars)
+        answers, total_time = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, query_str, predicate_dict, strategy, max_vars, port)
 
     if output_to_file:
         with open("outputs/{}/{}/{}/{}.log".format(method_name, dataset_name, config_name, log_name), 'w') as f:

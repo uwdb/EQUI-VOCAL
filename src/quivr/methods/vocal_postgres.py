@@ -33,7 +33,7 @@ def compare_with_ties(x, y):
 random.seed(time.time())
 class VOCALPostgres(BaseMethod):
 
-    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, max_vars, host):
+    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy, max_vars, port):
         self.inputs = inputs
         self.labels = labels
         self.predicate_list = predicate_dict
@@ -61,7 +61,8 @@ class VOCALPostgres(BaseMethod):
         else:
             raise ValueError("multithread must be 1 or greater")
 
-        self.dsn = "dbname=myinner_db user=enhaoz host={}".format(host)
+        self.dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
+        print("dsn", self.dsn)
         self.inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:
