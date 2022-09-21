@@ -553,6 +553,116 @@ def str_to_program_postgres(program_str):
         program.append(scene_graph)
     return program
 
+def quivr_str_to_postgres_program(quivr_str):
+    if quivr_str.startswith("Near"):
+        predicate = {
+                        "predicate": "Near",
+                        "parameter": float(quivr_str.split("(")[0].split("_")[1]),
+                        "variables": ["o0", "o1"]
+                    }
+        scene_graph = {
+                "scene_graph": [predicate],
+                "duration_constraint": 1
+
+            }
+        return [scene_graph]
+    elif quivr_str.startswith("Far"):
+        predicate = {
+                        "predicate": "Far",
+                        "parameter": float(quivr_str.split("(")[0].split("_")[1]),
+                        "variables": ["o0", "o1"]
+                    }
+        scene_graph = {
+                "scene_graph": [predicate],
+                "duration_constraint": 1
+
+            }
+        return [scene_graph]
+    elif quivr_str.startswith("True*"):
+        return None
+    elif quivr_str.startswith("LeftOf"):
+        predicate = {
+                        "predicate": "LeftOf",
+                        "parameter": None,
+                        "variables": ["o0", "o1"]
+                    }
+        scene_graph = {
+                "scene_graph": [predicate],
+                "duration_constraint": 1
+
+            }
+        return [scene_graph]
+    elif quivr_str.startswith("BackOf"):
+        predicate = {
+                        "predicate": "Behind",
+                        "parameter": None,
+                        "variables": ["o0", "o1"]
+                    }
+        scene_graph = {
+                "scene_graph": [predicate],
+                "duration_constraint": 1
+
+            }
+        return [scene_graph]
+    elif quivr_str.startswith("TopQuadrant"):
+        predicate = {
+                        "predicate": "TopQuadrant",
+                        "parameter": None,
+                        "variables": ["o0"]
+                    }
+        scene_graph = {
+                "scene_graph": [predicate],
+                "duration_constraint": 1
+
+            }
+        return [scene_graph]
+    elif quivr_str.startswith("RightQuadrant"):
+        predicate = {
+                        "predicate": "RightQuadrant",
+                        "parameter": None,
+                        "variables": ["o0"]
+                    }
+        scene_graph = {
+                "scene_graph": [predicate],
+                "duration_constraint": 1
+
+            }
+        return [scene_graph]
+    else:
+        idx = quivr_str.find("(")
+        idx_r = quivr_str.rfind(")")
+        # True*, Sequencing(Near_1.0, MinLength_10.0)
+        functionclass = quivr_str[:idx]
+        submodules = quivr_str[idx+1:idx_r]
+        counter = 0
+        submodule_list = []
+        submodule_start = 0
+        for i, char in enumerate(submodules):
+            if char == "," and counter == 0:
+                submodule_list.append(submodules[submodule_start:i])
+                submodule_start = i+2
+            elif char == "(":
+                counter += 1
+            elif char == ")":
+                counter -= 1
+        submodule_list.append(submodules[submodule_start:])
+        if functionclass == "Sequencing":
+            g1 = quivr_str_to_postgres_program(submodule_list[0])
+            g2 = quivr_str_to_postgres_program(submodule_list[1])
+            if not g1:
+                return g2
+            if not g2:
+                return g1
+            else:
+                return [*g1, *g2]
+        elif functionclass == "Conjunction":
+            scene_graph = quivr_str_to_postgres_program(submodule_list[0])
+            scene_graph[0]["scene_graph"].append(quivr_str_to_postgres_program(submodule_list[1])[0]["scene_graph"][0])
+            return scene_graph
+        elif functionclass == "Duration":
+            scene_graph = quivr_str_to_postgres_program(submodule_list[0])
+            scene_graph[0]["duration_constraint"] = int(submodule_list[1])
+            return scene_graph
 
 if __name__ == '__main__':
     # correct_filename("synthetic-fn_error_rate_0.3-fp_error_rate_0.075")
