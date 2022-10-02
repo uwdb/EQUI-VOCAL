@@ -3,7 +3,6 @@ import json
 import os
 import random
 import numpy as np
-from sklearn.model_selection import train_test_split
 import quivr.dsl as dsl
 import psycopg
 import copy
@@ -11,7 +10,9 @@ from lru import LRU
 import time
 import pandas as pd
 import itertools
+import math
 import uuid
+from sklearn.model_selection import train_test_split
 
 def print_program(program, as_dict_key=False):
     # if isinstance(program, dsl.Predicate) or isinstance(program, dsl.Hole):
@@ -252,7 +253,7 @@ def rewrite_program_helper(program):
             predicate_list.extend(rewrite_program_helper(functionclass))
         return predicate_list
 
-def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name):
+def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids, is_trajectory=True, segment_length=None):
     """
     input_vids: list of video segment ids
     Example query:
@@ -269,9 +270,23 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
             index_names = []
             # select input videos
             _start = time.time()
-            cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid = ANY(%s);".format(inputs_table_name), [input_vids])
+            if isinstance(input_vids, int):
+                if segment_length:
+                    step = math.floor(128 / segment_length)
+                    input_fids = list(range(0, 128, step))[:segment_length]
+                    cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid < {} AND fid = ANY(%s);".format(inputs_table_name, input_vids), [input_fids])
+                else:
+                    cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid < {};".format(inputs_table_name, input_vids))
+                input_vids = list(range(input_vids))
+            else:
+                if segment_length:
+                    step = math.floor(128 / segment_length)
+                    input_fids = list(range(0, 128, step))[:segment_length]
+                    cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid = ANY(%s) and fid = ANY(%s);".format(inputs_table_name), [input_vids, input_fids])
+                else:
+                    cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid = ANY(%s);".format(inputs_table_name), [input_vids])
             cur.execute("CREATE INDEX IF NOT EXISTS idx_obj_filtered ON Obj_filtered (vid, fid);")
-            print("select input videos: ", time.time() - _start)
+            # print("select input videos: ", time.time() - _start)
             encountered_variables_all_graphs = []
             for graph_idx, dict in enumerate(current_query):
                 _start = time.time()
@@ -313,12 +328,14 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                     if parameter:
                         args = "{}, {}".format(parameter, args)
                     where_clauses.append("{}({}) = true".format(predicate, args))
-                # NOTE: only for trajectory example
-                # for v in encountered_variables_list:
-                #     where_clauses.append("{}.oid = {}".format(v, v[1:]))
-                # NOTE: For general case
-                for var_pair in itertools.combinations(encountered_variables_list, 2):
-                    where_clauses.append("{}.oid <> {}.oid".format(var_pair[0], var_pair[1]))
+                if is_trajectory:
+                    # NOTE: only for trajectory example
+                    for v in encountered_variables_list:
+                        where_clauses.append("{}.oid = {}".format(v, v[1:]))
+                else:
+                    # NOTE: For general case
+                    for var_pair in itertools.combinations(encountered_variables_list, 2):
+                        where_clauses.append("{}.oid <> {}.oid".format(var_pair[0], var_pair[1]))
                 where_clauses = " and ".join(where_clauses)
                 fields = "{v}.vid as vid, {v}.fid as fid, ".format(v=encountered_variables_list[0])
                 fields += ", ".join(["{v}.oid as {v}_oid".format(v=v) for v in encountered_variables_list])
@@ -327,13 +344,13 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                 index_fields = "vid, fid, " + oids
                 sql_sring = """CREATE TEMPORARY TABLE g{} AS SELECT {} FROM {} WHERE {};""".format(graph_idx, fields, tables, where_clauses)
                 cur.execute(sql_sring, [delta_input_vids])
-                print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
+                # print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
                 _start = time.time()
 
                 # Create index for g{i}:
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_g{i} ON g{i} ({fields});".format(i=graph_idx, fields=index_fields))
                 index_names.append("idx_g{}".format(graph_idx))
-                print("Time for index {}: {}".format(graph_idx, time.time() - _start))
+                # print("Time for index {}: {}".format(graph_idx, time.time() - _start))
 
                 # Generate scene graph sequence:
                 _start = time.time()
@@ -353,7 +370,7 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                     SELECT DISTINCT * FROM g{graph_idx}_seq WHERE fid2 - fid1 + 1 = {duration_constraint};
                     """.format(graph_idx=graph_idx, view_fields=view_fields, base_fields=base_fields, step_fields=step_fields, where_clauses=where_clauses, duration_constraint=duration_constraint)
                 cur.execute(sql_string)
-                print("Time for graph_seq {}: {}".format(graph_idx, time.time() - _start))
+                # print("Time for graph_seq {}: {}".format(graph_idx, time.time() - _start))
 
                 # Store new cached results
                 _start = time.time()
@@ -368,13 +385,13 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                 if cached_results.shape[0]:
                     placeholder = '(' + ','.join(['%s' for i in range(3 + len(oid_list))]) + ')'
                     cur.executemany("INSERT INTO g{}_seq_view VALUES {};".format(graph_idx, placeholder), cached_results)
-                print("Time for inserting cached results {}: {}".format(graph_idx, time.time() - _start))
+                # print("Time for inserting cached results {}: {}".format(graph_idx, time.time() - _start))
 
                 # Create index for g{i}_seq_view:
                 _start = time.time()
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_g{i}_seq_view ON g{i}_seq_view ({fields});".format(i=graph_idx, fields=view_fields))
                 index_names.append("idx_g{}_seq_view".format(graph_idx))
-                print("time for idx graph seq {}: {}".format(graph_idx, time.time() - _start))
+                # print("time for idx graph seq {}: {}".format(graph_idx, time.time() - _start))
 
             # Sequencing
             current_seq = "g0_seq_view"
@@ -450,7 +467,7 @@ def postgres_execute(dsn, current_query, input_vids, memoize, inputs_table_name)
                 index_names.append("idx_q{}".format(graph_idx))
 
                 current_seq = "q{}".format(graph_idx)
-                print("time for seq {}: {}".format(graph_idx, time.time() - _start))
+                # print("time for seq {}: {}".format(graph_idx, time.time() - _start))
 
             cur.execute("SELECT DISTINCT vid FROM {}".format(current_seq))
             output_vids = cur.fetchall()
@@ -690,39 +707,9 @@ if __name__ == '__main__':
     #                 "predicate": "Near",
     #                 "parameter": 1.05,
     #                 "variables": ["o0", "o1"]
-    #             },
-    #             {
-    #                 "predicate": "Near",
-    #                 "parameter": 1.05,
-    #                 "variables": ["o0", "o2"]
-    #             },
-    #             {
-    #                 "predicate": "Near",
-    #                 "parameter": 1.05,
-    #                 "variables": ["o2", "o1"]
     #             }
     #         ],
-    #         "duration_constraint": 5
-    #     },
-    #     {
-    #         "scene_graph": [
-    #             {
-    #                 "predicate": "Far",
-    #                 "parameter": 0.9,
-    #                 "variables": ["o1", "o0"]
-    #             },
-    #             {
-    #                 "predicate": "Far",
-    #                 "parameter": 0.9,
-    #                 "variables": ["o2", "o0"]
-    #             },
-    #             {
-    #                 "predicate": "Far",
-    #                 "parameter": 0.9,
-    #                 "variables": ["o1", "o2"]
-    #             }
-    #         ],
-    #         "duration_constraint": 5
+    #         "duration_constraint": 1
     #     },
     #     {
     #         "scene_graph": [
@@ -732,156 +719,26 @@ if __name__ == '__main__':
     #                 "variables": ["o0", "o1"]
     #             },
     #             {
-    #                 "predicate": "Near",
-    #                 "parameter": 1.05,
-    #                 "variables": ["o0", "o2"]
-    #             },
-    #             {
-    #                 "predicate": "Near",
-    #                 "parameter": 1.05,
-    #                 "variables": ["o2", "o1"]
+    #                 "predicate": "RightQuadrant",
+    #                 "parameter": None,
+    #                 "variables": ["o0"]
     #             }
     #         ],
-    #         "duration_constraint": 5
+    #         "duration_constraint": 1
     #     }
     # ]
-    current_query = [
-        {
-            "scene_graph": [
-                {
-                    "predicate": "Red",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Metal",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Cube",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Green",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Metal",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Cylinder",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Far",
-                    "parameter": 0.9,
-                    "variables": ["o0", "o1"]
-                },
-                {
-                    "predicate": "Blue",
-                    "parameter": None,
-                    "variables": ["o2"]
-                }
-            ],
-            "duration_constraint": 1
-        },
-        {
-            "scene_graph": [
-                {
-                    "predicate": "Red",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Metal",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Cube",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Green",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Metal",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Cylinder",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Near",
-                    "parameter": 1.05,
-                    "variables": ["o0", "o1"]
-                }
-            ],
-            "duration_constraint": 1
-        },
-        {
-            "scene_graph": [
-                {
-                    "predicate": "Red",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Metal",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Cube",
-                    "parameter": None,
-                    "variables": ["o0"]
-                },
-                {
-                    "predicate": "Green",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Metal",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Cylinder",
-                    "parameter": None,
-                    "variables": ["o1"]
-                },
-                {
-                    "predicate": "Far",
-                    "parameter": 1.05,
-                    "variables": ["o0", "o1"]
-                }
-            ],
-            "duration_constraint": 1
-        }
-    ]
-    query_str = rewrite_program_postgres(current_query)
-    print(query_str)
+    # query_str = rewrite_program_postgres(current_query)
+    # print(query_str)
+    # query_str = "Near_1.05(o0, o1); RightQuadrant(o0)"
+    query_str = "Near_1.05(o0, o1); Conjunction(Near_1.05(o0, o1), RightQuadrant(o0))"
+    query_str = "LeftQuadrant(o0); Conjunction(Blue(o0), Gray(o1)); Duration(RightOf(o0, o2), 2)"
     current_query = str_to_program_postgres(query_str)
-    predicate_list = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "Gray", "parameters": None, "nargs": 1}, {"name": "Red", "parameters": None, "nargs": 1}, {"name": "Blue", "parameters": None, "nargs": 1}, {"name": "Green", "parameters": None, "nargs": 1}, {"name": "Brown", "parameters": None, "nargs": 1}, {"name": "Cyan", "parameters": None, "nargs": 1}, {"name": "Purple", "parameters": None, "nargs": 1}, {"name": "Yellow", "parameters": None, "nargs": 1}, {"name": "Cube", "parameters": None, "nargs": 1}, {"name": "Sphere", "parameters": None, "nargs": 1}, {"name": "Cylinder", "parameters": None, "nargs": 1}, {"name": "Metal", "parameters": None, "nargs": 1}, {"name": "Rubber", "parameters": None, "nargs": 1}]
+    predicate_list = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "Gray", "parameters": None, "nargs": 1}, {"name": "Red", "parameters": None, "nargs": 1}, {"name": "Blue", "parameters": None, "nargs": 1}, {"name": "Green", "parameters": None, "nargs": 1}, {"name": "Brown", "parameters": None, "nargs": 1}, {"name": "Cyan", "parameters": None, "nargs": 1}, {"name": "Purple", "parameters": None, "nargs": 1}, {"name": "Yellow", "parameters": None, "nargs": 1}, {"name": "Cube", "parameters": None, "nargs": 1}, {"name": "Sphere", "parameters": None, "nargs": 1}, {"name": "Cylinder", "parameters": None, "nargs": 1}, {"name": "Metal", "parameters": None, "nargs": 1}, {"name": "Rubber", "parameters": None, "nargs": 1}, {"name": "Center", "parameters": 0.004, "nargs": 1}, {"name": "Edge", "parameters": 0.5, "nargs": 1}]
     dsn = "dbname=myinner_db user=enhaoz host=localhost"
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             # Create predicate functions (if not exists)
             for predicate in predicate_list:
-                # TODO: update args to include all scene graph information (e.g., attributes)
                 args = ", ".join(["text, text, text, double precision, double precision, double precision, double precision"] * predicate["nargs"])
                 if predicate["parameters"]:
                     args = "double precision, " + args
@@ -890,8 +747,10 @@ if __name__ == '__main__':
 
     memoize = [LRU(10000) for _ in range(10000)]
     inputs_table_name = "Obj_clevrer"
+    # inputs_table_name = "Obj_trajectories"
     _start = time.time()
-    outputs, _ = postgres_execute(dsn, current_query, list(range(0, 10000)), memoize, inputs_table_name)
+    # outputs, _ = postgres_execute(dsn, current_query, memoize, inputs_table_name, list(range(0, 30)), is_trajectory=True, segment_length=30)
+    outputs, _ = postgres_execute(dsn, current_query, memoize, inputs_table_name, 300, is_trajectory=False)
     print(len(outputs))
     print(outputs)
     print("time", time.time() - _start)
