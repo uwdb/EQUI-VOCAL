@@ -326,14 +326,17 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                         args.append("{v}.shape, {v}.color, {v}.material, {v}.x1, {v}.y1, {v}.x2, {v}.y2".format(v=v))
                     args = ", ".join(args)
                     if parameter:
-                        args = "{}, {}".format(parameter, args)
+                        if isinstance(parameter, str):
+                            args = "'{}', {}".format(parameter, args)
+                        else:
+                            args = "{}, {}".format(parameter, args)
                     where_clauses.append("{}({}) = true".format(predicate, args))
                 if is_trajectory:
-                    # NOTE: only for trajectory example
+                    # only for trajectory example
                     for v in encountered_variables_list:
                         where_clauses.append("{}.oid = {}".format(v, v[1:]))
                 else:
-                    # NOTE: For general case
+                    # For general case
                     for var_pair in itertools.combinations(encountered_variables_list, 2):
                         where_clauses.append("{}.oid <> {}.oid".format(var_pair[0], var_pair[1]))
                 where_clauses = " and ".join(where_clauses)
