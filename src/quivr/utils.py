@@ -312,7 +312,7 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
 
                 # Execute for unseen videos
                 tables = ", ".join(["Obj_filtered as {}".format(v) for v in encountered_variables])
-                encountered_variables_list = list(encountered_variables)
+                encountered_variables_list = sorted(list(encountered_variables), key=lambda x: int(x[1:]))
                 where_clauses = []
                 where_clauses.append("{}.vid = ANY(%s)".format(encountered_variables_list[0]))
                 for i in range(len(encountered_variables_list)-1):
