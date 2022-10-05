@@ -583,7 +583,14 @@ def str_to_program_postgres(program_str):
         idx_r = predicate_str.rfind(")")
         predicate_name = predicate_str[:idx].split("_")
         dict["predicate"] = predicate_name[0]
-        dict["parameter"] = float(predicate_name[1]) if len(predicate_name) > 1 else None
+        if len(predicate_name) > 1:
+            try:
+                dict["parameter"] = float(predicate_name[1])
+            except:
+                dict["parameter"] = predicate_name[1]
+        else:
+            dict["parameter"] = None
+        # dict["parameter"] = float(predicate_name[1]) if len(predicate_name) > 1 else None
         predicate_variables = predicate_str[idx+1:idx_r]
         dict["variables"] = predicate_variables.split(", ")
         return dict
