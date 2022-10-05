@@ -380,14 +380,22 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                 cur.execute("SELECT * FROM g{}_seq_view".format(graph_idx))
                 df = pd.DataFrame(cur.fetchall())
                 if df.shape[0]: # if results not empty
-                    df.columns = [x.name for x in cur.description]
+                    df.columns = ["vid", "fid1", "fid2"] + [vars_mapping[oid] for oid in oid_list]
                     for vid, group in df.groupby("vid"):
-                        new_memoize[vid][signature] = group
+                        cached_df = group.reset_index(drop=True)
+                        new_memoize[vid][signature] = cached_df
 
                 # Appending cached results of seen videos:
                 if cached_results.shape[0]:
-                    placeholder = '(' + ','.join(['%s' for i in range(3 + len(oid_list))]) + ')'
-                    cur.executemany("INSERT INTO g{}_seq_view VALUES {};".format(graph_idx, placeholder), cached_results)
+                    tem_table_insert_data = cached_results.copy()
+                    tem_table_insert_data.columns = ["vid", "fid1", "fid2"] + oid_list
+                    for k, v in vars_mapping.items():
+                        tem_table_insert_data[k] = cached_results[v]
+                    buffer = StringIO()
+                    tem_table_insert_data.to_csv(buffer, header=False, index = False)
+                    buffer.seek(0)
+                    cur.copy_from(buffer, "g{}_seq_view".format(graph_idx), sep=",")
+
                 # print("Time for inserting cached results {}: {}".format(graph_idx, time.time() - _start))
 
                 # Create index for g{i}_seq_view:
@@ -458,12 +466,16 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                 if df.shape[0]: # if results not empty
                     df.columns = [x.name for x in cur.description]
                     for vid, group in df.groupby("vid"):
-                        new_memoize[vid][signature] = group
+                        cached_df = group.reset_index(drop=True)
+                        new_memoize[vid][signature] = cached_df
 
                 # Appending cached results of seen videos:
                 if cached_results.shape[0]:
-                    placeholder = '(' + ','.join(['%s' for i in range(3 + len(oid_list))]) + ')'
-                    cur.executemany("INSERT INTO q{} VALUES {};".format(graph_idx, placeholder), cached_results)
+                    # save dataframe to an in memory buffer
+                    buffer = StringIO()
+                    cached_results.to_csv(buffer, header=False, index = False)
+                    buffer.seek(0)
+                    cur.copy_from(buffer, "q{}".format(graph_idx), sep=",")
 
                 # Create index
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_q{} ON q{} ({});".format(graph_idx, graph_idx, index_fields))
