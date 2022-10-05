@@ -365,12 +365,12 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                     CREATE TEMPORARY TABLE g{graph_idx}_seq_view AS
                     WITH RECURSIVE g{graph_idx}_seq ({view_fields}) AS (
                         SELECT {base_fields} FROM g{graph_idx}
-                            UNION ALL
+                            UNION
                         SELECT {step_fields}
                         FROM g{graph_idx}_seq s, g{graph_idx} g
                         WHERE {where_clauses}
                     )
-                    SELECT DISTINCT * FROM g{graph_idx}_seq WHERE fid2 - fid1 + 1 = {duration_constraint};
+                    SELECT DISTINCT {view_fields} FROM g{graph_idx}_seq WHERE fid2 - fid1 + 1 = {duration_constraint};
                     """.format(graph_idx=graph_idx, view_fields=view_fields, base_fields=base_fields, step_fields=step_fields, where_clauses=where_clauses, duration_constraint=duration_constraint)
                 cur.execute(sql_string)
                 # print("Time for graph_seq {}: {}".format(graph_idx, time.time() - _start))
