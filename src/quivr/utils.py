@@ -607,6 +607,60 @@ def str_to_program_postgres(program_str):
         program.append(scene_graph)
     return program
 
+
+def rewrite_vars_name_for_scene_graph(orig_dict):
+    """
+    Input:
+    program: scene graph in the dictionary format. Predicates in the scene graph are sorted. The only rewrite is to rename variables.
+    {'scene_graph': [{'predicate': 'LeftQuadrant', 'parameter': None, 'variables': ['o2']}, {'predicate': 'RightOf', 'parameter': None, 'variables': ['o0', 'o2']}], 'duration_constraint': 1}
+    Output: query in string format, which is ordered properly (uniquely), and a dictionary maintaining the mapping between the original variable names and the rewritten variable names
+    """
+    def print_scene_graph(predicate_list):
+        if len(predicate_list) == 1:
+            if predicate_list[0]["parameter"]:
+                predicate_name = predicate_list[0]["predicate"] + "_" + str(predicate_list[0]["parameter"])
+            else:
+                predicate_name = predicate_list[0]["predicate"]
+            predicate_variables = ", ".join(predicate_list[0]["variables"])
+            return "{}({})".format(predicate_name, predicate_variables)
+        else:
+            if predicate_list[-1]["parameter"]:
+                predicate_name = predicate_list[-1]["predicate"] + "_" + str(predicate_list[-1]["parameter"])
+            else:
+                predicate_name = predicate_list[-1]["predicate"]
+            predicate_variables = ", ".join(predicate_list[-1]["variables"])
+            return "Conjunction({}, {}({}))".format(print_scene_graph(predicate_list[:-1]), predicate_name, predicate_variables)
+
+    rewritten_dict = copy.deepcopy(orig_dict)
+    vars_mapping = {}
+    vars_inverted_mapping = {}
+    # Rewrite the program
+    encountered_variables = []
+    scene_graph = rewritten_dict["scene_graph"]
+    for i, p in enumerate(scene_graph):
+        rewritten_variables = []
+        for v in p["variables"]:
+            if v not in encountered_variables:
+                encountered_variables.append(v)
+                rewritten_variables.append("o" + str(len(encountered_variables) - 1))
+                vars_mapping["{}_oid".format(v)] = "o" + str(len(encountered_variables) - 1) + "_oid"
+                vars_inverted_mapping["o" + str(len(encountered_variables) - 1) + "_oid"] = "{}_oid".format(v)
+            else:
+                rewritten_variables.append("o" + str(encountered_variables.index(v)))
+        # Sort rewritten variables
+        rewritten_variables = sorted(rewritten_variables)
+        scene_graph[i]["variables"] = rewritten_variables
+    rewritten_dict["scene_graph"] = scene_graph
+
+    scene_graph = rewritten_dict["scene_graph"]
+    duration_constraint = int(rewritten_dict["duration_constraint"])
+    scene_graph_str = print_scene_graph(scene_graph)
+    if duration_constraint > 1:
+        scene_graph_str = "Duration({}, {})".format(scene_graph_str, duration_constraint)
+
+    return scene_graph_str, vars_mapping
+
+
 def quivr_str_to_postgres_program(quivr_str):
     if quivr_str.startswith("Near"):
         predicate = {
