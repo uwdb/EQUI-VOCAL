@@ -73,13 +73,14 @@ class SequencingOperator(BaseOperator):
         super().__init__(submodules, name="Sequencing")
 
     def execute(self, input, label, memoize, new_memoize):
-        # TODO: Make sure when len(input) > 2, all trajectories have the same length
         subquery_str = utils.print_program(self)
         if subquery_str in memoize:
             return memoize[subquery_str], new_memoize
         if subquery_str in new_memoize:
             return new_memoize[subquery_str], new_memoize
-        result = np.amax(np.minimum(self.submodules["function1"].execute(input, label, memoize, new_memoize)[0][..., np.newaxis], self.submodules["function2"].execute(input, label, memoize, new_memoize)[0][np.newaxis, ...]), axis=1)
+        res1, new_memoize = self.submodules["function1"].execute(input, label, memoize, new_memoize)
+        res2, new_memoize = self.submodules["function2"].execute(input, label, memoize, new_memoize)
+        result = np.amax(np.minimum(res1[..., np.newaxis], res2[np.newaxis, ...]), axis=1)
 
         new_memoize[subquery_str] = result
 
@@ -132,22 +133,27 @@ class KleeneOperator(BaseOperator):
         identity_mtx = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         np.fill_diagonal(identity_mtx, np.inf)
 
-        base_arr = [identity_mtx]
-
-        if len(input[0]) > 0:
+        if len(input[0]) == 0:
+            result = identity_mtx
+        else:
             Q_mtx, new_memoize = self.submodules["kleene"].execute(input, label, memoize, new_memoize)
-            base_arr.append(Q_mtx)
-
-        for _ in range(2, len(input[0]) + 1):
-            Q_pow_k = np.amax(np.minimum(base_arr[-1][..., np.newaxis], Q_mtx[np.newaxis, ...]), axis=1)
-            base_arr.append(Q_pow_k)
-
-        result = np.amax(np.stack(base_arr, axis=0), axis=0)
+            base = np.maximum(identity_mtx, Q_mtx)
+            result = power(base, len(input[0]))
 
         new_memoize[subquery_str] = result
 
         return result, new_memoize
 
+def power(M, n):
+    if n == 1:
+        return M
+    elif n % 2 == 0:
+        M_squared = np.amax(np.minimum(M[..., np.newaxis], M[np.newaxis, ...]), axis=1)
+        return power(M_squared, n // 2)
+    else:
+        M_squared = np.amax(np.minimum(M[..., np.newaxis], M[np.newaxis, ...]), axis=1)
+        arr = power(M_squared, n // 2)
+        return np.amax(np.minimum(M[..., np.newaxis], arr[np.newaxis, ...]), axis=1)
 
 class DurationOperator(BaseOperator):
     def __init__(self, function1, theta):
@@ -447,7 +453,7 @@ class MinLength(Predicate):
         super().__init__("MinLength")
 
     def init_value_range(self):
-        return [1, 10]
+        return [1, 5]
 
     def execute_with_hole(self, input, label, memoize, new_memoize):
         subquery_str = utils.print_program(self)
