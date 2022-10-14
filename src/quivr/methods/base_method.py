@@ -215,9 +215,9 @@ class BaseMethod:
             else:
                 entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :])
         # find argmax of entropy (top k)
-        video_segment_ids = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
+        new_labeled_index = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
         # max_entropy_index = np.argmax(entropy_list)
-        return video_segment_ids.tolist()
+        return new_labeled_index.tolist()
 
     def _compute_u_t(self, posterior_t, predictions_c):
 
@@ -247,7 +247,7 @@ class BaseMethod:
         _start = time.time()
 
         # query_list = [query_graph.program for query_graph, _ in itertools.chain(self.candidate_queries, self.answers[:max(self.beam_width, 10)])]
-        query_list = [query_graph.program for query_graph, _ in self.candidate_queries]
+        query_list = [query_graph.program for query_graph, _ in self.candidate_queries[:self.pool_size]]
         query_list_removing_duplicates = []
         signatures = set()
         for program in query_list:
@@ -266,7 +266,6 @@ class BaseMethod:
             for query in query_list:
                 pred_per_query = self.execute_over_all_inputs_postgres(query)
                 prediction_matrix.append(pred_per_query)
-            prediction_matrix.append(pred_per_query)
         prediction_matrix = np.array(prediction_matrix).transpose()
         print("constructing prediction matrix", time.time()-_start)
         # print(prediction_matrix.shape)
@@ -278,11 +277,12 @@ class BaseMethod:
             if i not in self.labeled_index:
                 continue
             if true_labels[i]:
-                loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
+                loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 10) # TODO: change the weight to 10?
             else:
                 loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
-
-        eta = np.sqrt(np.log(prediction_matrix.shape[1])/(2*(len(self.labeled_index)-self.init_nlabels+1)))
+        # TODO: should we use loss or f1-score to compute the weights?
+        # eta = np.sqrt(np.log(prediction_matrix.shape[1])/(2*(len(self.labeled_index)-self.init_nlabels+1))) # TODO: do we need a decaying learning rate?
+        eta = 1
         posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
         # Note that above equation is equivalent to np.exp(-eta * loss_t).
         # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
