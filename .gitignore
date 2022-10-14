@@ -1,6 +1,4 @@
 *.mp4
-rekall/data/*
-detectron2/demo/*.mp4
 data/
 *.csv
 *.txt
@@ -8,8 +6,6 @@ data/
 *.avi
 *.jpg
 *.png
-rekall/tutorials/*/
-person_attribute/checkpoints/*
 *.pkl
 __pycache__/
 *egg*
@@ -19,3 +15,5 @@ src/datalog/souffle/*
 *.deb
 *.npz
 *.log
+src/quivr/inputs/
+src/quivr/outputs/
