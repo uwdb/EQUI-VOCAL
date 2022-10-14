@@ -74,7 +74,6 @@ class VOCALPostgres(BaseMethod):
 
         self.dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
         print("dsn", self.dsn)
-        self.inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:
                 if not self.is_trajectory: # Queries complying with the scene graph model
@@ -83,35 +82,10 @@ class VOCALPostgres(BaseMethod):
                     cur.execute("CREATE TABLE {} AS SELECT * FROM Obj_clevrer WHERE vid = ANY(%s);".format(self.inputs_table_name), [inputs.tolist()])
                 else:
                     self.inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
-                # Create temporary table for inputs
-                cur.execute("""
-                CREATE TABLE {} (
-                    oid INT,
-                    vid INT,
-                    fid INT,
-                    shape varchar,
-                    color varchar,
-                    material varchar,
-                    x1 float,
-                    y1 float,
-                    x2 float,
-                    y2 float
-                );
-                """.format(self.inputs_table_name))
+                    # Create temporary table for inputs
+                    cur.execute("CREATE TABLE {} AS SELECT * FROM Obj_trajectories WHERE vid = ANY(%s);".format(self.inputs_table_name), [inputs.tolist()])
 
-                # Load inputs into temporary table
-                csv_data = []
-                for vid, pair in enumerate(self.inputs):
-                    t1 = pair[0]
-                    t2 = pair[1]
-                    assert(len(t1) == len(t2))
-                    for fid, (bbox1, bbox2) in enumerate(zip(t1, t2)):
-                        csv_data.append((0, vid, fid, "cube", "red", "metal", bbox1[0], bbox1[1], bbox1[2], bbox1[3]))
-                        csv_data.append((1, vid, fid, "cube", "red", "metal", bbox2[0], bbox2[1], bbox2[2], bbox2[3]))
-                with cur.copy("COPY {} FROM STDIN".format(self.inputs_table_name)) as cur_copy:
-                    for row in csv_data:
-                        cur_copy.write_row(row)
-
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_{t} ON {t} (vid);".format(t=self.inputs_table_name))
                 # Create predicate functions (if not exists)
                 for predicate in self.predicate_list:
                     # TODO: update args to include all scene graph information (e.g., attributes)

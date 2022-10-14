@@ -89,15 +89,15 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
                 inputs_downsampled.append([input[0][::4], input[1][::4]])
             inputs = inputs_downsampled
         else:
-            with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
-                inputs = json.load(f)
-            with open("inputs/{}/train/{}_labels.json".format(dataset_name, query_str), 'r') as f:
-                labels = json.load(f)
-            inputs = np.asarray(inputs, dtype=object)
-            labels = np.asarray(labels, dtype=object)
-            pos_idx = np.where(labels == 1)[0]
-            neg_idx = np.where(labels == 0)[0]
-            print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
+        with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
+            inputs = json.load(f)
+        with open("inputs/{}/train/{}_labels.json".format(dataset_name, query_str), 'r') as f:
+            labels = json.load(f)
+        inputs = np.asarray(inputs, dtype=object)
+        labels = np.asarray(labels, dtype=object)
+        pos_idx = np.where(labels == 1)[0]
+        neg_idx = np.where(labels == 0)[0]
+        print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
 
     init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
     print(init_labeled_index)
@@ -108,10 +108,7 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     elif method == "random":
         algorithm = Random(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread)
     elif method == "vocal_postgres":
-        if dataset_name == "without_duration-sampling_rate_4":
-            sampling_rate = 4
-        else:
-            sampling_rate = None
+        sampling_rate = 4 if dataset_name == "without_duration-sampling_rate_4" else None
         algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, samples_per_iter=samples_per_iter, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate)
 
     answers, total_time = algorithm.run(init_labeled_index)
