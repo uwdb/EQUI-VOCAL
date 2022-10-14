@@ -31,7 +31,9 @@ class BaseMethod:
             y_pred.append(int(result[0, len(input[0])] > 0))
             if self.lock:
                 self.lock.acquire()
-            self.memoize_all_inputs[i].update(new_memoize)
+            for k, v in new_memoize.items():
+                self.memoize_all_inputs[i][k] = v
+            # self.memoize_all_inputs[i].update(new_memoize)
             if self.lock:
                 self.lock.release()
         # print(self.labels[self.labeled_index], y_pred)
@@ -45,8 +47,9 @@ class BaseMethod:
         result, new_memoize = postgres_execute(self.dsn, current_query, self.labeled_index, self.memoize_all_inputs, self.inputs_table_name)
         if self.lock:
             self.lock.acquire()
-        for i, v in enumerate(new_memoize):
-            self.memoize_all_inputs[i].update(v)
+        for i, memo_dict in enumerate(new_memoize):
+            for k, v in memo_dict.items():
+                self.memoize_all_inputs[i][k] = v
         if self.lock:
             self.lock.release()
         for i in self.labeled_index:
@@ -144,7 +147,9 @@ class BaseMethod:
             pred_per_query.append(int(result[0, len(input[0])] > 0))
             if self.lock:
                 self.lock.acquire()
-            self.memoize_all_inputs[i].update(new_memoize)
+            # self.memoize_all_inputs[i].update(new_memoize)
+            for k, v in new_memoize.items():
+                self.memoize_all_inputs[i][k] = v
             if self.lock:
                 self.lock.release()
         return pred_per_query
@@ -295,8 +300,9 @@ class BaseMethod:
         result, new_memoize = postgres_execute(self.dsn, query, list(range(len(self.inputs))), self.memoize_all_inputs, self.inputs_table_name)
         if self.lock:
             self.lock.acquire()
-        for i, v in enumerate(new_memoize):
-            self.memoize_all_inputs[i].update(v)
+        for i, memo_dict in enumerate(new_memoize):
+            for k, v in memo_dict.items():
+                self.memoize_all_inputs[i][k] = v
         if self.lock:
             self.lock.release()
         for i in range(len(self.inputs)):
