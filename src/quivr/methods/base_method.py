@@ -48,7 +48,7 @@ class BaseMethod:
         else:
             input_vids = self.inputs[self.labeled_index].tolist()
         y_pred = []
-        result, new_memoize = postgres_execute(self.dsn, current_query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory)
+        result, new_memoize = postgres_execute(self.dsn, current_query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
         if self.lock:
             self.lock.acquire()
         for i, memo_dict in enumerate(new_memoize):
@@ -305,7 +305,7 @@ class BaseMethod:
         else:
             input_vids = self.inputs.tolist()
         pred_per_query = []
-        result, new_memoize = postgres_execute(self.dsn, query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory)
+        result, new_memoize = postgres_execute(self.dsn, query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
         if self.lock:
             self.lock.acquire()
         for i, memo_dict in enumerate(new_memoize):
