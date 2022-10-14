@@ -334,7 +334,7 @@ class VOCALPostgres(BaseMethod):
         current_query = current_query_graph.program
         print("expand search space", rewrite_program_postgres(current_query))
         # all_children = current_query_graph.get_all_children_bu(self.predicate_list, self.max_duration)
-        all_children = current_query_graph.get_all_children_unrestricted_postgres(self.predicate_list, self.max_duration)
+        all_children = current_query_graph.get_all_children_unrestricted_postgres()
 
         new_candidate_queries = []
 
