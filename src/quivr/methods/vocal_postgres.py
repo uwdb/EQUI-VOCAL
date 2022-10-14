@@ -139,28 +139,32 @@ class VOCALPostgres(BaseMethod):
             score = self.compute_query_score_postgres(query_graph.program)
             print("initialization", rewrite_program_postgres(query_graph.program), score)
             self.candidate_queries.append([query_graph, score])
+            self.candidate_queries = sorted(self.candidate_queries, key=lambda x: cmp_to_key(compare_with_ties)(x[1]), reverse=True)
             self.answers.append([query_graph, score])
 
-        _start_segmnet_selection_time = time.time()
-        # video_segment_ids = self.pick_next_segment()
-        video_segment_ids = self.pick_next_segment_model_picker_postgres()
-        print("pick next segments", video_segment_ids)
-        self.labeled_index += video_segment_ids
-        print("# labeled segments", len(self.labeled_index))
-        print("# positive: {}, # negative: {}".format(sum(self.labels[self.labeled_index]), len(self.labels[self.labeled_index]) - sum(self.labels[self.labeled_index])))
-        # assert labeled_index does not contain duplicates
-        assert(len(self.labeled_index) == len(set(self.labeled_index)))
-        if self.multithread > 1:
-            updated_scores = []
-            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
-                for result in executor.map(self.compute_query_score_postgres, [query.program for query, _ in self.candidate_queries]):
-                    updated_scores.append(result)
-            for i in range(len(self.candidate_queries)):
-                self.candidate_queries[i][1] = updated_scores[i]
-        else:
-            for i in range(len(self.candidate_queries)):
-                self.candidate_queries[i][1] = self.compute_query_score_postgres(self.candidate_queries[i][0].program)
-        self.segment_selection_time += time.time() - _start_segmnet_selection_time
+        if len(self.labeled_index) < self.budget:
+            _start_segmnet_selection_time = time.time()
+            # new_labeled_index = self.pick_next_segment()
+            new_labeled_index = self.pick_next_segment_model_picker_postgres()
+            if len(new_labeled_index) > self.budget - len(self.labeled_index):
+                new_labeled_index = new_labeled_index[:self.budget - len(self.labeled_index)]
+            print("pick next segments", new_labeled_index)
+            self.labeled_index += new_labeled_index
+            print("# labeled segments", len(self.labeled_index))
+            print("# positive: {}, # negative: {}".format(sum(self.labels[self.labeled_index]), len(self.labels[self.labeled_index]) - sum(self.labels[self.labeled_index])))
+            # assert labeled_index does not contain duplicates
+            assert(len(self.labeled_index) == len(set(self.labeled_index)))
+            if self.multithread > 1:
+                updated_scores = []
+                with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                    for result in executor.map(self.compute_query_score_postgres, [query.program for query, _ in self.candidate_queries]):
+                        updated_scores.append(result)
+                for i in range(len(self.candidate_queries)):
+                    self.candidate_queries[i][1] = updated_scores[i]
+            else:
+                for i in range(len(self.candidate_queries)):
+                    self.candidate_queries[i][1] = self.compute_query_score_postgres(self.candidate_queries[i][0].program)
+            self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
         # Sample beam_width queries
         if self.strategy == "sampling":
