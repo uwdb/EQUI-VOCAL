@@ -43,8 +43,12 @@ class BaseMethod:
         return score
 
     def compute_query_score_postgres(self, current_query):
+        if self.is_trajectory:
+            input_vids = self.labeled_index
+        else:
+            input_vids = self.inputs[self.labeled_index].tolist()
         y_pred = []
-        result, new_memoize = postgres_execute(self.dsn, current_query, self.labeled_index, self.memoize_all_inputs, self.inputs_table_name)
+        result, new_memoize = postgres_execute(self.dsn, current_query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory)
         if self.lock:
             self.lock.acquire()
         for i, memo_dict in enumerate(new_memoize):
@@ -52,7 +56,7 @@ class BaseMethod:
                 self.memoize_all_inputs[i][k] = v
         if self.lock:
             self.lock.release()
-        for i in self.labeled_index:
+        for i in input_vids:
             if i in result:
                 y_pred.append(1)
             else:
@@ -296,8 +300,12 @@ class BaseMethod:
         return video_segment_ids.tolist()
 
     def execute_over_all_inputs_postgres(self, query):
+        if self.is_trajectory:
+            input_vids = list(range(len(self.inputs)))
+        else:
+            input_vids = self.inputs.tolist()
         pred_per_query = []
-        result, new_memoize = postgres_execute(self.dsn, query, list(range(len(self.inputs))), self.memoize_all_inputs, self.inputs_table_name)
+        result, new_memoize = postgres_execute(self.dsn, query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory)
         if self.lock:
             self.lock.acquire()
         for i, memo_dict in enumerate(new_memoize):
@@ -305,7 +313,7 @@ class BaseMethod:
                 self.memoize_all_inputs[i][k] = v
         if self.lock:
             self.lock.release()
-        for i in range(len(self.inputs)):
+        for i in input_vids:
             if i in result:
                 pred_per_query.append(1)
             else:
