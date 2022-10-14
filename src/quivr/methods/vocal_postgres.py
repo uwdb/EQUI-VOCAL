@@ -37,7 +37,7 @@ class VOCALPostgres(BaseMethod):
         self.dataset_name = dataset_name
         self.inputs = inputs
         self.labels = labels
-        self.predicate_list = predicate_dict
+        self.predicate_list = predicate_list
         self.max_npred = max_npred
         self.max_depth = max_depth
         self.beam_width = beam_width
@@ -49,6 +49,13 @@ class VOCALPostgres(BaseMethod):
         self.multithread = multithread
         self.strategy = strategy
         self.max_vars = max_vars
+
+        if "scene_graph" in self.dataset_name:
+            self.is_trajectory = False
+        else:
+            self.is_trajectory = True
+
+        self.best_query_after_each_iter = []
 
         self.query_expansion_time = 0
         self.segment_selection_time = 0
@@ -68,6 +75,12 @@ class VOCALPostgres(BaseMethod):
         self.inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:
+                if not self.is_trajectory: # Queries complying with the scene graph model
+                    self.inputs_table_name = "Obj_clevrer_{}".format(uuid.uuid4().hex)
+                    # Create temporary table for inputs
+                    cur.execute("CREATE TABLE {} AS SELECT * FROM Obj_clevrer WHERE vid = ANY(%s);".format(self.inputs_table_name), [inputs.tolist()])
+                else:
+                    self.inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
                 # Create temporary table for inputs
                 cur.execute("""
                 CREATE TABLE {} (
@@ -110,8 +123,12 @@ class VOCALPostgres(BaseMethod):
         _start_total_time = time.time()
         self.init_nlabels = len(init_labeled_index)
         self.labeled_index = init_labeled_index
-        self.memoize_all_inputs = [LRU(10000) for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
-
+        if self.is_trajectory:
+            self.memoize_all_inputs = [{} for _ in range(len(self.inputs))]
+            # self.memoize_all_inputs = [LRU(10000) for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+        else:
+            self.memoize_all_inputs = [{} for _ in range(10000)]
+            # self.memoize_all_inputs = [LRU(10000) for _ in range(10000)] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
         # Initialize candidate queries: [query_graph, score]
         self.candidate_queries = []
         pred_instances = []
