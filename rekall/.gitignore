@@ -1,9 +1,0 @@
-*.swp
-*__pycache__
-*.ipynb_checkpoints
-*node_modules
-*package-lock.json
-
-# Ignore files downloaded from tutorials
-tutorials/driving*.mp4
-tutorials/driving*.json
