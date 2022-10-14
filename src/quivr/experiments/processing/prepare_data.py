@@ -4,7 +4,6 @@ import random
 import itertools
 import shutil
 import numpy as np
-from sklearn.model_selection import train_test_split
 import quivr.dsl as dsl
 import os
 from quivr.utils import str_to_program, print_program
@@ -97,7 +96,6 @@ def generate_one_query(npred, depth, max_duration, predicate_dict, ratio_lower_b
     query = print_query(scene_graphs)
     print(query)
     return prepare_trajectory_pairs_given_target_query(query, ratio_lower_bound, ratio_upper_bound, dataset_name)
-
 
 
 def prepare_trajectory_pairs():
@@ -233,6 +231,11 @@ def prepare_noisy_data(fn_error_rate, fp_error_rate, dataset_name):
 
 
 def prepare_postgres_data():
+    """
+    Store scene graphs of 10000 videos from Clevrer dataset into obj_clevrer.csv, which will be loaded into Postgres database.
+    Table schema: (oid INT, vid INT, fid INT, shape varchar, color varchar, material varchar, x1 float, y1 float, x2 float, y2 float)
+    Results are stored in obj_clevrer.csv
+    """
     def decode(rleObjs):
         if type(rleObjs) == list:
             return _mask.decode(rleObjs)
@@ -272,62 +275,10 @@ def prepare_postgres_data():
         # write multiple rows
         writer.writerows(csv_data)
 
-
-def prepare_video_scene_graph():
-    def decode(rleObjs):
-        if type(rleObjs) == list:
-            return _mask.decode(rleObjs)
-        else:
-            return _mask.decode([rleObjs])[:,:,0]
-
-    inputs = []
-    # iterate all files in the folder
-    for file in glob("/gscratch/balazinska/enhaoz/complex_event_video/data/clevrer/processed_proposals/*.json"):
-        video_basename = os.path.basename(file).replace(".json", "").replace("sim_", "")
-        if int(video_basename) >= 10000:
-            continue
-        # read in the json file
-        with open(file, 'r') as f:
-            data = json.loads(f.read())
-
-        input = []
-        if len(data['frames']) != 128:
-            print("Video {} has {} frames".format(video_basename, len(data['frames'])))
-        # iterate all videos in the json file
-        current_fid = 0
-        for frame in data['frames']:
-            local_frame_id = frame['frame_index']
-            while local_frame_id > current_fid:
-                input.append([])
-                current_fid += 1
-            objects = frame['objects']
-            region_graph = []
-            for i in range(len(objects)):
-                # print(objects[i]['material'], objects[i]['color'], objects[i]['shape'])
-                mask = decode(objects[i]['mask'])
-                # O represents black, 1 represents white.
-                box = masks_to_boxes(torch.from_numpy(mask[np.newaxis, :]))
-                box = np.squeeze(box.numpy(), axis=0).tolist()
-                box.extend([objects[i]['material'], objects[i]['color'], objects[i]['shape']])
-                region_graph.append(box)
-            input.append(region_graph)
-            current_fid += 1
-        while current_fid < 128:
-            input.append([])
-            current_fid += 1
-        if len(input) != 128:
-            print("Input {} has {} frames".format(video_basename, len(input)))
-            exit(1)
-
-        inputs.append(input)
-    # write dict to file
-    with open("inputs/clevrer_scene_graphs.json", 'w') as f:
-        f.write(json.dumps(inputs))
-
 def prepare_postgres_data_test_trajectories():
     # schema: oid, vid, fid, shape, color, material, x1, y1, x2, y2
     csv_data = []
-    with open("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)_inputs.json", 'r') as f:
+    with open("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/trajectory_pairs.json", 'r') as f:
         data = json.loads(f.read())
 
     for vid, pair in enumerate(data):
@@ -338,15 +289,16 @@ def prepare_postgres_data_test_trajectories():
             csv_data.append([0, vid, fid, "cube", "red", "metal", bbox1[0], bbox1[1], bbox1[2], bbox1[3]])
             csv_data.append([1, vid, fid, "cube", "red", "metal", bbox2[0], bbox2[1], bbox2[2], bbox2[3]])
 
-    with open('postgres/test_trajectories.csv', 'w') as f:
+    with open('postgres/obj_trajectories.csv', 'w') as f:
         writer = csv.writer(f)
         # write multiple rows
         writer.writerows(csv_data)
 
 if __name__ == '__main__':
-    prepare_postgres_data_test_trajectories()
+    pass
     # predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.BackOf: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None}
     # generate_queries(n_queries=50, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=5, depth=3, max_duration=5, predicate_dict=predicate_dict, max_workers=32, dataset_name="synthetic_rare")
 
     # prepare_noisy_data(fn_error_rate=0.1, fp_error_rate=0.01, dataset_name="synthetic")
     # prepare_trajectory_pairs_given_target_query("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Front, Left)), True*), Duration(Left, 2)), True*), Conjunction(Far_0.9, Left)), True*)")
+    prepare_postgres_data_test_trajectories()
