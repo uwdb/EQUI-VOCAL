@@ -185,6 +185,10 @@ class VOCALPostgres(BaseMethod):
             self.candidate_queries = [e for e in self.candidate_queries if e[1] >= utility_bound]
             print("beam_width {} queries".format(len(self.candidate_queries)), [(rewrite_program_postgres(query.program), score) for query, score in self.candidate_queries])
 
+        self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
+        best_score = self.answers[0][1]
+        self.best_query_after_each_iter = [e for e in self.answers if e[1] >= best_score]
+        print("best query after each iter", [(rewrite_program_postgres(query.program), score) for query, score in self.best_query_after_each_iter])
         while len(self.candidate_queries):
             # Generate more queries
             _start_query_expansion_time = time.time()
@@ -220,12 +224,16 @@ class VOCALPostgres(BaseMethod):
             # Select new video segments to label
             if len(self.labeled_index) < self.budget and len(self.candidate_queries):
                 _start_segmnet_selection_time = time.time()
-                # video_segment_ids = self.pick_next_segment()
-                video_segment_ids = self.pick_next_segment_model_picker_postgres()
-                print("pick next segments", video_segment_ids)
-                self.labeled_index += video_segment_ids
+                # new_labeled_index = self.pick_next_segment()
+                self.candidate_queries = sorted(self.candidate_queries, key=lambda x: cmp_to_key(compare_with_ties)(x[1]), reverse=True)
+                new_labeled_index = self.pick_next_segment_model_picker_postgres()
+                if len(new_labeled_index) > self.budget - len(self.labeled_index):
+                    new_labeled_index = new_labeled_index[:self.budget - len(self.labeled_index)]
+                print("pick next segments", new_labeled_index)
+                self.labeled_index += new_labeled_index
                 print("# labeled segments", len(self.labeled_index))
                 print("# positive: {}, # negative: {}".format(sum(self.labels[self.labeled_index]), len(self.labels[self.labeled_index]) - sum(self.labels[self.labeled_index])))
+                print(using("profile"))
                 # assert labeled_index does not contain duplicates
                 assert(len(self.labeled_index) == len(set(self.labeled_index)))
                 self.segment_selection_time += time.time() - _start_segmnet_selection_time
@@ -294,9 +302,16 @@ class VOCALPostgres(BaseMethod):
                 for i in range(len(self.answers)):
                     self.answers[i][1] = self.compute_query_score_postgres(self.answers[i][0].program)
             self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
-            self.answers = self.answers[:self.k]
+            best_score = self.answers[0][1]
+            utility_bound = self.answers[:self.k][-1][1]
+            self.answers = [e for e in self.answers if e[1] >= utility_bound]
+            # self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
+            # self.answers = self.answers[:self.k]
             print("top k queries", [(rewrite_program_postgres(query.program), score) for query, score in self.answers])
             self.retain_top_k_queries_time += time.time() - _start_retain_top_k_queries_time
+            self.best_query_after_each_iter = [e for e in self.answers if e[1] >= best_score]
+            print("best query after each iter", [(rewrite_program_postgres(query.program), score) for query, score in self.best_query_after_each_iter])
+            print(using("profile"))
 
         # RETURN: the list.
         print("final_answers")
