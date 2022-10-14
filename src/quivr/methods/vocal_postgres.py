@@ -33,7 +33,7 @@ def compare_with_ties(x, y):
 random.seed(time.time())
 class VOCALPostgres(BaseMethod):
 
-    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, k, samples_per_iter, budget, multithread, strategy, max_vars, port):
+    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, k, samples_per_iter, budget, multithread, strategy, max_vars, port, sampling_rate):
         self.dataset_name = dataset_name
         self.inputs = inputs
         self.labels = labels
@@ -54,6 +54,8 @@ class VOCALPostgres(BaseMethod):
             self.is_trajectory = False
         else:
             self.is_trajectory = True
+
+        self.sampling_rate = sampling_rate
 
         self.best_query_after_each_iter = []
 
@@ -143,7 +145,7 @@ class VOCALPostgres(BaseMethod):
             if nvars > self.max_vars:
                 raise ValueError("The predicate has more variables than the number of variables in the query.")
             variables = ["o{}".format(i) for i in range(nvars)]
-            query_graph = QueryGraph(self.max_npred, self.max_depth, self.max_vars)
+            query_graph = QueryGraph(self.max_npred, self.max_depth, self.max_duration, self.max_vars, self.predicate_list, is_trajectory=self.is_trajectory)
             query_graph.program = [
                 {
                     "scene_graph": [
