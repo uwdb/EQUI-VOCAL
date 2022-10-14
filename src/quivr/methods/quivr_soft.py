@@ -23,13 +23,14 @@ def using(point=""):
 random.seed(time.time())
 class QUIVRSoft(BaseMethod):
 
-    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, k, samples_per_iter, budget, multithread, strategy):
+    def __init__(self, inputs, labels, predicate_dict, max_npred, max_depth, max_duration, beam_width, pool_size, k, samples_per_iter, budget, multithread, strategy):
         self.inputs = np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
         self.predicate_dict = predicate_dict
         self.max_npred = max_npred
         self.max_depth = max_depth
         self.beam_width = beam_width
+        self.pool_size = pool_size
         self.k = k
         self.samples_per_iter = samples_per_iter
         self.budget = budget
