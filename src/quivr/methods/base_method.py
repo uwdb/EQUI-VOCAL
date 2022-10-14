@@ -43,9 +43,6 @@ class BaseMethod:
         return score
 
     def compute_query_score_postgres(self, current_query):
-        if self.is_trajectory:
-            input_vids = self.labeled_index
-        else:
         input_vids = self.inputs[self.labeled_index].tolist()
         y_pred = []
         result, new_memoize = postgres_execute(self.dsn, current_query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)

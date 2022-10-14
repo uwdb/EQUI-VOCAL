@@ -13,7 +13,7 @@ import resource
 import random
 import quivr.dsl as dsl
 from functools import cmp_to_key
-import psycopg
+import psycopg2 as psycopg
 import uuid
 
 def using(point=""):
@@ -88,10 +88,12 @@ class VOCALPostgres(BaseMethod):
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_{t} ON {t} (vid);".format(t=self.inputs_table_name))
                 # Create predicate functions (if not exists)
                 for predicate in self.predicate_list:
-                    # TODO: update args to include all scene graph information (e.g., attributes)
-                    args = ", ".join(["double precision, double precision, double precision, double precision"] * predicate["nargs"])
+                    args = ", ".join(["text, text, text, double precision, double precision, double precision, double precision"] * predicate["nargs"])
                     if predicate["parameters"]:
-                        args = "double precision, " + args
+                        if isinstance(predicate["parameters"][0], str):
+                            args = "text, " + args
+                        else:
+                            args = "double precision, " + args
                     cur.execute("CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}' LANGUAGE C STRICT;".format(name=predicate["name"], args=args))
                 conn.commit()
 
