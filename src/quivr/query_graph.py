@@ -1,12 +1,14 @@
 import copy
 import quivr.dsl as dsl
-from quivr.utils import print_program, rewrite_program_postgres, str_to_program_postgres
+from quivr.utils import print_program, rewrite_program_postgres, str_to_program_postgres, get_depth_and_npred
 import itertools
 class QueryGraph(object):
 
-    def __init__(self, max_npred, max_depth, max_vars=2, topdown_or_bottomup="bottomup"):
+    def __init__(self, max_npred, max_depth, max_duration, max_vars, predicate_list, is_trajectory, topdown_or_bottomup="bottomup"):
         self.max_npred = max_npred
         self.max_depth = max_depth
+        self.max_duration = max_duration
+        self.predicate_list = predicate_list
         if topdown_or_bottomup == "bottomup":
             self.program = None
         elif topdown_or_bottomup == "topdown":
@@ -16,6 +18,7 @@ class QueryGraph(object):
         self.depth = 0
         self.npred = 0
         self.variables = ["o{}".format(i) for i in range(max_vars)]
+        self.is_trajectory = is_trajectory
 
     def get_parameter_holes_and_value_space(self):
         parameter_holes = []
@@ -78,8 +81,6 @@ class QueryGraph(object):
         """
         # Fill the predicate hole that is found first (BFS).
         all_children = []
-        # child_depth = self.depth + 1
-        # child_num_units = self.num_units_at_depth(child_depth)
         queue = [self.program]
         while len(queue) != 0:
             current = queue.pop(0)
@@ -171,7 +172,7 @@ class QueryGraph(object):
                 candidates.append([candidate, 1])
         return candidates
 
-    def get_all_children_bu(self, predicate_dict, max_duration):
+    def get_all_children_bu(self):
         """
         Example query:
             q = True*; p11 ^ ... ^ p1i ^ d1; True*; p21 ^ ... ^ p2j ^ d2; True*
@@ -185,10 +186,10 @@ class QueryGraph(object):
         # Action a: Scene graph construction: add a predicate to existing scene graph (i.e., the last scene graph in the sequence).
         # Require: the last scene graph must not have duration constraint.
         if self.npred + 1 <= self.max_npred:
-            for pred in predicate_dict:
+            for pred in self.predicate_list:
                 pred_instances = []
-                if predicate_dict[pred]:
-                    for param in predicate_dict[pred]:
+                if self.predicate_list[pred]:
+                    for param in self.predicate_list[pred]:
                         pred_instances.append(pred(param))
                 else:
                     pred_instances.append(pred())
@@ -225,10 +226,10 @@ class QueryGraph(object):
         # Action b: Sequence construction: add a new scene graph (which consists of one predicate) to the end of the sequence.
         # 1. q' = Seq(Seq(q, p31), True*)
         if self.npred + 1 <= self.max_npred and self.depth + 1 <= self.max_depth:
-            for pred in predicate_dict:
+            for pred in self.predicate_list:
                 pred_instances = []
-                if predicate_dict[pred]:
-                    for param in predicate_dict[pred]:
+                if self.predicate_list[pred]:
+                    for param in self.predicate_list[pred]:
                         pred_instances.append(pred(param))
                 else:
                     pred_instances.append(pred())
@@ -247,7 +248,7 @@ class QueryGraph(object):
         last_graph = new_query_graph.program.submodules["function1"].submodules["function2"]
         # 2. If g2 has duration constraint, increment by 1: g2.theta += 1
         if last_graph.name == "Duration":
-            if last_graph.theta < max_duration:
+            if last_graph.theta < self.max_duration:
                 last_graph.theta += 1
                 all_children.append(new_query_graph)
                 print("Action C: ", print_program(new_query_graph.program))
@@ -259,7 +260,7 @@ class QueryGraph(object):
 
         return all_children
 
-    def get_all_children_unrestricted(self, predicate_dict, max_duration):
+    def get_all_children_unrestricted(self):
         """
         Example query:
             q = True*; p11 ^ ... ^ p1i ^ d1; True*; p21 ^ ... ^ p2j ^ d2; True*
@@ -275,10 +276,10 @@ class QueryGraph(object):
         if self.npred + 1 <= self.max_npred:
             current_program = self.program
             while True:
-                for pred in predicate_dict:
+                for pred in self.predicate_list:
                     pred_instances = []
-                    if predicate_dict[pred]:
-                        for param in predicate_dict[pred]:
+                    if self.predicate_list[pred]:
+                        for param in self.predicate_list[pred]:
                             pred_instances.append(pred(param))
                     else:
                         pred_instances.append(pred())
@@ -326,10 +327,10 @@ class QueryGraph(object):
         if self.npred + 1 <= self.max_npred and self.depth + 1 <= self.max_depth:
             first_iter = True
             while True:
-                for pred in predicate_dict:
+                for pred in self.predicate_list:
                     pred_instances = []
-                    if predicate_dict[pred]:
-                        for param in predicate_dict[pred]:
+                    if self.predicate_list[pred]:
+                        for param in self.predicate_list[pred]:
                             pred_instances.append(pred(param))
                     else:
                         pred_instances.append(pred())
@@ -370,7 +371,7 @@ class QueryGraph(object):
             predicate_before_last_graph = current_program.submodules["function1"].submodules["function1"]
             # 2. If g2 has duration constraint, increment by 1: g2.theta += 1
             if last_graph.name == "Duration":
-                if last_graph.theta < max_duration:
+                if last_graph.theta < self.max_duration:
                     last_graph.theta += 1
                     new_query_graph = copy.deepcopy(self)
                     all_children.append(new_query_graph)
@@ -394,7 +395,7 @@ class QueryGraph(object):
         return all_children
 
 
-    def get_all_children_unrestricted_postgres(self, predicate_list, max_duration):
+    def get_all_children_unrestricted_postgres(self):
         """
         predicate_list = [{"name": "Near", "parameters": [-1.05], "nargs": 2}, {...}, ...]
         Output: a list of all possible children of the current query graph. Each child is rewriten into the ordered format to avoid duplicates.
@@ -404,7 +405,7 @@ class QueryGraph(object):
         # Require: the last scene graph must not have duration constraint.
         if self.npred + 1 <= self.max_npred:
             pred_instances = []
-            for pred in predicate_list:
+            for pred in self.predicate_list:
                 # {"name": "Near", "parameters": [-1.05], "nargs": 2}
                 if pred["parameters"]:
                     for param in pred["parameters"]:
@@ -442,7 +443,7 @@ class QueryGraph(object):
         # 1. q' = Seq(Seq(q, p31), True*)
         if self.npred + 1 <= self.max_npred and self.depth + 1 <= self.max_depth:
             pred_instances = []
-            for pred in predicate_list:
+            for pred in self.predicate_list:
                 # {"name": "Near", "parameters": [-1.05], "nargs": 2}
                 if pred["parameters"]:
                     for param in pred["parameters"]:
@@ -474,7 +475,7 @@ class QueryGraph(object):
         # Action c: Duration refinement: increase the duration of the a scene graph
         for scene_graph_idx, dict in enumerate(self.program):
             scene_graph = dict["scene_graph"]
-            if dict["duration_constraint"] < max_duration:
+            if dict["duration_constraint"] < self.max_duration:
                 new_query = copy.deepcopy(self)
                 new_query.program[scene_graph_idx]["duration_constraint"] += 1
                 print("Action C: ", rewrite_program_postgres(new_query.program))
