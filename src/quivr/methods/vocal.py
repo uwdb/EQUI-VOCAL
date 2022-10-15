@@ -93,8 +93,16 @@ class VOCAL(BaseMethod):
         print("# positive: {}, # negative: {}".format(sum(self.labels[self.labeled_index]), len(self.labels[self.labeled_index]) - sum(self.labels[self.labeled_index])))
         # assert labeled_index does not contain duplicates
         assert(len(self.labeled_index) == len(set(self.labeled_index)))
-        for i in range(len(self.candidate_queries)):
-            self.candidate_queries[i][1] = self.compute_query_score(self.candidate_queries[i][0].program)
+        if self.multithread > 1:
+            updated_scores = []
+            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                for result in executor.map(self.compute_query_score, [query.program for query, _ in self.candidate_queries]):
+                    updated_scores.append(result)
+            for i in range(len(self.candidate_queries)):
+                self.candidate_queries[i][1] = updated_scores[i]
+        else:
+            for i in range(len(self.candidate_queries)):
+                self.candidate_queries[i][1] = self.compute_query_score(self.candidate_queries[i][0].program)
         self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
         # Sample beam_width queries
@@ -161,8 +169,18 @@ class VOCAL(BaseMethod):
                 assert(len(self.labeled_index) == len(set(self.labeled_index)))
                 self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
-            for i in range(len(self.candidate_queries)):
-                self.candidate_queries[i][1] = self.compute_query_score(self.candidate_queries[i][0].program)
+            _start_segmnet_selection_time = time.time()
+            if self.multithread > 1:
+                updated_scores = []
+                with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                    for result in executor.map(self.compute_query_score, [query.program for query, _ in self.candidate_queries]):
+                        updated_scores.append(result)
+                for i in range(len(self.candidate_queries)):
+                    self.candidate_queries[i][1] = updated_scores[i]
+            else:
+                for i in range(len(self.candidate_queries)):
+                    self.candidate_queries[i][1] = self.compute_query_score(self.candidate_queries[i][0].program)
+            self.segment_selection_time += time.time() - _start_segmnet_selection_time
 
             # Sample beam_width queries
             if len(self.candidate_queries):
@@ -204,8 +222,16 @@ class VOCAL(BaseMethod):
 
             # Retain the top k queries with the highest scores as answers
             _start_retain_top_k_queries_time = time.time()
-            for i in range(len(self.answers)):
-                self.answers[i][1] = self.compute_query_score(self.answers[i][0].program)
+            if self.multithread > 1:
+                updated_scores = []
+                with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                    for result in executor.map(self.compute_query_score, [query.program for query, _ in self.answers]):
+                        updated_scores.append(result)
+                for i in range(len(self.answers)):
+                    self.answers[i][1] = updated_scores[i]
+            else:
+                for i in range(len(self.answers)):
+                    self.answers[i][1] = self.compute_query_score(self.answers[i][0].program)
             self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             self.answers = self.answers[:self.k]
             print("top k queries", [(print_program(query.program), score) for query, score in self.answers])
