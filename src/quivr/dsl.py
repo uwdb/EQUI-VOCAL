@@ -38,7 +38,10 @@ class StartOperator(BaseOperator):
         super().__init__(submodules, name="Start")
 
     def execute(self, input, label, memoize, new_memoize):
-        return self.submodules["program"].execute(input, label, memoize, new_memoize)
+        # dsl.StartOperator(dsl.SequencingOperator(dsl.SequencingOperator(dsl.TrueStar(), dsl.PredicateHole()), dsl.TrueStar()))
+        top_level = SequencingOperator(SequencingOperator(TrueStar(), self.submodules["program"]), TrueStar())
+        return top_level.execute(input, label, memoize, new_memoize)
+        # return self.submodules["program"].execute(input, label, memoize, new_memoize)
 
 class ConjunctionOperator(BaseOperator):
     def __init__(self, function1=None, function2=None):
@@ -165,7 +168,7 @@ class DurationOperator(BaseOperator):
     def execute(self, input, label, memoize, new_memoize):
         # res1, memoize = self.submodules["duration"].execute(input, label, memoize)
         kleene = KleeneOperator(self.submodules["duration"])
-        conj = ConjunctionOperator(kleene, MinLength(self.theta))
+        conj = ConjunctionOperator(kleene, MinLength(self.theta, self.theta))
         return conj.execute(input, label, memoize, new_memoize)
 
 
@@ -219,7 +222,7 @@ class Predicate:
 class Near(Predicate):
     has_theta=True
 
-    def __init__(self, theta=-1.05, step=0.2, with_hole=False):
+    def __init__(self, theta=-1, step=0.2, with_hole=False):
         self.theta = theta
         self.step = step
         self.with_hole = with_hole
@@ -264,7 +267,7 @@ class Near(Predicate):
 class Far(Predicate):
     has_theta=True
 
-    def __init__(self, theta=1.1, step=0.2, with_hole=False):
+    def __init__(self, theta=3, step=0.2, with_hole=False):
         self.theta = theta
         self.step = step
         self.with_hole = with_hole
@@ -394,14 +397,14 @@ class FrontOf(DirectionPredicate):
     def execute(self, input, label, memoize, new_memoize):
         return super().execute("FrontOf", input, label, memoize, new_memoize)
 
-class BackOf(DirectionPredicate):
+class Behind(DirectionPredicate):
     has_theta=False
 
     def __init__(self):
-        super().__init__("BackOf")
+        super().__init__("Behind")
 
     def execute(self, input, label, memoize, new_memoize):
-        return super().execute("BackOf", input, label, memoize, new_memoize)
+        return super().execute("Behind", input, label, memoize, new_memoize)
 
 class RightOf(DirectionPredicate):
     has_theta=False
@@ -446,14 +449,15 @@ class TrueStar(Predicate):
 class MinLength(Predicate):
     has_theta=True
 
-    def __init__(self, theta=1, step=1, with_hole=False):
+    def __init__(self, max_duration=1, theta=1, step=1, with_hole=False):
         self.theta = theta
         self.step = step
         self.with_hole = with_hole
+        self.max_duration = max_duration
         super().__init__("MinLength")
 
     def init_value_range(self):
-        return [1, 5]
+        return [1, self.max_duration]
 
     def execute_with_hole(self, input, label, memoize, new_memoize):
         subquery_str = utils.print_program(self)
@@ -507,7 +511,7 @@ def direction_relationship(bbox1, bbox2, direction):
         return cx1 < cx2
     elif direction == "RightOf":
         return cx1 > cx2
-    elif direction == "BackOf":
+    elif direction == "Behind":
         return cy1 < cy2
     elif direction == "FrontOf":
         return cy1 > cy2
