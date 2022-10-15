@@ -1,0 +1,210 @@
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on obj_clevrer  (cost=3061.29..68209.37 rows=163207 width=62) (actual time=7.036..28.502 rows=165266 loops=1)
+   Recheck Cond: (vid < 300)
+   Heap Blocks: exact=2204
+   ->  Bitmap Index Scan on idx_obj_clevrer  (cost=0.00..3020.48 rows=163207 width=0) (actual time=6.816..6.816 rows=165266 loops=1)
+         Index Cond: (vid < 300)
+ Planning Time: 0.485 ms
+ Execution Time: 77.973 ms
+(7 rows)
+
+CREATE INDEX
+                                                                                                           QUERY PLAN                                                                                                           
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Join  (cost=16646.30..37293.51 rows=102930 width=20) (actual time=94.493..314.932 rows=315271 loops=1)
+   Merge Cond: ((o0.vid = o2.vid) AND (o0.fid = o2.fid))
+   Join Filter: ((o0.oid <> o2.oid) AND (o1.oid <> o2.oid))
+   Rows Removed by Join Filter: 143070
+   ->  Merge Join  (cost=8323.36..26253.86 rows=75490 width=24) (actual time=46.879..177.778 rows=219477 loops=1)
+         Merge Cond: ((o0.vid = o1.vid) AND (o0.fid = o1.fid))
+         Join Filter: (leftof((o0.shape)::text, (o0.color)::text, (o0.material)::text, o0.x1, o0.y1, o0.x2, o0.y2, (o1.shape)::text, (o1.color)::text, (o1.material)::text, o1.x1, o1.y1, o1.x2, o1.y2) AND (o0.oid <> o1.oid))
+         Rows Removed by Join Filter: 160982
+         ->  Index Scan using idx_obj_filtered on obj_filtered o0  (cost=0.42..11983.41 rows=165266 width=140) (actual time=0.039..22.998 rows=165266 loops=1)
+         ->  Sort  (cost=8322.94..8460.66 rows=55089 width=140) (actual time=46.820..59.937 rows=380454 loops=1)
+               Sort Key: o1.vid, o1.fid
+               Sort Method: quicksort  Memory: 14764kB
+               ->  Seq Scan on obj_filtered o1  (cost=0.00..3984.83 rows=55089 width=140) (actual time=0.011..20.983 rows=83139 loops=1)
+                     Filter: rightquadrant((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
+                     Rows Removed by Filter: 82127
+   ->  Sort  (cost=8322.94..8460.66 rows=55089 width=12) (actual time=47.603..64.263 rows=470238 loops=1)
+         Sort Key: o2.vid, o2.fid
+         Sort Method: quicksort  Memory: 6933kB
+         ->  Seq Scan on obj_filtered o2  (cost=0.00..3984.83 rows=55089 width=12) (actual time=0.031..22.245 rows=82347 loops=1)
+               Filter: leftquadrant((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
+               Rows Removed by Filter: 82919
+ Planning Time: 0.350 ms
+ Execution Time: 399.379 ms
+(23 rows)
+
+CREATE INDEX
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=4843094.12..4843121.70 rows=1541 width=24) (actual time=1058.303..1116.747 rows=307048 loops=1)
+   CTE g0_seq
+     ->  Recursive Union  (cost=0.00..4834340.19 rows=315281 width=24) (actual time=0.014..837.609 rows=621975 loops=1)
+           ->  Seq Scan on g0  (cost=0.00..5161.71 rows=315271 width=24) (actual time=0.012..31.513 rows=315271 loops=1)
+           ->  Merge Join  (cost=403360.68..482287.29 rows=1 width=24) (actual time=190.034..282.354 rows=153660 loops=2)
+                 Merge Cond: ((g.vid = s.vid) AND (g.fid = ((s.fid2 + 1))) AND (g.o0_oid = s.o0_oid) AND (g.o1_oid = s.o1_oid) AND (g.o2_oid = s.o2_oid))
+                 Join Filter: (((g.fid - s.fid1) + 1) <= 2)
+                 Rows Removed by Join Filter: 150414
+                 ->  Index Only Scan using idx_g0 on g0 g  (cost=0.42..19025.49 rows=315271 width=20) (actual time=0.048..51.674 rows=315271 loops=2)
+                       Heap Fetches: 630542
+                 ->  Sort  (cost=403360.26..411242.03 rows=3152710 width=24) (actual time=119.066..132.189 rows=311246 loops=2)
+                       Sort Key: s.vid, ((s.fid2 + 1)), s.o0_oid, s.o1_oid, s.o2_oid
+                       Sort Method: quicksort  Memory: 36277kB
+                       ->  WorkTable Scan on g0_seq s  (cost=0.00..63054.20 rows=3152710 width=24) (actual time=0.005..29.078 rows=310988 loops=2)
+   ->  Sort  (cost=8753.93..8757.87 rows=1576 width=24) (actual time=1058.301..1078.669 rows=307048 loops=1)
+         Sort Key: g0_seq.vid, g0_seq.fid1, g0_seq.fid2, g0_seq.o0_oid, g0_seq.o1_oid, g0_seq.o2_oid
+         Sort Method: quicksort  Memory: 36277kB
+         ->  CTE Scan on g0_seq  (cost=0.00..8670.23 rows=1576 width=24) (actual time=413.968..1016.190 rows=307048 loops=1)
+               Filter: (((fid2 - fid1) + 1) = 2)
+               Rows Removed by Filter: 314927
+ Planning Time: 0.305 ms
+ Execution Time: 1239.452 ms
+(22 rows)
+
+CREATE INDEX
+                                                                                   QUERY PLAN                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Join  (cost=14021.44..14888.46 rows=25164 width=16) (actual time=52.473..55.373 rows=3728 loops=1)
+   Merge Cond: ((o0.vid = o1.vid) AND (o0.fid = o1.fid))
+   Join Filter: (o0.oid <> o1.oid)
+   ->  Sort  (cost=5698.50..5744.41 rows=18363 width=12) (actual time=26.528..26.861 rows=9478 loops=1)
+         Sort Key: o0.vid, o0.fid
+         Sort Method: quicksort  Memory: 835kB
+         ->  Seq Scan on obj_filtered o0  (cost=0.00..4397.99 rows=18363 width=12) (actual time=0.017..24.160 rows=9605 loops=1)
+               Filter: (brown((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2) AND rightquadrant((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2))
+               Rows Removed by Filter: 155661
+   ->  Sort  (cost=8322.94..8460.66 rows=55089 width=12) (actual time=25.732..26.377 rows=20501 loops=1)
+         Sort Key: o1.vid, o1.fid
+         Sort Method: quicksort  Memory: 1722kB
+         ->  Seq Scan on obj_filtered o1  (cost=0.00..3984.83 rows=55089 width=12) (actual time=0.194..20.541 rows=20340 loops=1)
+               Filter: green((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
+               Rows Removed by Filter: 144926
+ Planning Time: 0.124 ms
+ Execution Time: 62.508 ms
+(17 rows)
+
+CREATE INDEX
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=44139.33..44139.62 rows=19 width=20) (actual time=12.707..13.282 rows=3587 loops=1)
+   CTE g1_seq
+     ->  Recursive Union  (cost=0.00..44036.13 rows=3738 width=20) (actual time=0.011..10.440 rows=10960 loops=1)
+           ->  Seq Scan on g1  (cost=0.00..58.28 rows=3728 width=20) (actual time=0.010..0.353 rows=3728 loops=1)
+           ->  Merge Join  (cost=3576.57..4390.31 rows=1 width=20) (actual time=1.269..2.449 rows=2415 loops=3)
+                 Merge Cond: ((g.vid = s.vid) AND (g.fid = ((s.fid2 + 1))) AND (g.o0_oid = s.o0_oid) AND (g.o1_oid = s.o1_oid))
+                 Join Filter: (((g.fid - s.fid1) + 1) <= 3)
+                 Rows Removed by Join Filter: 1177
+                 ->  Index Only Scan using idx_g1 on g1 g  (cost=0.28..208.20 rows=3728 width=16) (actual time=0.013..0.530 rows=3728 loops=3)
+                       Heap Fetches: 11184
+                 ->  Sort  (cost=3576.29..3669.49 rows=37280 width=20) (actual time=0.763..0.889 rows=3657 loops=3)
+                       Sort Key: s.vid, ((s.fid2 + 1)), s.o0_oid, s.o1_oid
+                       Sort Method: quicksort  Memory: 377kB
+                       ->  WorkTable Scan on g1_seq s  (cost=0.00..745.60 rows=37280 width=20) (actual time=0.002..0.272 rows=3653 loops=3)
+   ->  Sort  (cost=103.20..103.25 rows=19 width=20) (actual time=12.707..12.832 rows=3587 loops=1)
+         Sort Key: g1_seq.vid, g1_seq.fid1, g1_seq.fid2, g1_seq.o0_oid, g1_seq.o1_oid
+         Sort Method: quicksort  Memory: 377kB
+         ->  CTE Scan on g1_seq  (cost=0.00..102.80 rows=19 width=20) (actual time=6.918..12.406 rows=3587 loops=1)
+               Filter: (((fid2 - fid1) + 1) = 3)
+               Rows Removed by Filter: 7373
+ Planning Time: 0.252 ms
+ Execution Time: 34.922 ms
+(22 rows)
+
+CREATE INDEX
+                                                                                                        QUERY PLAN                                                                                                         
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Join  (cost=0.84..40156.62 rows=226469 width=16) (actual time=0.023..237.967 rows=296921 loops=1)
+   Merge Cond: ((o2.vid = o1.vid) AND (o2.fid = o1.fid))
+   Join Filter: (rightof((o1.shape)::text, (o1.color)::text, (o1.material)::text, o1.x1, o1.y1, o1.x2, o1.y2, (o2.shape)::text, (o2.color)::text, (o2.material)::text, o2.x1, o2.y1, o2.x2, o2.y2) AND (o1.oid <> o2.oid))
+   Rows Removed by Join Filter: 463145
+   ->  Index Scan using idx_obj_filtered on obj_filtered o2  (cost=0.42..11983.41 rows=165266 width=140) (actual time=0.009..16.293 rows=165266 loops=1)
+   ->  Materialize  (cost=0.42..12396.58 rows=165266 width=140) (actual time=0.005..53.931 rows=760061 loops=1)
+         ->  Index Scan using idx_obj_filtered on obj_filtered o1  (cost=0.42..11983.41 rows=165266 width=140) (actual time=0.004..19.079 rows=165266 loops=1)
+ Planning Time: 0.108 ms
+ Execution Time: 320.415 ms
+(9 rows)
+
+CREATE INDEX
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=4442006.92..4442029.33 rows=1461 width=20) (actual time=771.841..815.219 rows=296690 loops=1)
+   CTE g2_seq
+     ->  Recursive Union  (cost=0.00..4433712.22 rows=298761 width=20) (actual time=0.031..591.922 rows=296690 loops=1)
+           ->  Seq Scan on g2  (cost=0.00..4574.21 rows=296921 width=20) (actual time=0.013..27.742 rows=296921 loops=1)
+           ->  Merge Join  (cost=378599.16..442316.28 rows=184 width=20) (actual time=455.121..455.122 rows=0 loops=1)
+                 Merge Cond: ((g.vid = s.vid) AND (g.fid = ((s.fid2 + 1))) AND (g.o1_oid = s.o1_oid) AND (g.o2_oid = s.o2_oid))
+                 Join Filter: (((g.fid - s.fid1) + 1) <= 1)
+                 Rows Removed by Join Filter: 291472
+                 ->  Index Only Scan using idx_g2 on g2 g  (cost=0.42..15458.24 rows=296921 width=16) (actual time=0.080..45.082 rows=296921 loops=1)
+                       Heap Fetches: 296921
+                 ->  Sort  (cost=378598.74..386021.76 rows=2969210 width=20) (actual time=263.025..276.180 rows=296865 loops=1)
+                       Sort Key: s.vid, ((s.fid2 + 1)), s.o1_oid, s.o2_oid
+                       Sort Method: quicksort  Memory: 35467kB
+                       ->  WorkTable Scan on g2_seq s  (cost=0.00..59384.20 rows=2969210 width=20) (actual time=0.008..22.801 rows=296690 loops=1)
+   ->  Sort  (cost=8294.70..8298.43 rows=1494 width=20) (actual time=771.838..782.276 rows=296690 loops=1)
+         Sort Key: g2_seq.vid, g2_seq.fid1, g2_seq.fid2, g2_seq.o1_oid, g2_seq.o2_oid
+         Sort Method: quicksort  Memory: 35467kB
+         ->  CTE Scan on g2_seq  (cost=0.00..8215.93 rows=1494 width=20) (actual time=0.034..661.669 rows=296690 loops=1)
+               Filter: (((fid2 - fid1) + 1) = 1)
+ Planning Time: 0.226 ms
+ Execution Time: 882.449 ms
+(21 rows)
+
+CREATE INDEX
+                                                                        QUERY PLAN                                                                         
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=36393.42..36394.11 rows=46 width=20) (actual time=161.705..161.716 rows=34 loops=1)
+   ->  Sort  (cost=36393.42..36393.53 rows=46 width=20) (actual time=161.704..161.708 rows=34 loops=1)
+         Sort Key: t0.vid, (min(t1.fid2)), t0.o0_oid, t0.o2_oid, t0.o1_oid
+         Sort Method: quicksort  Memory: 27kB
+         ->  GroupAggregate  (cost=36391.00..36392.15 rows=46 width=20) (actual time=153.408..161.692 rows=34 loops=1)
+               Group Key: t0.vid, t0.o0_oid, t0.o2_oid, t0.o1_oid
+               ->  Sort  (cost=36391.00..36391.11 rows=46 width=20) (actual time=153.365..155.474 rows=61473 loops=1)
+                     Sort Key: t0.vid, t0.o0_oid, t0.o2_oid, t0.o1_oid
+                     Sort Method: quicksort  Memory: 6339kB
+                     ->  Merge Join  (cost=33281.65..36389.73 rows=46 width=20) (actual time=98.293..144.310 rows=61473 loops=1)
+                           Merge Cond: ((t0.vid = t1.vid) AND (t0.o0_oid = t1.o0_oid) AND (t0.o1_oid = t1.o1_oid))
+                           Join Filter: (t0.fid2 < t1.fid1)
+                           Rows Removed by Join Filter: 72443
+                           ->  Sort  (cost=33011.00..33778.62 rows=307048 width=20) (actual time=90.945..103.173 rows=299965 loops=1)
+                                 Sort Key: t0.vid, t0.o0_oid, t0.o1_oid
+                                 Sort Method: quicksort  Memory: 36277kB
+                                 ->  Seq Scan on g0_seq_view t0  (cost=0.00..5026.48 rows=307048 width=20) (actual time=0.015..28.006 rows=307048 loops=1)
+                           ->  Sort  (cost=270.66..279.62 rows=3587 width=20) (actual time=0.853..5.185 rows=136192 loops=1)
+                                 Sort Key: t1.vid, t1.o0_oid, t1.o1_oid
+                                 Sort Method: quicksort  Memory: 377kB
+                                 ->  Seq Scan on g1_seq_view t1  (cost=0.00..58.87 rows=3587 width=20) (actual time=0.037..0.350 rows=3587 loops=1)
+ Planning Time: 0.339 ms
+ Execution Time: 162.824 ms
+(23 rows)
+
+CREATE INDEX
+                                                                              QUERY PLAN                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=800.37..800.39 rows=1 width=20) (actual time=3.767..3.776 rows=32 loops=1)
+   ->  Sort  (cost=800.37..800.38 rows=1 width=20) (actual time=3.767..3.769 rows=32 loops=1)
+         Sort Key: t0.vid, (min(t1.fid2)), t0.o0_oid, t0.o2_oid, t0.o1_oid
+         Sort Method: quicksort  Memory: 27kB
+         ->  GroupAggregate  (cost=800.34..800.36 rows=1 width=20) (actual time=3.405..3.759 rows=32 loops=1)
+               Group Key: t0.vid, t0.o0_oid, t0.o2_oid, t0.o1_oid
+               ->  Sort  (cost=800.34..800.34 rows=1 width=20) (actual time=3.390..3.486 rows=2380 loops=1)
+                     Sort Key: t0.vid, t0.o0_oid, t0.o2_oid, t0.o1_oid
+                     Sort Method: quicksort  Memory: 282kB
+                     ->  Nested Loop  (cost=0.42..800.33 rows=1 width=20) (actual time=0.872..2.924 rows=2380 loops=1)
+                           ->  Seq Scan on q0 t0  (cost=0.00..1.34 rows=34 width=20) (actual time=0.006..0.008 rows=34 loops=1)
+                           ->  Index Only Scan using idx_g2_seq_view on g2_seq_view t1  (cost=0.42..23.49 rows=1 width=20) (actual time=0.033..0.080 rows=70 loops=34)
+                                 Index Cond: ((vid = t0.vid) AND (fid1 > t0.fid) AND (o1_oid = t0.o1_oid) AND (o2_oid = t0.o2_oid))
+                                 Heap Fetches: 2380
+ Planning Time: 0.253 ms
+ Execution Time: 4.438 ms
+(16 rows)
+
+CREATE INDEX
+ count 
+-------
+    16
+(1 row)
+

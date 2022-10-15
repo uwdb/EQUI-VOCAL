@@ -70,25 +70,6 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
         inputs = np.asarray(inputs, dtype=object)
         labels = np.asarray(labels, dtype=object)
     else:
-        if dataset_name.startswith("vary_num_examples"):
-            # with open("inputs/trajectory_pairs.json", 'r') as f:
-                # trajectories = json.load(f)
-            with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
-                inputs = json.load(f)
-            with open("inputs/{}/train/{}_labels.json".format(dataset_name, query_str), 'r') as f:
-                labels = json.load(f)
-            trajectories = np.asarray(trajectories, dtype=object)
-            labels = np.asarray(labels, dtype=object)
-            inputs = trajectories[inputs]
-            pos_idx = np.where(labels == 1)[0]
-            neg_idx = np.where(labels == 0)[0]
-            print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
-            # Down-sample the trajectory once every 4 frames
-            inputs_downsampled = []
-            for input in inputs:
-                inputs_downsampled.append([input[0][::4], input[1][::4]])
-            inputs = inputs_downsampled
-        else:
         with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
             inputs = json.load(f)
         with open("inputs/{}/train/{}_labels.json".format(dataset_name, query_str), 'r') as f:
