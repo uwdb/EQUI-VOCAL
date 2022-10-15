@@ -139,11 +139,6 @@ class QueryGraph(object):
                 elif isinstance(left_child, dsl.KleeneOperator):
                     replacement_candidates = [dsl.KleeneOperator] + list(self.predicate_list.keys())
                 elif isinstance(left_child, dsl.ParameterHole):
-                    if isinstance(left_child.get_predicate(), dsl.Near):
-                        replacement_candidates = [dsl.Far, dsl.MinLength]
-                    elif isinstance(left_child.get_predicate(), dsl.Far):
-                        replacement_candidates = [dsl.MinLength]
-                    elif isinstance(left_child.get_predicate(), dsl.MinLength):
                     replacement_candidates = []
                     for pred in self.predicate_list.keys():
                         if pred() > left_child.get_predicate():
