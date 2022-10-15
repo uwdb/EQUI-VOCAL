@@ -406,27 +406,29 @@ class QueryGraph(object):
                         pred_instances.append({"name": pred["name"], "parameter": param, "nargs": pred["nargs"]})
                 else:
                     pred_instances.append({"name": pred["name"], "parameter": None, "nargs": pred["nargs"]})
+                if pred["nargs"] > len(self.variables):
+                    raise ValueError("The predicate has more variables than the number of variables in the query.")
             for pred_instance in pred_instances:
                 for scene_graph_idx, dict in enumerate(self.program):
                     scene_graph = dict["scene_graph"]
-                    is_duplicate_predicate = False
-                    for p in scene_graph:
-                        if p["predicate"] == pred_instance["name"]:
-                            is_duplicate_predicate = True
-                            break
-                    if is_duplicate_predicate:
-                        continue
                     nvars = pred_instance["nargs"]
-                    if nvars > len(self.variables):
-                        raise ValueError("The predicate has more variables than the number of variables in the query.")
                     # Special case: for trajectory experiment only
-                    if nvars == 1:
-                        variables_list = [["o0"]]
-                    elif nvars == 2:
-                        variables_list = [["o0", "o1"]]
+                    if self.is_trajectory:
+                        if nvars == 1:
+                            variables_list = [["o0"]]
+                        elif nvars == 2:
+                            variables_list = [["o0", "o1"]]
                     # Gneral case:
-                        # variables_list = itertools.permutations(self.variables, nvars)
+                    else:
+                        variables_list = itertools.combinations(self.variables, nvars)
                     for variables in variables_list:
+                        is_duplicate_predicate = False
+                        for p in scene_graph:
+                            if p["predicate"] == pred_instance["name"] and set(p["variables"]) == set(variables):
+                                is_duplicate_predicate = True
+                                break
+                        if is_duplicate_predicate:
+                            continue
                         new_query = copy.deepcopy(self)
                         new_query.program[scene_graph_idx]["scene_graph"].append({"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)})
                         new_query.npred += 1
@@ -449,12 +451,14 @@ class QueryGraph(object):
                 if nvars > len(self.variables):
                     raise ValueError("The predicate has more variables than the number of variables in the query.")
                 # Special case: for trajectory experiment only
-                if nvars == 1:
-                    variables_list = [["o0"]]
-                elif nvars == 2:
-                    variables_list = [["o0", "o1"]]
+                if self.is_trajectory:
+                    if nvars == 1:
+                        variables_list = [["o0"]]
+                    elif nvars == 2:
+                        variables_list = [["o0", "o1"]]
                 # Gneral case:
-                    # variables_list = itertools.permutations(self.variables, nvars)
+                else:
+                    variables_list = itertools.combinations(self.variables, nvars)
                 for variables in variables_list:
                     predicate = {"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)}
                     new_scene_graph = {"scene_graph": [predicate], "duration_constraint": 1}
