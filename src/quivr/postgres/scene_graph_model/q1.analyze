@@ -1,0 +1,67 @@
+Timing is on.
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on obj_clevrer  (cost=3061.29..68209.37 rows=163207 width=62) (actual time=16.535..78.926 rows=165266 loops=1)
+   Recheck Cond: (vid < 300)
+   Heap Blocks: exact=2204
+   ->  Bitmap Index Scan on idx_obj_clevrer  (cost=0.00..3020.48 rows=163207 width=0) (actual time=16.206..16.209 rows=165266 loops=1)
+         Index Cond: (vid < 300)
+ Planning Time: 1.761 ms
+ Execution Time: 154.606 ms
+(7 rows)
+
+Time: 161.640 ms
+CREATE INDEX
+Time: 114.752 ms
+                                                                                                                          QUERY PLAN                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Join  (cost=1.26..76358.64 rows=308786 width=20) (actual time=0.625..425.940 rows=61221 loops=1)
+   Merge Cond: ((o2.vid = o0.vid) AND (o2.fid = o0.fid))
+   Join Filter: (rightof((o1.shape)::text, (o1.color)::text, (o1.material)::text, o1.x1, o1.y1, o1.x2, o1.y2, (o2.shape)::text, (o2.color)::text, (o2.material)::text, o2.x1, o2.y1, o2.x2, o2.y2) AND (o1.oid <> o2.oid) AND (o0.oid <> o2.oid))
+   Rows Removed by Join Filter: 154761
+   ->  Index Scan using idx_obj_filtered on obj_filtered o2  (cost=0.42..11983.41 rows=165266 width=140) (actual time=0.104..23.252 rows=165066 loops=1)
+   ->  Materialize  (cost=0.84..40722.79 rows=226469 width=152) (actual time=0.258..330.137 rows=215978 loops=1)
+         ->  Merge Join  (cost=0.84..40156.62 rows=226469 width=152) (actual time=0.252..306.405 rows=45322 loops=1)
+               Merge Cond: ((o1.vid = o0.vid) AND (o1.fid = o0.fid))
+               Join Filter: (near('1.05'::double precision, (o0.shape)::text, (o0.color)::text, (o0.material)::text, o0.x1, o0.y1, o0.x2, o0.y2, (o1.shape)::text, (o1.color)::text, (o1.material)::text, o1.x1, o1.y1, o1.x2, o1.y2) AND (o0.oid <> o1.oid))
+               Rows Removed by Join Filter: 714744
+               ->  Index Scan using idx_obj_filtered on obj_filtered o1  (cost=0.42..11983.41 rows=165266 width=140) (actual time=0.009..18.575 rows=165266 loops=1)
+               ->  Materialize  (cost=0.42..12396.58 rows=165266 width=140) (actual time=0.015..84.414 rows=760061 loops=1)
+                     ->  Index Scan using idx_obj_filtered on obj_filtered o0  (cost=0.42..11983.41 rows=165266 width=140) (actual time=0.011..39.439 rows=165266 loops=1)
+ Planning Time: 0.844 ms
+ Execution Time: 451.934 ms
+(15 rows)
+
+Time: 457.342 ms
+CREATE INDEX
+Time: 48.257 ms
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Unique  (cost=868158.75..868164.11 rows=299 width=24) (actual time=604.743..615.244 rows=54075 loops=1)
+   CTE g0_seq
+     ->  Recursive Union  (cost=0.00..866462.27 rows=61231 width=24) (actual time=0.040..519.502 rows=172456 loops=1)
+           ->  Seq Scan on g0  (cost=0.00..1002.21 rows=61221 width=24) (actual time=0.033..10.699 rows=61221 loops=1)
+           ->  Merge Join  (cost=71089.22..86423.54 rows=1 width=24) (actual time=45.230..102.059 rows=37155 loops=3)
+                 Merge Cond: ((g.vid = s.vid) AND (g.fid = ((s.fid2 + 1))) AND (g.o0_oid = s.o0_oid) AND (g.o1_oid = s.o1_oid) AND (g.o2_oid = s.o2_oid))
+                 Join Filter: (((g.fid - s.fid1) + 1) <= 3)
+                 Rows Removed by Join Filter: 17083
+                 ->  Index Only Scan using idx_g0 on g0 g  (cost=0.41..3702.73 rows=61221 width=20) (actual time=0.089..22.727 rows=61221 loops=3)
+                       Heap Fetches: 183663
+                 ->  Sort  (cost=71088.81..72619.33 rows=612210 width=24) (actual time=33.110..37.877 rows=57555 loops=3)
+                       Sort Key: s.vid, ((s.fid2 + 1)), s.o0_oid, s.o1_oid, s.o2_oid
+                       Sort Method: quicksort  Memory: 5761kB
+                       ->  WorkTable Scan on g0_seq s  (cost=0.00..12244.20 rows=612210 width=24) (actual time=0.016..10.782 rows=57485 loops=3)
+   ->  Sort  (cost=1696.49..1697.25 rows=306 width=24) (actual time=604.740..607.281 rows=54075 loops=1)
+         Sort Key: g0_seq.vid, g0_seq.fid1, g0_seq.fid2, g0_seq.o0_oid, g0_seq.o1_oid, g0_seq.o2_oid
+         Sort Method: quicksort  Memory: 5761kB
+         ->  CTE Scan on g0_seq  (cost=0.00..1683.85 rows=306 width=24) (actual time=321.455..587.909 rows=54075 loops=1)
+               Filter: (((fid2 - fid1) + 1) = 3)
+               Rows Removed by Filter: 118381
+ Planning Time: 0.715 ms
+ Execution Time: 646.985 ms
+(22 rows)
+
+Time: 652.433 ms
+CREATE INDEX
+Time: 27.639 ms
+Time: 126.179 ms
