@@ -97,14 +97,12 @@ class QueryGraph(object):
                     else:
                         raise ValueError("Unknown algorithm:", algorithm)
                     orig_fclass = copy.deepcopy(current.submodules[submod])
-                    for child_candidate, inc_depth in replacement_candidates:
-                        # replace the neural function with a candidate
+                    for child_candidate in replacement_candidates:
+                        # replace the predicate hole with a candidate
                         current.submodules[submod] = child_candidate
                         # create the correct child node
                         new_query_graph = copy.deepcopy(self)
-                        if (issubclass(type(child_candidate), dsl.Predicate) and not isinstance(child_candidate, dsl.TrueStar)) or isinstance(child_candidate, dsl.ParameterHole):
-                            new_query_graph.npred += 1
-                        new_query_graph.depth = self.depth + inc_depth
+                        new_query_graph.depth, new_query_graph.npred = get_depth_and_npred(new_query_graph.program)
                         # check if child program can be completed within max_depth
                         if new_query_graph.depth > new_query_graph.max_depth or new_query_graph.npred > new_query_graph.max_npred:
                             continue
