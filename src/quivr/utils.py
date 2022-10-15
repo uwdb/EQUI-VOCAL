@@ -102,6 +102,45 @@ def str_to_program(program_str):
         submodule_list = [str_to_program(submodule) for submodule in submodule_list]
         return program_init(*submodule_list)
 
+def get_depth_and_npred(program):
+    main_program = program.submodules["program"]
+    return _get_depth_and_npred_helper(main_program)
+
+def _get_depth_and_npred_helper(program):
+    if isinstance(program, dsl.ParameterHole):
+        return 0, 1
+    elif issubclass(type(program), dsl.Predicate):
+        return 0, 1
+    elif isinstance(program, dsl.PredicateHole):
+        return 0, 1
+    elif isinstance(program, dsl.ConjunctionOperator):
+        left = program.submodules["function1"]
+        right = program.submodules["function2"]
+        depth_left, npred_left = _get_depth_and_npred_helper(left)
+        depth_right, npred_right = _get_depth_and_npred_helper(right)
+        if isinstance(left, dsl.ConjunctionOperator) or isinstance(right, dsl.ConjunctionOperator):
+            return max(depth_left, depth_right), npred_left + npred_right
+        else:
+            return max(depth_left, depth_right) + 1, npred_left + npred_right
+    elif isinstance(program, dsl.SequencingOperator):
+        left = program.submodules["function1"]
+        right = program.submodules["function2"]
+        depth_left, npred_left = _get_depth_and_npred_helper(left)
+        depth_right, npred_right = _get_depth_and_npred_helper(right)
+        if isinstance(left, dsl.SequencingOperator) or isinstance(right, dsl.SequencingOperator):
+            return max(depth_left, depth_right), npred_left + npred_right
+        else:
+            return max(depth_left, depth_right) + 1, npred_left + npred_right
+    elif isinstance(program, dsl.KleeneOperator):
+        kleene = program.submodules["kleene"]
+        depth_kleene, npred_kleene = _get_depth_and_npred_helper(kleene)
+        if isinstance(kleene, dsl.KleeneOperator):
+            return depth_kleene, npred_kleene
+        else:
+            return depth_kleene + 1, npred_kleene
+    else:
+        raise ValueError("Unknown program type:", type(program))
+
 def construct_train_test(dir_name, query_str, n_labeled_pos=None, n_labeled_neg=None, n_train=None):
     inputs_filename = query_str + "_inputs"
     labels_filename = query_str + "_labels"

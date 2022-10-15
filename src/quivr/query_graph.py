@@ -122,54 +122,55 @@ class QueryGraph(object):
     def construct_candidates_quivr(self, parent_functionclass, submod, has_paramter_hole):
         candidates = []
         if isinstance(parent_functionclass, dsl.KleeneOperator):
-            # omit nested Kleene star operators and Kleene star around sequencing; also Kleene star around <True>* or MinLength doesn't make sense
-            replacement_candidates = [dsl.ConjunctionOperator, dsl.Near, dsl.Far]
+            # omit nested Kleene star operators and Kleene star around sequencing; also Kleene star around <True>* doesn't make sense
+            replacement_candidates = list(self.predicate_list.keys()) + [dsl.ConjunctionOperator]
         elif isinstance(parent_functionclass, dsl.SequencingOperator):
             if submod == "function1":
-                # MinLength shouldn't appear in sequencing
-                replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.TrueStar]
+                replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.TrueStar] + list(self.predicate_list.keys())
             else:
-                # Remove sequencing MinLength; remove semantically equivalent duplicates: associativity of sequencing
-                replacement_candidates = [dsl.ConjunctionOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.TrueStar]
+                # Remove semantically equivalent duplicates: associativity of sequencing
+                replacement_candidates = [dsl.ConjunctionOperator, dsl.KleeneOperator, dsl.TrueStar] + list(self.predicate_list.keys())
         elif isinstance(parent_functionclass, dsl.ConjunctionOperator):
             if submod == "function1":
-                replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength]
+                replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator] + list(self.predicate_list.keys())
             else:
                 left_child = parent_functionclass.submodules["function1"]
                 # remove semantically equivalent duplicates: associativity of conjunction and commutativity of conjunction
-                if isinstance(left_child, dsl.ConjunctionOperator):
-                    replacement_candidates = [dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength]
-                elif isinstance(left_child, dsl.SequencingOperator):
-                    replacement_candidates = [dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength]
+                if isinstance(left_child, dsl.ConjunctionOperator) or isinstance(left_child, dsl.SequencingOperator):
+                    replacement_candidates = [dsl.SequencingOperator, dsl.KleeneOperator] + list(self.predicate_list.keys())
                 elif isinstance(left_child, dsl.KleeneOperator):
-                    replacement_candidates = [dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength]
-                elif isinstance(left_child, dsl.TrueStar):
-                    replacement_candidates = [dsl.Near, dsl.Far, dsl.MinLength]
+                    replacement_candidates = [dsl.KleeneOperator] + list(self.predicate_list.keys())
                 elif isinstance(left_child, dsl.ParameterHole):
                     if isinstance(left_child.get_predicate(), dsl.Near):
                         replacement_candidates = [dsl.Far, dsl.MinLength]
                     elif isinstance(left_child.get_predicate(), dsl.Far):
                         replacement_candidates = [dsl.MinLength]
                     elif isinstance(left_child.get_predicate(), dsl.MinLength):
-                        replacement_candidates = []
-                elif isinstance(left_child, dsl.Near):
-                    replacement_candidates = [dsl.Far, dsl.MinLength]
-                elif isinstance(left_child, dsl.Far):
-                    replacement_candidates = [dsl.MinLength]
+                    replacement_candidates = []
+                    for pred in self.predicate_list.keys():
+                        if pred() > left_child.get_predicate():
+                            replacement_candidates.append(pred)
+                elif issubclass(type(left_child), dsl.Predicate):
+                    replacement_candidates = []
+                    for pred in self.predicate_list.keys():
+                        if pred() > left_child:
+                            replacement_candidates.append(pred)
                 else:
                     raise ValueError
         else:
-            replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.Near, dsl.Far, dsl.MinLength, dsl.TrueStar]
+            replacement_candidates = [dsl.ConjunctionOperator, dsl.SequencingOperator, dsl.KleeneOperator, dsl.TrueStar] + list(self.predicate_list.keys())
         for functionclass in replacement_candidates:
-            if issubclass(functionclass, dsl.Predicate):
-                if (has_paramter_hole and functionclass.has_theta) or (not has_paramter_hole and isinstance(functionclass(), dsl.MinLength)):
+            if issubclass(type(functionclass), dsl.Predicate):
+                if (has_paramter_hole and functionclass.has_theta):
                     candidate = dsl.ParameterHole(functionclass())
+                elif not has_paramter_hole and isinstance(functionclass(), dsl.MinLength):
+                    candidate = dsl.ParameterHole(functionclass(self.max_duration))
                 else:
                     candidate = functionclass()
-                candidates.append([candidate, 0])
+                candidates.append(candidate)
             else:
                 candidate = functionclass()
-                candidates.append([candidate, 1])
+                candidates.append(candidate)
         return candidates
 
     def get_all_children_bu(self):
