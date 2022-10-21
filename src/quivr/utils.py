@@ -13,6 +13,7 @@ import itertools
 import math
 import uuid
 from sklearn.model_selection import train_test_split
+from io import StringIO
 
 def print_program(program, as_dict_key=False):
     # if isinstance(program, dsl.Predicate) or isinstance(program, dsl.Hole):
@@ -299,8 +300,9 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
     Example query:
         Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, Behind)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)
     two types of caches:
-        1. scene graph cache: cache[graph] = vid, fid1, fid2, oids
-        2. sequence cache: cache[sequence] = vid, fid1, fid2, oids
+        1. scene graph cache (without duration constraints): cache[graph] = vid, fid, oids
+        2. sequence cache: cache[sequence] = vid, fid, oids
+        Example: g1, (g1, d1), g2, (g1, d1); (g2, d2), g3, (g1, d1); (g2, d2); (g3, d3)
     Output:
     new_memoize: new cached results from this query, which will be added to the global cache (for multi-threading)
     """
@@ -321,7 +323,7 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                 else:
                     cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid = ANY(%s);".format(inputs_table_name), [input_vids])
             cur.execute("CREATE INDEX IF NOT EXISTS idx_obj_filtered ON Obj_filtered (vid, fid);")
-            # print("select input videos: ", time.time() - _start)
+            print("select input videos: ", time.time() - _start)
             encountered_variables_prev_graphs = []
             encountered_variables_current_graph = []
             for graph_idx, dict in enumerate(current_query):
@@ -333,21 +335,25 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                     for v in p["variables"]:
                         if v not in encountered_variables_current_graph:
                             encountered_variables_current_graph.append(v)
-                # delta_input_vids = []
-                # df_list = [pd.DataFrame()]
-                # signature, vars_mapping = rewrite_vars_name_for_scene_graph(dict)
-                # for input_vid in input_vids:
-                #     if signature in memoize[input_vid]:
-                #         df_list.append(memoize[input_vid][signature])
-                #     else:
-                #         delta_input_vids.append(input_vid)
+                # Read cached results
+                _start_read_cache = time.time()
+                delta_input_vids = []
+                df_list = [pd.DataFrame()]
+                signature, vars_mapping = rewrite_vars_name_for_scene_graph({"scene_graph": scene_graph, "duration_constraint": 1})
+                for input_vid in input_vids:
+                    if signature in memoize[input_vid]:
+                        df_list.append(memoize[input_vid][signature])
+                    else:
+                        delta_input_vids.append(input_vid)
+                cached_results = pd.concat(df_list, ignore_index=True)
+                print("read cache: ", time.time() - _start_read_cache)
 
-                # cached_results = pd.concat(df_list, ignore_index=True)
                 # Execute for unseen videos
+                _start_execute = time.time()
                 encountered_variables_current_graph = sorted(encountered_variables_current_graph, key=lambda x: int(x[1:]))
                 tables = ", ".join(["Obj_filtered as {}".format(v) for v in encountered_variables_current_graph])
                 where_clauses = []
-                # where_clauses.append("{}.vid = ANY(%s)".format(encountered_variables_current_graph[0]))
+                where_clauses.append("{}.vid = ANY(%s)".format(encountered_variables_current_graph[0]))
                 for i in range(len(encountered_variables_current_graph)-1):
                     where_clauses.append("{v1}.vid = {v2}.vid and {v1}.fid = {v2}.fid".format(v1=encountered_variables_current_graph[i], v2=encountered_variables_current_graph[i+1])) # join variables
                 for p in scene_graph:
@@ -379,9 +385,48 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                 oids = ", ".join(oid_list)
                 sql_sring = """CREATE TEMPORARY TABLE g{} AS SELECT {} FROM {} WHERE {};""".format(graph_idx, fields, tables, where_clauses)
                 # print(sql_sring)
-                cur.execute(sql_sring)
-                # print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
+                cur.execute(sql_sring, [delta_input_vids])
+                print("execute for unseen videos: ", time.time() - _start_execute)
+                # Store new cached results
+                _start_store_cache = time.time()
+                for input_vid in delta_input_vids:
+                    new_memoize[input_vid][signature] = pd.DataFrame()
+                cur.execute("SELECT * FROM g{}".format(graph_idx))
+                df = pd.DataFrame(cur.fetchall())
+                if df.shape[0]: # if results not empty
+                    df.columns = ["vid", "fid"] + [vars_mapping[oid] for oid in oid_list]
+                    for vid, group in df.groupby("vid"):
+                        cached_df = group.reset_index(drop=True)
+                        new_memoize[vid][signature] = cached_df
+                print("store cache: ", time.time() - _start_store_cache)
+                # Appending cached results of seen videos:
+                _start_append_cache = time.time()
+                if cached_results.shape[0]:
+                    tem_table_insert_data = cached_results.copy()
+                    tem_table_insert_data.columns = ["vid", "fid"] + oid_list
+                    for k, v in vars_mapping.items():
+                        tem_table_insert_data[k] = cached_results[v]
+                    buffer = StringIO()
+                    tem_table_insert_data.to_csv(buffer, header=False, index = False)
+                    buffer.seek(0)
+                    cur.copy_from(buffer, "g{}".format(graph_idx), sep=",")
+                print("append cache: ", time.time() - _start_append_cache)
+                print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
 
+                # Read cached results
+                _start_read_cache = time.time()
+                delta_input_vids = []
+                df_list = [pd.DataFrame()]
+                signature = rewrite_program_postgres(current_query[:graph_idx+1])
+                for input_vid in input_vids:
+                    if signature in memoize[input_vid]:
+                        df_list.append(memoize[input_vid][signature])
+                    else:
+                        delta_input_vids.append(input_vid)
+                cached_results = pd.concat(df_list, ignore_index=True)
+                print("read cache: ", time.time() - _start_read_cache)
+
+                _start_filtered = time.time()
                 if graph_idx > 0:
                     obj_union = copy.deepcopy(encountered_variables_prev_graphs)
                     obj_intersection = []
@@ -407,15 +452,25 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                     CREATE TEMPORARY TABLE g{graph_idx}_filtered AS (
                         SELECT t0.vid, t1.fid, {obj_union_fields}
                         FROM g{graph_idx_prev}_contiguous t0, g{graph_idx} t1
-                        WHERE t0.vid = t1.vid AND {obj_intersection_fields} AND t0.fid < t1.fid
+                        WHERE t0.vid = ANY(%s) AND t0.vid = t1.vid AND {obj_intersection_fields} AND t0.fid < t1.fid
                     );
                     """.format(graph_idx=graph_idx, graph_idx_prev=graph_idx-1, obj_union_fields=obj_union_fields, obj_intersection_fields=obj_intersection_fields)
                     # print(sql_string)
-                    cur.execute(sql_string)
+                    cur.execute(sql_string, [delta_input_vids])
                 else:
+                    sql_string = """
+                    CREATE TEMPORARY TABLE g{graph_idx}_filtered AS (
+                        SELECT *
+                        FROM g{graph_idx}
+                        WHERE vid = ANY(%s)
+                    );
+                    """.format(graph_idx=graph_idx)
+                    cur.execute(sql_string, [delta_input_vids])
                     obj_union = encountered_variables_current_graph
+                print("filtered: ", time.time() - _start_filtered)
 
                 # Generate scene graph sequence:
+                _start_windowed = time.time()
                 table_name = "g{}_filtered".format(graph_idx) if graph_idx > 0 else "g{}".format(graph_idx)
                 obj_union_fields = ", ".join(["{}_oid".format(v) for v in obj_union])
                 _start = time.time()
@@ -428,7 +483,9 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                 """.format(graph_idx=graph_idx, duration_constraint=duration_constraint, obj_union_fields=obj_union_fields, table_name=table_name)
                 # print(sql_string)
                 cur.execute(sql_string)
+                print("windowed: ", time.time() - _start_windowed)
 
+                _start_contiguous = time.time()
                 sql_string = """
                     CREATE TEMPORARY TABLE g{graph_idx}_contiguous AS (
                     SELECT vid, {obj_union_fields}, min(fid_offset) AS fid
@@ -439,48 +496,30 @@ def postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids,
                 """.format(graph_idx=graph_idx, obj_union_fields=obj_union_fields, duration_constraint=duration_constraint)
                 # print(sql_string)
                 cur.execute(sql_string)
-
+                print("contiguous: ", time.time() - _start_contiguous)
+                # Store new cached results
+                _start_store_cache = time.time()
+                for input_vid in delta_input_vids:
+                    new_memoize[input_vid][signature] = pd.DataFrame()
+                cur.execute("SELECT * FROM g{}_contiguous".format(graph_idx))
+                df = pd.DataFrame(cur.fetchall())
+                if df.shape[0]: # if results not empty
+                    df.columns = [x.name for x in cur.description]
+                    for vid, group in df.groupby("vid"):
+                        cached_df = group.reset_index(drop=True)
+                        new_memoize[vid][signature] = cached_df
+                print("store cache: ", time.time() - _start_store_cache)
+                # Appending cached results of seen videos:
+                _start_append = time.time()
+                if cached_results.shape[0]:
+                    # save dataframe to an in memory buffer
+                    buffer = StringIO()
+                    cached_results.to_csv(buffer, header=False, index = False)
+                    buffer.seek(0)
+                    cur.copy_from(buffer, "g{}_contiguous".format(graph_idx), sep=",")
+                print("append: ", time.time() - _start_append)
                 encountered_variables_prev_graphs = obj_union
                 encountered_variables_current_graph = []
-                # Store new cached results
-                # _start = time.time()
-                # cur.execute("SELECT * FROM g{}_seq_view".format(graph_idx))
-                # df = pd.DataFrame(cur.fetchall())
-                # if df.shape[0]: # if results not empty
-                #     df.columns = ["vid", "fid1", "fid2"] + [vars_mapping[oid] for oid in oid_list]
-                #     for vid, group in df.groupby("vid"):
-                #         cached_df = group.reset_index(drop=True)
-                #         new_memoize[vid][signature] = cached_df
-
-                # # Appending cached results of seen videos:
-                # if cached_results.shape[0]:
-                #     tem_table_insert_data = cached_results.copy()
-                #     tem_table_insert_data.columns = ["vid", "fid1", "fid2"] + oid_list
-                #     for k, v in vars_mapping.items():
-                #         tem_table_insert_data[k] = cached_results[v]
-                #     buffer = StringIO()
-                #     tem_table_insert_data.to_csv(buffer, header=False, index = False)
-                #     buffer.seek(0)
-                #     cur.copy_from(buffer, "g{}_seq_view".format(graph_idx), sep=",")
-
-
-
-                # # Store new cached results
-                # cur.execute("SELECT * FROM q{}".format(graph_idx))
-                # df = pd.DataFrame(cur.fetchall())
-                # if df.shape[0]: # if results not empty
-                #     df.columns = [x.name for x in cur.description]
-                #     for vid, group in df.groupby("vid"):
-                #         cached_df = group.reset_index(drop=True)
-                #         new_memoize[vid][signature] = cached_df
-
-                # # Appending cached results of seen videos:
-                # if cached_results.shape[0]:
-                #     # save dataframe to an in memory buffer
-                #     buffer = StringIO()
-                #     cached_results.to_csv(buffer, header=False, index = False)
-                #     buffer.seek(0)
-                #     cur.copy_from(buffer, "q{}".format(graph_idx), sep=",")
 
             cur.execute("SELECT DISTINCT vid FROM g{}_contiguous".format(len(current_query) - 1))
             # print("SELECT DISTINCT vid FROM g{}_contiguous".format(len(current_query) - 1))
@@ -661,6 +700,7 @@ def rewrite_vars_name_for_scene_graph(orig_dict):
 
 
 def quivr_str_to_postgres_program(quivr_str):
+    # Start(Conjunction(Conjunction(Conjunction(Kleene(Behind), Kleene(Behind)), Kleene(Conjunction(Kleene(LeftQuadrant), Kleene(Near_1)))), Behind))
     if quivr_str.startswith("Near"):
         predicate = {
                         "predicate": "Near",
@@ -772,6 +812,7 @@ def quivr_str_to_postgres_program(quivr_str):
             return scene_graph
 
 if __name__ == '__main__':
+    dsn = "dbname=myinner_db user=enhaoz host=localhost"
     # correct_filename("synthetic-fn_error_rate_0.3-fp_error_rate_0.075")
     # get_query_str_from_filename("inputs/synthetic_rare",)
     # construct_train_test("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Back), True*), Left), True*), Conjunction(Conjunction(Back, Left), Far_0.9)), True*)", n_train=300)
@@ -779,31 +820,20 @@ if __name__ == '__main__':
     # query_str = rewrite_program_postgres(current_query)
     # print(query_str)
     # query_str = "Near_1.05(o0, o1); RightQuadrant(o0)"
-    # query_str = "Near_1.05(o0, o1); Conjunction(Near_1.05(o0, o1), RightQuadrant(o0))"
-    query_str = "Near_1.05(o0, o1); Far_0.9(o0, o1); Near_1.05(o0, o1)"
-    current_query = str_to_program_postgres(query_str)
-    predicate_list = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "Gray", "parameters": None, "nargs": 1}, {"name": "Red", "parameters": None, "nargs": 1}, {"name": "Blue", "parameters": None, "nargs": 1}, {"name": "Green", "parameters": None, "nargs": 1}, {"name": "Brown", "parameters": None, "nargs": 1}, {"name": "Cyan", "parameters": None, "nargs": 1}, {"name": "Purple", "parameters": None, "nargs": 1}, {"name": "Yellow", "parameters": None, "nargs": 1}, {"name": "Cube", "parameters": None, "nargs": 1}, {"name": "Sphere", "parameters": None, "nargs": 1}, {"name": "Cylinder", "parameters": None, "nargs": 1}, {"name": "Metal", "parameters": None, "nargs": 1}, {"name": "Rubber", "parameters": None, "nargs": 1}, {"name": "Center", "parameters": 0.004, "nargs": 1}, {"name": "Edge", "parameters": 0.5, "nargs": 1}]
-    dsn = "dbname=myinner_db user=enhaoz host=localhost"
-    with psycopg.connect(dsn) as conn:
-        with conn.cursor() as cur:
-            # Create predicate functions (if not exists)
-            for predicate in predicate_list:
-                args = ", ".join(["text, text, text, double precision, double precision, double precision, double precision"] * predicate["nargs"])
-                if predicate["parameters"]:
-                    args = "double precision, " + args
-                cur.execute("CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}' LANGUAGE C STRICT;".format(name=predicate["name"], args=args))
-            conn.commit()
+    # query_str = "Duration(Conjunction(Near_1.05(o0, o1), RightOf(o1, o2)), 3); Duration(Conjunction(Conjunction(Cyan(o1), LeftQuadrant(o0)), Metal(o0)), 2); Duration(Conjunction(LeftOf(o0, o2), TopQuadrant(o1)), 4)"
+    # query_str = "Near_1.05(o0, o1); Far_0.9(o0, o1); Near_1.05(o0, o1)"
+    # current_query = str_to_program_postgres(query_str)
 
-    memoize = [LRU(10000) for _ in range(10122)]
+    # memoize = [LRU(10000) for _ in range(10000)]
     # inputs_table_name = "Obj_clevrer"
-    inputs_table_name = "Obj_trajectories"
-    _start = time.time()
-    input_vids = [4857, 1721, 6339, 101, 8647, 1322, 138, 5260, 8041, 4102, 5985, 5189, 8165, 1067, 9325, 680, 5866, 9811, 124, 2120, 6864, 603, 5268, 5290, 9406, 7193, 9875, 5086, 8839, 3897, 4540, 5572, 3990, 2008, 3259, 8255, 8831, 2242, 7228, 136, 841, 5283, 3182, 7018, 2266, 8859, 1716, 9134, 827, 8215, 3490, 3251, 1958, 5831, 6874, 6547, 10078, 3368, 8337, 6209, 4531, 7609, 5312, 9564, 5156, 9722, 6543, 9063, 4104, 9395, 6000, 5361, 4562, 9154, 273, 7902, 1762, 3592, 6496, 5135, 329, 2153, 8303, 1849, 3464, 10067, 3489, 4822, 7251, 9771, 9713, 6867, 1832, 3247, 5718, 10044, 3932, 6595, 1434, 9280, 5002, 7480, 9685, 7471, 2246, 663, 9753, 9551, 4990, 2383, 1879, 9023, 2271, 1401, 5196, 6784, 9733, 9738, 2590, 7267, 8599, 2369, 108, 5262, 8192, 1620, 356, 1599, 1345, 6674, 6648, 3450, 8661, 1572, 725, 9093, 1205, 6152, 10072, 1237, 6284, 3245, 5982, 9983, 6447, 3176, 9766, 8999, 4671, 5426, 6974, 9171, 8188, 3421, 2362, 6055, 1438, 2976, 2747, 7196, 2772, 161, 3813, 2207, 7713, 5443, 3021, 8372, 3686, 5173, 9918, 7963, 6990, 5871, 4907, 2542, 2721, 1813, 6690, 1955, 1922, 4363, 193, 6321, 4211, 749, 6796, 3287, 5224, 86, 4996, 2452, 3325, 9780, 6037, 8849, 7207, 1353, 1581, 1229, 8475, 6802, 1687, 6024, 4739, 6399, 5457, 6025, 1591, 3783, 8864, 3254, 6609, 7315, 1953, 1782, 8972, 1939, 3169, 846, 2767, 10043, 254, 92, 2503, 3278, 4295, 5029, 5983, 2685, 6332, 4945, 5678, 4059, 6555, 7231, 1824, 9315, 2608, 7113, 7244, 43, 4939, 3193, 1736, 5455, 7429, 7335, 664, 8481, 253, 9341, 7264, 7488, 8838, 4398, 951, 5792, 4169, 6480, 5917, 7830, 1192, 7122, 628, 2472, 6915, 2576, 5640, 1286, 8184, 3921, 4088, 2428, 594, 3385, 9858, 2291, 4150, 8530, 7109, 1893, 4924, 3258, 8729, 9647, 7249, 3536, 8881, 5399, 1968, 8444, 1959, 8515, 1311, 1218, 5067, 8333, 5120, 9338, 2180, 7773, 9588, 9956, 883, 1504, 6514, 8375, 7211, 9263, 2875, 9320, 4137, 2612, 9791, 8449, 880, 7138, 596, 3372, 3992, 5265, 9128, 7198, 5072, 4555, 5918, 8293, 8608, 7700, 6472, 5921, 6847, 291, 3178, 3662, 6088, 4957, 4565, 7088, 967, 3496, 3556, 2717, 4593, 5555, 5031, 7245, 9989, 9246, 1834, 2268, 8779, 1911, 9388, 9438, 1240, 8957, 3858, 3576, 955, 908, 7040, 652, 6116, 8425, 3614, 6165, 2521, 9987, 1313, 779, 2408, 7459, 6468, 1204, 4162, 4231, 3552, 7154, 6726, 5966, 8103, 5302, 9409, 6740, 9002, 7490, 6431, 8813, 9001, 5955, 9584, 5651, 7287, 6997, 2549, 5197, 9146, 7283, 1222, 1840, 404, 9595, 7715, 8133, 7334, 18, 8664, 3079, 309, 9345, 2305, 3414, 6263, 10075, 7172, 1569, 5403, 3266, 6482, 5137, 6689, 1809, 3408, 2972, 7469, 8113, 3519, 6231, 7706, 2809, 9489, 9649, 484, 5670, 721, 7835, 4506, 7094, 5867, 372, 6227, 1925, 9303, 8737, 119, 4892, 1884, 2730, 7391, 420, 7779, 7182, 9213, 2799, 4404, 2627, 6678, 3179, 6598, 8056, 1881, 7744, 684, 3929, 1695, 2779, 9109, 1103, 1478, 881, 4729, 7394, 8427, 6719, 8780, 8883, 4296, 770, 7566, 9917, 4768, 4884, 9579, 6637, 8848, 25, 8207, 2433, 690, 8326, 7431, 8508, 5430, 7554, 9856, 3405, 243, 111]
-    # outputs, _ = postgres_execute(dsn, current_query, memoize, inputs_table_name, list(range(0, 300)), is_trajectory=False)
-    outputs, new_memoize = postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids, is_trajectory=True, sampling_rate=4)
-    print(len(outputs))
-    print(outputs)
-    print("time", time.time() - _start)
+    # inputs_table_name = "Obj_trajectories"
+    # _start = time.time()
+    # input_vids = [4857, 1721, 6339, 101, 8647, 1322, 138, 5260, 8041, 4102, 5985, 5189, 8165, 1067, 9325, 680, 5866, 9811, 124, 2120, 6864, 603, 5268, 5290, 9406, 7193, 9875, 5086, 8839, 3897, 4540, 5572, 3990, 2008, 3259, 8255, 8831, 2242, 7228, 136, 841, 5283, 3182, 7018, 2266, 8859, 1716, 9134, 827, 8215, 3490, 3251, 1958, 5831, 6874, 6547, 10078, 3368, 8337, 6209, 4531, 7609, 5312, 9564, 5156, 9722, 6543, 9063, 4104, 9395, 6000, 5361, 4562, 9154, 273, 7902, 1762, 3592, 6496, 5135, 329, 2153, 8303, 1849, 3464, 10067, 3489, 4822, 7251, 9771, 9713, 6867, 1832, 3247, 5718, 10044, 3932, 6595, 1434, 9280, 5002, 7480, 9685, 7471, 2246, 663, 9753, 9551, 4990, 2383, 1879, 9023, 2271, 1401, 5196, 6784, 9733, 9738, 2590, 7267, 8599, 2369, 108, 5262, 8192, 1620, 356, 1599, 1345, 6674, 6648, 3450, 8661, 1572, 725, 9093, 1205, 6152, 10072, 1237, 6284, 3245, 5982, 9983, 6447, 3176, 9766, 8999, 4671, 5426, 6974, 9171, 8188, 3421, 2362, 6055, 1438, 2976, 2747, 7196, 2772, 161, 3813, 2207, 7713, 5443, 3021, 8372, 3686, 5173, 9918, 7963, 6990, 5871, 4907, 2542, 2721, 1813, 6690, 1955, 1922, 4363, 193, 6321, 4211, 749, 6796, 3287, 5224, 86, 4996, 2452, 3325, 9780, 6037, 8849, 7207, 1353, 1581, 1229, 8475, 6802, 1687, 6024, 4739, 6399, 5457, 6025, 1591, 3783, 8864, 3254, 6609, 7315, 1953, 1782, 8972, 1939, 3169, 846, 2767, 10043, 254, 92, 2503, 3278, 4295, 5029, 5983, 2685, 6332, 4945, 5678, 4059, 6555, 7231, 1824, 9315, 2608, 7113, 7244, 43, 4939, 3193, 1736, 5455, 7429, 7335, 664, 8481, 253, 9341, 7264, 7488, 8838, 4398, 951, 5792, 4169, 6480, 5917, 7830, 1192, 7122, 628, 2472, 6915, 2576, 5640, 1286, 8184, 3921, 4088, 2428, 594, 3385, 9858, 2291, 4150, 8530, 7109, 1893, 4924, 3258, 8729, 9647, 7249, 3536, 8881, 5399, 1968, 8444, 1959, 8515, 1311, 1218, 5067, 8333, 5120, 9338, 2180, 7773, 9588, 9956, 883, 1504, 6514, 8375, 7211, 9263, 2875, 9320, 4137, 2612, 9791, 8449, 880, 7138, 596, 3372, 3992, 5265, 9128, 7198, 5072, 4555, 5918, 8293, 8608, 7700, 6472, 5921, 6847, 291, 3178, 3662, 6088, 4957, 4565, 7088, 967, 3496, 3556, 2717, 4593, 5555, 5031, 7245, 9989, 9246, 1834, 2268, 8779, 1911, 9388, 9438, 1240, 8957, 3858, 3576, 955, 908, 7040, 652, 6116, 8425, 3614, 6165, 2521, 9987, 1313, 779, 2408, 7459, 6468, 1204, 4162, 4231, 3552, 7154, 6726, 5966, 8103, 5302, 9409, 6740, 9002, 7490, 6431, 8813, 9001, 5955, 9584, 5651, 7287, 6997, 2549, 5197, 9146, 7283, 1222, 1840, 404, 9595, 7715, 8133, 7334, 18, 8664, 3079, 309, 9345, 2305, 3414, 6263, 10075, 7172, 1569, 5403, 3266, 6482, 5137, 6689, 1809, 3408, 2972, 7469, 8113, 3519, 6231, 7706, 2809, 9489, 9649, 484, 5670, 721, 7835, 4506, 7094, 5867, 372, 6227, 1925, 9303, 8737, 119, 4892, 1884, 2730, 7391, 420, 7779, 7182, 9213, 2799, 4404, 2627, 6678, 3179, 6598, 8056, 1881, 7744, 684, 3929, 1695, 2779, 9109, 1103, 1478, 881, 4729, 7394, 8427, 6719, 8780, 8883, 4296, 770, 7566, 9917, 4768, 4884, 9579, 6637, 8848, 25, 8207, 2433, 690, 8326, 7431, 8508, 5430, 7554, 9856, 3405, 243, 111]
+    # outputs, new_memoize = postgres_execute(dsn, current_query, memoize, inputs_table_name, list(range(300)), is_trajectory=False)
+    # outputs, new_memoize = postgres_execute(dsn, current_query, memoize, inputs_table_name, input_vids, is_trajectory=True, sampling_rate=4)
+    # print(len(outputs))
+    # print(outputs)
+    # print("time", time.time() - _start)
 
     # preds = []
     # for input in input_vids:
@@ -817,12 +847,25 @@ if __name__ == '__main__':
     #     for k, v in memo_dict.items():
     #         memoize[i][k] = v
 
-    # _start = time.time()
     # current_query = [{'scene_graph': [{'predicate': 'LeftOf', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1}, {'scene_graph': [{'predicate': 'RightQuadrant', 'parameter': None, 'variables': ['o0']}], 'duration_constraint': 1}, {'scene_graph': [{'predicate': 'LeftQuadrant', 'parameter': None, 'variables': ['o2']}, {'predicate': 'RightOf', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1}]
-    # # outputs, _ = postgres_execute(dsn, current_query, memoize, inputs_table_name, list(range(0, 300)), is_trajectory=True)
-    # outputs, new_memoize = postgres_execute(dsn, current_query, memoize, inputs_table_name, list(range(0, 305)), is_trajectory=False)
-    # print(len(outputs))
-    # print(outputs)
-    # print("time", time.time() - _start)
-
-    # # TODO: benchmark: 1. reevaluate a query over 5 more new videos. 2. evaluate a query whose subqueries are already evaluated.
+    query_str = "Duration(LeftOf(o0, o1), 5); Conjunction(Conjunction(Conjunction(Conjunction(Behind(o0, o2), Cyan(o2)), FrontOf(o0, o1)), RightQuadrant(o2)), Sphere(o2)); Duration(RightQuadrant(o2), 3)"
+    current_query = str_to_program_postgres(query_str)
+    memoize = [LRU(10000) for _ in range(10000)]
+    inputs_table_name = "Obj_clevrer"
+    _start = time.time()
+    outputs, new_memoize = postgres_execute(dsn, current_query, memoize, inputs_table_name, 301, is_trajectory=False)
+    print("time", time.time() - _start)
+    _start = time.time()
+    outputs, new_memoize = postgres_execute(dsn, current_query, memoize, inputs_table_name, 300, is_trajectory=False)
+    print("time", time.time() - _start)
+    print(len(outputs))
+    print(outputs)
+    for i, memo_dict in enumerate(new_memoize):
+            for k, v in memo_dict.items():
+                memoize[i][k] = v
+    _start = time.time()
+    outputs, new_memoize = postgres_execute(dsn, current_query, memoize, inputs_table_name, 301, is_trajectory=False)
+    print("time", time.time() - _start)
+    print(len(outputs))
+    print(outputs)
+    # # # TODO: benchmark: 1. reevaluate a query over 5 more new videos. 2. evaluate a query whose subqueries are already evaluated.
