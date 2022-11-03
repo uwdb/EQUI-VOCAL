@@ -120,12 +120,33 @@ class SequencingOperator(BaseOperator):
 #             # M * pow * pow
 #             return np.max(np.minimum(self.submodules["iteration"].execute(input, label, memoize)[0][..., np.newaxis], np.max(np.minimum(pow[..., np.newaxis], pow[np.newaxis, ...]), axis=1)), axis=1)
 
+# NOTE: the implementation is actually Kleene Plus. Otherwise, Quivr takes forever.
 class KleeneOperator(BaseOperator):
     def __init__(self, function1=None):
         if function1 is None:
             function1 = PredicateHole()
         submodules = { "kleene": function1}
         super().__init__(submodules, name="Kleene")
+
+    # def execute(self, input, label, memoize, new_memoize):
+    #     subquery_str = utils.print_program(self)
+    #     if subquery_str in memoize:
+    #         return memoize[subquery_str], new_memoize
+    #     if subquery_str in new_memoize:
+    #         return new_memoize[subquery_str], new_memoize
+    #     identity_mtx = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+    #     np.fill_diagonal(identity_mtx, np.inf)
+
+    #     if len(input[0]) == 0:
+    #         result = identity_mtx
+    #     else:
+    #         Q_mtx, new_memoize = self.submodules["kleene"].execute(input, label, memoize, new_memoize)
+    #         base = np.maximum(identity_mtx, Q_mtx)
+    #         result = power(base, len(input[0]))
+
+    #     new_memoize[subquery_str] = result
+
+    #     return result, new_memoize
 
     def execute(self, input, label, memoize, new_memoize):
         subquery_str = utils.print_program(self)
@@ -137,11 +158,14 @@ class KleeneOperator(BaseOperator):
         np.fill_diagonal(identity_mtx, np.inf)
 
         if len(input[0]) == 0:
-            result = identity_mtx
+            result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        elif len(input[0]) == 1:
+            result, new_memoize = self.submodules["kleene"].execute(input, label, memoize, new_memoize)
         else:
             Q_mtx, new_memoize = self.submodules["kleene"].execute(input, label, memoize, new_memoize)
-            base = np.maximum(identity_mtx, Q_mtx)
-            result = power(base, len(input[0]))
+            base = np.maximum(identity_mtx, Q_mtx) # Q + I
+            result = power(base, len(input[0])-1) # (Q + I)^(n-1)
+            result = np.amax(np.minimum(Q_mtx[..., np.newaxis], result[np.newaxis, ...]), axis=1) # Q * (Q + I)^(n-1)
 
         new_memoize[subquery_str] = result
 
@@ -585,7 +609,9 @@ class ParameterHole(Hole):
 
     def execute(self, input, label, memoize, new_memoize):
         if label == 1:
-            self.predicate.set_theta(-np.inf)
+            # self.predicate.set_theta(-np.inf)
+            self.predicate.set_theta(self.value_range[0])
         else:
-            self.predicate.set_theta(np.inf)
+            # self.predicate.set_theta(np.inf)
+            self.predicate.set_theta(self.value_range[1])
         return self.predicate.execute(input, label, memoize, new_memoize)
