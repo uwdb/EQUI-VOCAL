@@ -253,7 +253,7 @@ class Near(Predicate):
         super().__init__("Near")
 
     def init_value_range(self):
-        return [-2, 0]
+        return [-1.2, -0.8]
 
     def execute_with_hole(self, input, label, memoize, new_memoize):
         assert len(input) == 2
@@ -291,7 +291,7 @@ class Near(Predicate):
 class Far(Predicate):
     has_theta=True
 
-    def __init__(self, theta=3, step=0.2, with_hole=False):
+    def __init__(self, theta=3, step=0.5, with_hole=False):
         self.theta = theta
         self.step = step
         self.with_hole = with_hole
@@ -473,7 +473,7 @@ class TrueStar(Predicate):
 class MinLength(Predicate):
     has_theta=True
 
-    def __init__(self, max_duration=1, theta=1, step=1, with_hole=False):
+    def __init__(self, max_duration=5, theta=1, step=1, with_hole=False):
         self.theta = theta
         self.step = step
         self.with_hole = with_hole

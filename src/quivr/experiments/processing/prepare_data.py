@@ -14,9 +14,9 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import current_thread, get_ident, get_native_id
 import scipy.stats as stats
 from glob import glob
-from torchvision.ops import masks_to_boxes
+# from torchvision.ops import masks_to_boxes
 import pycocotools._mask as _mask
-import torch
+# import torch
 
 segment_length = 128
 # random.seed(1234)
@@ -105,7 +105,7 @@ def prepare_trajectory_pairs():
         video_list_evaluation = json.loads(f.read())
 
     sample_inputs = []
-
+    labels = []
     for video_i, (video_basename, _, _) in enumerate(video_list_evaluation):
         print(video_i, video_basename)
         # Construct object list
@@ -121,6 +121,7 @@ def prepare_trajectory_pairs():
         with open(file, 'r') as f:
             data = json.load(f)
         objects = data["ground_truth"]["objects"]
+        collisions = data["ground_truth"]["collisions"]
 
         # Start querying
         for obj1_str_id, obj2_str_id in itertools.combinations(obj_set, 2):
@@ -133,12 +134,14 @@ def prepare_trajectory_pairs():
             for obj in objects:
                 if obj["color"] == obj1_id[1] and obj["material"] == obj1_id[0] and obj["shape"] == obj1_id[2]:
                     obj1 = obj
+                    oid1 = obj["id"]
                 if obj["color"] == obj2_id[1] and obj["material"] == obj2_id[0] and obj["shape"] == obj2_id[2]:
                     obj2 = obj
+                    oid2 = obj["id"]
 
             if obj1 and obj2:
                 sample_input = [[], []]
-
+                label = 0
                 for frame_id in range(segment_length):
                     obj1 = None
                     obj2 = None
@@ -152,12 +155,18 @@ def prepare_trajectory_pairs():
                     if obj1 and obj2:
                         sample_input[0].append(obj1[:4])
                         sample_input[1].append(obj2[:4])
-
+                for collision in collisions:
+                    if oid1 in collision["objects"] and oid2 in collision["objects"]:
+                        label = 1
+                        break
                 sample_inputs.append(sample_input)
+                labels.append(label)
     print("Generated {} input pairs".format(len(sample_inputs)))
 
-    with open(os.path.join("inputs/trajectory_pairs.json"), 'w') as f:
+    with open(os.path.join("inputs/collision_inputs.json"), 'w') as f:
         f.write(json.dumps(sample_inputs))
+    with open(os.path.join("inputs/collision_labels.json"), 'w') as f:
+        f.write(json.dumps(labels))
 
 def prepare_trajectory_pairs_given_target_query(program_str, ratio_lower_bound, ratio_upper_bound, dataset_name):
     """
@@ -278,7 +287,7 @@ def prepare_postgres_data():
 def prepare_postgres_data_test_trajectories():
     # schema: oid, vid, fid, shape, color, material, x1, y1, x2, y2
     csv_data = []
-    with open("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/trajectory_pairs.json", 'r') as f:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/trajectory_pairs.json", 'r') as f:
         data = json.loads(f.read())
 
     for vid, pair in enumerate(data):
@@ -294,11 +303,29 @@ def prepare_postgres_data_test_trajectories():
         # write multiple rows
         writer.writerows(csv_data)
 
+def prepare_postgres_collision():
+    # schema: oid, vid, fid, shape, color, material, x1, y1, x2, y2
+    csv_data = []
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision/collision.json", 'r') as f:
+        data = json.loads(f.read())
+
+    for vid, pair in enumerate(data):
+        t1 = pair[0]
+        t2 = pair[1]
+        assert(len(t1) == len(t2))
+        for fid, (bbox1, bbox2) in enumerate(zip(t1, t2)):
+            csv_data.append([0, vid, fid, "cube", "red", "metal", bbox1[0], bbox1[1], bbox1[2], bbox1[3]])
+            csv_data.append([1, vid, fid, "cube", "red", "metal", bbox2[0], bbox2[1], bbox2[2], bbox2[3]])
+
+    with open('/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/obj_collision.csv', 'w') as f:
+        writer = csv.writer(f)
+        # write multiple rows
+        writer.writerows(csv_data)
+
 if __name__ == '__main__':
-    pass
     # predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.BackOf: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None}
     # generate_queries(n_queries=50, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=5, depth=3, max_duration=5, predicate_dict=predicate_dict, max_workers=32, dataset_name="synthetic_rare")
 
     # prepare_noisy_data(fn_error_rate=0.1, fp_error_rate=0.01, dataset_name="synthetic")
     # prepare_trajectory_pairs_given_target_query("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Front, Left)), True*), Duration(Left, 2)), True*), Conjunction(Far_0.9, Left)), True*)")
-    prepare_postgres_data_test_trajectories()
+    prepare_postgres_collision()

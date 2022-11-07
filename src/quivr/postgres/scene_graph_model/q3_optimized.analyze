@@ -1,188 +1,266 @@
+Postgres port: 8989
+Creating postgres database
+The files belonging to this database system will be owned by user "enhaoz".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "C".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /gscratch/balazinska/enhaoz/mylocal_db_49da356f-a320-4ac9-8e9d-4b8aed27d781 ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... US/Pacific
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+
+Success. You can now start the database server using:
+
+    pg_ctl -D /gscratch/balazinska/enhaoz/mylocal_db_49da356f-a320-4ac9-8e9d-4b8aed27d781 -l logfile start
+
+waiting for server to start....2022-10-22 19:36:47.226 PDT [41616] LOG:  starting PostgreSQL 12.9 on x86_64-conda-linux-gnu, compiled by x86_64-conda-linux-gnu-cc (crosstool-NG 1.24.0.133_b0863d8_dirty) 7.5.0, 64-bit
+2022-10-22 19:36:47.227 PDT [41616] LOG:  listening on IPv4 address "127.0.0.1", port 8989
+2022-10-22 19:36:47.229 PDT [41616] LOG:  listening on Unix socket "/tmp/.s.PGSQL.8989"
+2022-10-22 19:36:47.241 PDT [41617] LOG:  database system was shut down at 2022-10-22 19:36:46 PDT
+2022-10-22 19:36:47.245 PDT [41616] LOG:  database system is ready to accept connections
+ done
+server started
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+waiting for server to shut down....2022-10-22 19:36:47.865 PDT [41616] LOG:  received fast shutdown request
+2022-10-22 19:36:47.866 PDT [41616] LOG:  aborting any active transactions
+2022-10-22 19:36:47.867 PDT [41616] LOG:  background worker "logical replication launcher" (PID 41623) exited with exit code 1
+2022-10-22 19:36:47.867 PDT [41618] LOG:  shutting down
+2022-10-22 19:36:47.895 PDT [41616] LOG:  database system is shut down
+ done
+server stopped
+waiting for server to start....2022-10-22 19:36:47.973 PDT [42184] LOG:  starting PostgreSQL 12.9 on x86_64-conda-linux-gnu, compiled by x86_64-conda-linux-gnu-cc (crosstool-NG 1.24.0.133_b0863d8_dirty) 7.5.0, 64-bit
+2022-10-22 19:36:47.973 PDT [42184] LOG:  listening on IPv4 address "127.0.0.1", port 8989
+2022-10-22 19:36:47.975 PDT [42184] LOG:  listening on Unix socket "/tmp/.s.PGSQL.8989"
+2022-10-22 19:36:48.251 PDT [42185] LOG:  database system was shut down at 2022-10-22 19:36:47 PDT
+2022-10-22 19:36:48.259 PDT [42184] LOG:  database system is ready to accept connections
+ done
+server started
+CREATE TABLE
+CREATE TABLE
+COPY 5435251
+CREATE INDEX
+COPY 1957046
+CREATE INDEX
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
                                                               QUERY PLAN                                                               
 ---------------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on obj_clevrer  (cost=3061.29..68209.37 rows=163207 width=62) (actual time=13.368..76.922 rows=165177 loops=1)
+ Bitmap Heap Scan on obj_clevrer  (cost=19515.09..105269.97 rows=1811750 width=140) (actual time=8.191..24.961 rows=165266 loops=1)
    Recheck Cond: (vid < 300)
    Heap Blocks: exact=2204
-   ->  Bitmap Index Scan on idx_obj_clevrer  (cost=0.00..3020.48 rows=163207 width=0) (actual time=13.007..13.008 rows=165266 loops=1)
+   ->  Bitmap Index Scan on idx_obj_clevrer  (cost=0.00..19062.16 rows=1811750 width=0) (actual time=7.986..7.986 rows=165266 loops=1)
          Index Cond: (vid < 300)
- Planning Time: 3.864 ms
- Execution Time: 183.892 ms
+ Planning Time: 0.334 ms
+ Execution Time: 65.907 ms
 (7 rows)
 
 CREATE INDEX
-                                                            QUERY PLAN                                                            
-----------------------------------------------------------------------------------------------------------------------------------
- Merge Join  (cost=16636.50..18565.18 rows=75408 width=16) (actual time=150.317..184.864 rows=89849 loops=1)
+                                                                        QUERY PLAN                                                                         
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Join  (cost=0.84..12805.20 rows=75491 width=16) (actual time=0.060..87.885 rows=89684 loops=1)
    Merge Cond: ((o0.vid = o1.vid) AND (o0.fid = o1.fid))
    Join Filter: (o0.oid <> o1.oid)
-   Rows Removed by Join Filter: 25664
-   ->  Sort  (cost=8318.25..8455.90 rows=55059 width=12) (actual time=71.002..74.017 rows=50014 loops=1)
-         Sort Key: o0.vid, o0.fid
-         Sort Method: quicksort  Memory: 3881kB
-         ->  Seq Scan on obj_filtered o0  (cost=0.00..3982.71 rows=55059 width=12) (actual time=0.113..41.053 rows=50014 loops=1)
-               Filter: cube((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
-               Rows Removed by Filter: 115163
-   ->  Sort  (cost=8318.25..8455.90 rows=55059 width=12) (actual time=79.153..85.340 rows=128228 loops=1)
-         Sort Key: o1.vid, o1.fid
-         Sort Method: quicksort  Memory: 6930kB
-         ->  Seq Scan on obj_filtered o1  (cost=0.00..3982.71 rows=55059 width=12) (actual time=0.104..41.628 rows=82294 loops=1)
+   Rows Removed by Join Filter: 25639
+   ->  Index Scan using idx_obj_filtered on obj_filtered o0  (cost=0.42..5506.18 rows=55089 width=12) (actual time=0.044..28.774 rows=50045 loops=1)
+         Filter: cube((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
+         Rows Removed by Filter: 115221
+   ->  Materialize  (cost=0.42..5643.90 rows=55089 width=12) (actual time=0.004..40.460 rows=128004 loops=1)
+         ->  Index Scan using idx_obj_filtered on obj_filtered o1  (cost=0.42..5506.18 rows=55089 width=12) (actual time=0.003..32.284 rows=82127 loops=1)
                Filter: leftquadrant((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
-               Rows Removed by Filter: 82883
- Planning Time: 0.735 ms
- Execution Time: 220.391 ms
-(18 rows)
+               Rows Removed by Filter: 83139
+ Planning Time: 0.232 ms
+ Execution Time: 109.176 ms
+(13 rows)
 
 CREATE INDEX
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
- WindowAgg  (cost=8776.91..11023.14 rows=89849 width=20) (actual time=136.847..186.478 rows=89849 loops=1)
-   ->  Sort  (cost=8776.91..9001.54 rows=89849 width=16) (actual time=136.543..143.162 rows=89849 loops=1)
+                                                     QUERY PLAN                                                     
+--------------------------------------------------------------------------------------------------------------------
+ WindowAgg  (cost=8759.50..11001.60 rows=89684 width=20) (actual time=37.895..68.937 rows=89684 loops=1)
+   ->  Sort  (cost=8759.50..8983.71 rows=89684 width=16) (actual time=37.885..40.740 rows=89684 loops=1)
          Sort Key: vid, o0_oid, o1_oid, fid
-         Sort Method: quicksort  Memory: 7284kB
-         ->  Seq Scan on g0  (cost=0.00..1384.49 rows=89849 width=16) (actual time=0.046..22.788 rows=89849 loops=1)
- Planning Time: 0.509 ms
- Execution Time: 242.007 ms
+         Sort Method: quicksort  Memory: 7276kB
+         ->  Seq Scan on g0  (cost=0.00..1381.84 rows=89684 width=16) (actual time=0.008..4.236 rows=89684 loops=1)
+ Planning Time: 0.118 ms
+ Execution Time: 88.146 ms
 (7 rows)
 
-                                                       QUERY PLAN                                                        
--------------------------------------------------------------------------------------------------------------------------
- HashAggregate  (cost=2039.02..2043.78 rows=476 width=16) (actual time=91.395..91.720 rows=1270 loops=1)
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=2035.46..2040.21 rows=475 width=16) (actual time=18.606..18.736 rows=1267 loops=1)
    Group Key: vid, o0_oid, o1_oid
-   ->  Seq Scan on g0_windowed t0  (cost=0.00..2034.15 rows=487 width=16) (actual time=0.063..74.371 rows=88120 loops=1)
+   ->  Seq Scan on g0_windowed t0  (cost=0.00..2030.60 rows=486 width=16) (actual time=0.022..8.317 rows=87885 loops=1)
          Filter: (fid_offset = (fid + 1))
-         Rows Removed by Filter: 1729
- Planning Time: 0.581 ms
- Execution Time: 100.846 ms
+         Rows Removed by Filter: 1799
+ Planning Time: 0.144 ms
+ Execution Time: 19.659 ms
 (7 rows)
 
                                                                                                                    QUERY PLAN                                                                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Merge Join  (cost=16636.50..18754.65 rows=25136 width=16) (actual time=187.683..289.779 rows=62871 loops=1)
+ Merge Join  (cost=0.84..12994.87 rows=25164 width=16) (actual time=0.060..91.364 rows=62915 loops=1)
    Merge Cond: ((o2.vid = o0.vid) AND (o2.fid = o0.fid))
    Join Filter: (far('0.9'::double precision, (o0.shape)::text, (o0.color)::text, (o0.material)::text, o0.x1, o0.y1, o0.x2, o0.y2, (o2.shape)::text, (o2.color)::text, (o2.material)::text, o2.x1, o2.y1, o2.x2, o2.y2) AND (o0.oid <> o2.oid))
-   Rows Removed by Join Filter: 21014
-   ->  Sort  (cost=8318.25..8455.90 rows=55059 width=140) (actual time=72.636..75.314 rows=36692 loops=1)
-         Sort Key: o2.vid, o2.fid
-         Sort Method: quicksort  Memory: 6696kB
-         ->  Seq Scan on obj_filtered o2  (cost=0.00..3982.71 rows=55059 width=140) (actual time=0.052..34.243 rows=36692 loops=1)
-               Filter: bottomquadrant((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
-               Rows Removed by Filter: 128485
-   ->  Sort  (cost=8318.25..8455.90 rows=55059 width=140) (actual time=114.967..123.749 rows=113153 loops=1)
-         Sort Key: o0.vid, o0.fid
-         Sort Method: quicksort  Memory: 14759kB
-         ->  Seq Scan on obj_filtered o0  (cost=0.00..3982.71 rows=55059 width=140) (actual time=0.117..56.456 rows=83103 loops=1)
+   Rows Removed by Join Filter: 21054
+   ->  Index Scan using idx_obj_filtered on obj_filtered o2  (cost=0.42..5506.18 rows=55089 width=140) (actual time=0.046..27.266 rows=36713 loops=1)
+         Filter: bottomquadrant((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
+         Rows Removed by Filter: 128553
+   ->  Materialize  (cost=0.42..5643.90 rows=55089 width=140) (actual time=0.004..38.190 rows=113251 loops=1)
+         ->  Index Scan using idx_obj_filtered on obj_filtered o0  (cost=0.42..5506.18 rows=55089 width=140) (actual time=0.003..30.496 rows=83139 loops=1)
                Filter: rightquadrant((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
-               Rows Removed by Filter: 82074
- Planning Time: 0.400 ms
- Execution Time: 385.903 ms
-(18 rows)
+               Rows Removed by Filter: 82127
+ Planning Time: 0.111 ms
+ Execution Time: 105.081 ms
+(13 rows)
 
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
- Merge Join  (cost=6111.27..6633.25 rows=970 width=20) (actual time=29.906..51.462 rows=41524 loops=1)
+ Merge Join  (cost=6130.20..6653.69 rows=973 width=20) (actual time=16.892..28.056 rows=41519 loops=1)
    Merge Cond: ((t0.vid = t1.vid) AND (t0.o0_oid = t1.o0_oid))
    Join Filter: (t0.fid < t1.fid)
-   Rows Removed by Join Filter: 12941
-   ->  Sort  (cost=128.89..133.52 rows=1850 width=16) (actual time=0.492..0.904 rows=1270 loops=1)
+   Rows Removed by Join Filter: 12910
+   ->  Sort  (cost=128.89..133.52 rows=1850 width=16) (actual time=0.301..0.363 rows=1267 loops=1)
          Sort Key: t0.vid, t0.o0_oid
          Sort Method: quicksort  Memory: 108kB
-         ->  Seq Scan on g0_contiguous t0  (cost=0.00..28.50 rows=1850 width=16) (actual time=0.056..0.196 rows=1270 loops=1)
-   ->  Sort  (cost=5982.37..6139.62 rows=62900 width=16) (actual time=29.330..35.531 rows=98732 loops=1)
+         ->  Seq Scan on g0_contiguous t0  (cost=0.00..28.50 rows=1850 width=16) (actual time=0.015..0.110 rows=1267 loops=1)
+   ->  Sort  (cost=6001.30..6159.02 rows=63085 width=16) (actual time=16.566..19.590 rows=98730 loops=1)
          Sort Key: t1.vid, t1.o0_oid
-         Sort Method: quicksort  Memory: 4484kB
-         ->  Seq Scan on g1 t1  (cost=0.00..969.00 rows=62900 width=16) (actual time=0.038..9.511 rows=62871 loops=1)
- Planning Time: 0.324 ms
- Execution Time: 119.865 ms
+         Sort Method: quicksort  Memory: 4486kB
+         ->  Seq Scan on g1 t1  (cost=0.00..971.85 rows=63085 width=16) (actual time=0.011..6.119 rows=62915 loops=1)
+ Planning Time: 0.096 ms
+ Execution Time: 36.575 ms
 (14 rows)
 
                                                          QUERY PLAN                                                         
 ----------------------------------------------------------------------------------------------------------------------------
- WindowAgg  (cost=4197.69..5436.57 rows=45050 width=24) (actual time=48.715..125.493 rows=41524 loops=1)
-   ->  Sort  (cost=4197.69..4310.32 rows=45050 width=20) (actual time=48.663..52.023 rows=41524 loops=1)
+ WindowAgg  (cost=4197.69..5436.57 rows=45050 width=24) (actual time=18.867..34.277 rows=41519 loops=1)
+   ->  Sort  (cost=4197.69..4310.32 rows=45050 width=20) (actual time=18.859..20.219 rows=41519 loops=1)
          Sort Key: vid, o0_oid, o1_oid, o2_oid, fid
-         Sort Method: quicksort  Memory: 4781kB
-         ->  Seq Scan on g1_filtered  (cost=0.00..715.50 rows=45050 width=20) (actual time=0.050..4.429 rows=41524 loops=1)
- Planning Time: 0.320 ms
- Execution Time: 216.745 ms
+         Sort Method: quicksort  Memory: 4780kB
+         ->  Seq Scan on g1_filtered  (cost=0.00..715.50 rows=45050 width=20) (actual time=0.008..2.495 rows=41519 loops=1)
+ Planning Time: 0.063 ms
+ Execution Time: 43.418 ms
 (7 rows)
 
                                                          QUERY PLAN                                                          
 -----------------------------------------------------------------------------------------------------------------------------
- GroupAggregate  (cost=897.08..902.23 rows=203 width=20) (actual time=15.621..24.037 rows=1020 loops=1)
+ GroupAggregate  (cost=897.08..902.23 rows=203 width=20) (actual time=8.581..13.857 rows=1020 loops=1)
    Group Key: vid, o0_oid, o1_oid, o2_oid
-   ->  Sort  (cost=897.08..897.60 rows=208 width=20) (actual time=15.562..17.929 rows=41524 loops=1)
+   ->  Sort  (cost=897.08..897.60 rows=208 width=20) (actual time=8.566..9.830 rows=41519 loops=1)
          Sort Key: vid, o0_oid, o1_oid, o2_oid
-         Sort Method: quicksort  Memory: 4781kB
-         ->  Seq Scan on g1_windowed t0  (cost=0.00..889.07 rows=208 width=20) (actual time=0.074..8.095 rows=41524 loops=1)
+         Sort Method: quicksort  Memory: 4780kB
+         ->  Seq Scan on g1_windowed t0  (cost=0.00..889.07 rows=208 width=20) (actual time=0.010..4.443 rows=41519 loops=1)
                Filter: (fid_offset = (fid + 0))
- Planning Time: 0.401 ms
- Execution Time: 54.544 ms
+ Planning Time: 0.067 ms
+ Execution Time: 14.596 ms
 (9 rows)
 
                                                                                                               QUERY PLAN                                                                                                               
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Merge Join  (cost=8319.09..55866.50 rows=308287 width=20) (actual time=66.433..496.532 rows=102897 loops=1)
+ Merge Join  (cost=1.26..39175.17 rows=308788 width=20) (actual time=3.533..315.038 rows=103041 loops=1)
    Merge Cond: ((o2.vid = o0.vid) AND (o2.fid = o0.fid))
    Join Filter: ((o0.oid <> o2.oid) AND (o1.oid <> o2.oid))
-   Rows Removed by Join Filter: 72210
-   ->  Sort  (cost=8318.25..8455.90 rows=55059 width=12) (actual time=57.971..59.900 rows=20334 loops=1)
-         Sort Key: o2.vid, o2.fid
-         Sort Method: quicksort  Memory: 1722kB
-         ->  Seq Scan on obj_filtered o2  (cost=0.00..3982.71 rows=55059 width=12) (actual time=0.402..49.965 rows=20334 loops=1)
-               Filter: green((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
-               Rows Removed by Filter: 144843
-   ->  Materialize  (cost=0.84..40694.53 rows=226225 width=24) (actual time=0.331..390.104 rows=326850 loops=1)
-         ->  Merge Join  (cost=0.84..40128.97 rows=226225 width=24) (actual time=0.320..324.426 rows=294824 loops=1)
+   Rows Removed by Join Filter: 72315
+   ->  Index Scan using idx_obj_filtered on obj_filtered o2  (cost=0.42..5506.18 rows=55089 width=12) (actual time=0.450..30.420 rows=20340 loops=1)
+         Filter: green((shape)::text, (color)::text, (material)::text, x1, y1, x2, y2)
+         Rows Removed by Filter: 144926
+   ->  Materialize  (cost=0.84..26941.99 rows=226469 width=24) (actual time=0.012..249.928 rows=327217 loops=1)
+         ->  Merge Join  (cost=0.84..26375.82 rows=226469 width=24) (actual time=0.011..204.041 rows=295109 loops=1)
                Merge Cond: ((o0.vid = o1.vid) AND (o0.fid = o1.fid))
                Join Filter: (frontof((o0.shape)::text, (o0.color)::text, (o0.material)::text, o0.x1, o0.y1, o0.x2, o0.y2, (o1.shape)::text, (o1.color)::text, (o1.material)::text, o1.x1, o1.y1, o1.x2, o1.y2) AND (o0.oid <> o1.oid))
-               Rows Removed by Join Filter: 461058
-               ->  Index Scan using idx_obj_filtered on obj_filtered o0  (cost=0.42..11978.08 rows=165177 width=140) (actual time=0.259..21.155 rows=164530 loops=1)
-               ->  Materialize  (cost=0.42..12391.02 rows=165177 width=140) (actual time=0.023..83.826 rows=755882 loops=1)
-                     ->  Index Scan using idx_obj_filtered on obj_filtered o1  (cost=0.42..11978.08 rows=165177 width=140) (actual time=0.017..39.448 rows=164532 loops=1)
- Planning Time: 0.551 ms
- Execution Time: 540.844 ms
-(20 rows)
+               Rows Removed by Join Filter: 461612
+               ->  Index Scan using idx_obj_filtered on obj_filtered o0  (cost=0.42..5093.01 rows=165266 width=140) (actual time=0.004..14.018 rows=164619 loops=1)
+               ->  Materialize  (cost=0.42..5506.18 rows=165266 width=140) (actual time=0.003..50.068 rows=756721 loops=1)
+                     ->  Index Scan using idx_obj_filtered on obj_filtered o1  (cost=0.42..5093.01 rows=165266 width=140) (actual time=0.002..19.028 rows=164621 loops=1)
+ Planning Time: 0.157 ms
+ Execution Time: 337.889 ms
+(17 rows)
 
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
- Merge Join  (cost=11238.66..12653.93 rows=1 width=20) (actual time=60.692..86.473 rows=2880 loops=1)
+ Merge Join  (cost=11256.84..12674.23 rows=1 width=20) (actual time=33.634..45.107 rows=2892 loops=1)
    Merge Cond: ((t0.vid = t1.vid) AND (t0.o0_oid = t1.o0_oid) AND (t0.o1_oid = t1.o1_oid) AND (t0.o2_oid = t1.o2_oid))
    Join Filter: (t0.fid < t1.fid)
-   Rows Removed by Join Filter: 871
-   ->  Sort  (cost=118.22..122.47 rows=1700 width=20) (actual time=0.328..0.420 rows=1015 loops=1)
+   Rows Removed by Join Filter: 873
+   ->  Sort  (cost=118.22..122.47 rows=1700 width=20) (actual time=0.173..0.207 rows=1015 loops=1)
          Sort Key: t0.vid, t0.o0_oid, t0.o1_oid, t0.o2_oid
          Sort Method: quicksort  Memory: 104kB
-         ->  Seq Scan on g1_contiguous t0  (cost=0.00..27.00 rows=1700 width=20) (actual time=0.038..0.187 rows=1020 loops=1)
-   ->  Sort  (cost=11120.45..11399.25 rows=111520 width=20) (actual time=59.985..74.104 rows=102897 loops=1)
+         ->  Seq Scan on g1_contiguous t0  (cost=0.00..27.00 rows=1700 width=20) (actual time=0.025..0.100 rows=1020 loops=1)
+   ->  Sort  (cost=11138.63..11417.85 rows=111690 width=20) (actual time=33.303..36.936 rows=103041 loops=1)
          Sort Key: t1.vid, t1.o0_oid, t1.o1_oid, t1.o2_oid
-         Sort Method: quicksort  Memory: 11111kB
-         ->  Seq Scan on g2 t1  (cost=0.00..1771.20 rows=111520 width=20) (actual time=0.024..18.287 rows=102897 loops=1)
- Planning Time: 0.316 ms
- Execution Time: 90.996 ms
+         Sort Method: quicksort  Memory: 11123kB
+         ->  Seq Scan on g2 t1  (cost=0.00..1773.90 rows=111690 width=20) (actual time=0.010..11.289 rows=103041 loops=1)
+ Planning Time: 0.105 ms
+ Execution Time: 46.784 ms
 (14 rows)
 
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
- WindowAgg  (cost=239.57..328.39 rows=3230 width=24) (actual time=1.861..3.354 rows=2880 loops=1)
-   ->  Sort  (cost=239.57..247.64 rows=3230 width=20) (actual time=1.826..1.979 rows=2880 loops=1)
+ WindowAgg  (cost=239.57..328.39 rows=3230 width=24) (actual time=1.195..2.266 rows=2892 loops=1)
+   ->  Sort  (cost=239.57..247.64 rows=3230 width=20) (actual time=1.184..1.277 rows=2892 loops=1)
          Sort Key: vid, o0_oid, o1_oid, o2_oid, fid
          Sort Method: quicksort  Memory: 322kB
-         ->  Seq Scan on g2_filtered  (cost=0.00..51.30 rows=3230 width=20) (actual time=0.038..0.446 rows=2880 loops=1)
- Planning Time: 0.244 ms
- Execution Time: 6.163 ms
+         ->  Seq Scan on g2_filtered  (cost=0.00..51.30 rows=3230 width=20) (actual time=0.008..0.183 rows=2892 loops=1)
+ Planning Time: 0.068 ms
+ Execution Time: 3.498 ms
 (7 rows)
 
                                                         QUERY PLAN                                                        
 --------------------------------------------------------------------------------------------------------------------------
- GroupAggregate  (cost=64.04..64.41 rows=15 width=20) (actual time=1.132..1.639 rows=47 loops=1)
+ GroupAggregate  (cost=64.04..64.41 rows=15 width=20) (actual time=0.619..0.980 rows=48 loops=1)
    Group Key: vid, o0_oid, o1_oid, o2_oid
-   ->  Sort  (cost=64.04..64.08 rows=15 width=20) (actual time=1.106..1.232 rows=2880 loops=1)
+   ->  Sort  (cost=64.04..64.08 rows=15 width=20) (actual time=0.610..0.695 rows=2892 loops=1)
          Sort Key: vid, o0_oid, o1_oid, o2_oid
          Sort Method: quicksort  Memory: 322kB
-         ->  Seq Scan on g2_windowed t0  (cost=0.00..63.74 rows=15 width=20) (actual time=0.051..0.655 rows=2880 loops=1)
+         ->  Seq Scan on g2_windowed t0  (cost=0.00..63.74 rows=15 width=20) (actual time=0.009..0.323 rows=2892 loops=1)
                Filter: (fid_offset = (fid + 0))
- Planning Time: 0.297 ms
- Execution Time: 3.643 ms
+ Planning Time: 0.065 ms
+ Execution Time: 1.391 ms
 (9 rows)
 
  vid 
@@ -214,3 +292,10 @@ CREATE INDEX
    8
 (25 rows)
 
+waiting for server to shut down....2022-10-22 19:37:01.846 PDT [42184] LOG:  received fast shutdown request
+2022-10-22 19:37:01.851 PDT [42184] LOG:  aborting any active transactions
+2022-10-22 19:37:01.854 PDT [42184] LOG:  background worker "logical replication launcher" (PID 42191) exited with exit code 1
+2022-10-22 19:37:01.860 PDT [42186] LOG:  shutting down
+.2022-10-22 19:37:02.986 PDT [42184] LOG:  database system is shut down
+ done
+server stopped

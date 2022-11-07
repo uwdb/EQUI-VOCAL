@@ -1,11 +1,10 @@
 from sklearn.metrics import f1_score
 import resource
-import random
 import numpy as np
 import time
 from scipy import stats
 from concurrent.futures import ThreadPoolExecutor
-from quivr.utils import print_program, rewrite_program, str_to_program, postgres_execute, rewrite_program_postgres, str_to_program_postgres
+from quivr.utils import print_program, rewrite_program, str_to_program, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching, rewrite_program_postgres, str_to_program_postgres, complexity_cost
 import itertools
 
 def using(point=""):
@@ -13,44 +12,47 @@ def using(point=""):
     return '''%s: mem=%s MB
            '''%(point, usage/1024.0 )
 
-random.seed(time.time())
-# random.seed(10)
+# np.random.seed(0)
 class BaseMethod:
-    def compute_query_score(self, current_query):
-        y_pred = []
-        # for i, (input, label) in enumerate(zip(self.inputs, self.labels)):
-        for i in self.labeled_index:
-            input = self.inputs[i]
-            label = self.labels[i]
-            if self.lock:
-                self.lock.acquire()
-            memoize = self.memoize_all_inputs[i]
-            if self.lock:
-                self.lock.release()
-            result, new_memoize = current_query.execute(input, label, memoize, {})
-            y_pred.append(int(result[0, len(input[0])] > 0))
-            if self.lock:
-                self.lock.acquire()
-            for k, v in new_memoize.items():
-                self.memoize_all_inputs[i][k] = v
-            # self.memoize_all_inputs[i].update(new_memoize)
-            if self.lock:
-                self.lock.release()
-        # print(self.labels[self.labeled_index], y_pred)
-        # print("cache", len(self.memoize_all_inputs[0]))
-        # print(using("profile"))
-        score = f1_score(list(self.labels[self.labeled_index]), y_pred)
-        return score
+    # def compute_query_score(self, current_query):
+    #     y_pred = []
+    #     # for i, (input, label) in enumerate(zip(self.inputs, self.labels)):
+    #     for i in self.labeled_index:
+    #         input = self.inputs[i]
+    #         label = self.labels[i]
+    #         if self.lock:
+    #             self.lock.acquire()
+    #         memoize = self.memoize_all_inputs[i]
+    #         if self.lock:
+    #             self.lock.release()
+    #         result, new_memoize = current_query.execute(input, label, memoize, {})
+    #         y_pred.append(int(result[0, len(input[0])] > 0))
+    #         if self.lock:
+    #             self.lock.acquire()
+    #         for k, v in new_memoize.items():
+    #             self.memoize_all_inputs[i][k] = v
+    #         # self.memoize_all_inputs[i].update(new_memoize)
+    #         if self.lock:
+    #             self.lock.release()
+    #     # print(self.labels[self.labeled_index], y_pred)
+    #     # print("cache", len(self.memoize_all_inputs[0]))
+    #     # print(using("profile"))
+    #     score = f1_score(list(self.labels[self.labeled_index]), y_pred)
+    #     return score
 
     def compute_query_score_postgres(self, current_query):
+        # NOTE: sufficinet to lock only when writing to the memoize_all_inputs? Updating dict/list in python is atomic operation, so no conflicts for write, but reading might get old values (which is fine for us).
         input_vids = self.inputs[self.labeled_index].tolist()
         y_pred = []
-        result, new_memoize = postgres_execute(self.dsn, current_query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
+        result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(self.dsn, current_query, self.memoize_scene_graph_all_inputs, self.memoize_sequence_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
         if self.lock:
             self.lock.acquire()
-        for i, memo_dict in enumerate(new_memoize):
+        for i, memo_dict in enumerate(new_memoize_scene_graph):
             for k, v in memo_dict.items():
-                self.memoize_all_inputs[i][k] = v
+                self.memoize_scene_graph_all_inputs[i][k] = v
+        for i, memo_dict in enumerate(new_memoize_sequence):
+            for k, v in memo_dict.items():
+                self.memoize_sequence_all_inputs[i][k] = v
         if self.lock:
             self.lock.release()
         for i in input_vids:
@@ -59,7 +61,8 @@ class BaseMethod:
             else:
                 y_pred.append(0)
 
-        score = f1_score(list(self.labels[self.labeled_index]), y_pred)
+        f1 = f1_score(list(self.labels[self.labeled_index]), y_pred)
+        score = f1 - self.reg_lambda * complexity_cost(current_query)
         return score
 
     # def pick_next_segment(self):
@@ -134,87 +137,87 @@ class BaseMethod:
     #     # max_entropy_index = np.argmax(entropy_list)
     #     return video_segment_ids.tolist()
 
-    def execute_over_all_inputs(self, query):
-        pred_per_query = []
-        for i in range(len(self.inputs)):
-            input = self.inputs[i]
-            label = self.labels[i]
-            if self.lock:
-                self.lock.acquire()
-            memoize = self.memoize_all_inputs[i]
-            if self.lock:
-                self.lock.release()
-            result, new_memoize = query.execute(input, label, memoize, {})
-            pred_per_query.append(int(result[0, len(input[0])] > 0))
-            if self.lock:
-                self.lock.acquire()
-            # self.memoize_all_inputs[i].update(new_memoize)
-            for k, v in new_memoize.items():
-                self.memoize_all_inputs[i][k] = v
-            if self.lock:
-                self.lock.release()
-        return pred_per_query
+    # def execute_over_all_inputs(self, query):
+    #     pred_per_query = []
+    #     for i in range(len(self.inputs)):
+    #         input = self.inputs[i]
+    #         label = self.labels[i]
+    #         if self.lock:
+    #             self.lock.acquire()
+    #         memoize = self.memoize_all_inputs[i]
+    #         if self.lock:
+    #             self.lock.release()
+    #         result, new_memoize = query.execute(input, label, memoize, {})
+    #         pred_per_query.append(int(result[0, len(input[0])] > 0))
+    #         if self.lock:
+    #             self.lock.acquire()
+    #         # self.memoize_all_inputs[i].update(new_memoize)
+    #         for k, v in new_memoize.items():
+    #             self.memoize_all_inputs[i][k] = v
+    #         if self.lock:
+    #             self.lock.release()
+    #     return pred_per_query
 
-    def pick_next_segment_model_picker(self):
-        """
-        Pick the next segment to be labeled, using the Model Picker algorithm.
-        """
-        true_labels = np.array(self.labels)
-        prediction_matrix = []
-        _start = time.time()
+    # def pick_next_segment_model_picker(self):
+    #     """
+    #     Pick the next segment to be labeled, using the Model Picker algorithm.
+    #     """
+    #     true_labels = np.array(self.labels)
+    #     prediction_matrix = []
+    #     _start = time.time()
 
-        # query_list = [query_graph.program for query_graph, _ in itertools.chain(self.candidate_queries, self.answers[:max(self.beam_width, 10)])]
-        query_list = [query_graph.program for query_graph, _ in self.candidate_queries]
-        query_list_removing_duplicates = []
-        signatures = set()
-        for program in query_list:
-            signature = rewrite_program(program)
-            if signature not in signatures:
-                new_program = str_to_program(signature)
-                query_list_removing_duplicates.append(new_program)
-                signatures.add(signature)
-        query_list = query_list_removing_duplicates
-        print("query pool", [print_program(query) for query in query_list])
-        if self.multithread > 1:
-            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
-                for pred_per_query in executor.map(self.execute_over_all_inputs, query_list):
-                    prediction_matrix.append(pred_per_query)
-        else:
-            for query in query_list:
-                pred_per_query = self.execute_over_all_inputs(query)
-                prediction_matrix.append(pred_per_query)
-            prediction_matrix.append(pred_per_query)
-        prediction_matrix = np.array(prediction_matrix).transpose()
-        print("constructing prediction matrix", time.time()-_start)
-        # print(prediction_matrix.shape)
-        n_instances = len(true_labels)
+    #     # query_list = [query_graph.program for query_graph, _ in itertools.chain(self.candidate_queries, self.answers[:max(self.beam_width, 10)])]
+    #     query_list = [query_graph.program for query_graph, _ in self.candidate_queries]
+    #     query_list_removing_duplicates = []
+    #     signatures = set()
+    #     for program in query_list:
+    #         signature = rewrite_program(program)
+    #         if signature not in signatures:
+    #             new_program = str_to_program(signature)
+    #             query_list_removing_duplicates.append(new_program)
+    #             signatures.add(signature)
+    #     query_list = query_list_removing_duplicates
+    #     print("query pool", [print_program(query) for query in query_list])
+    #     if self.multithread > 1:
+    #         with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+    #             for pred_per_query in executor.map(self.execute_over_all_inputs, query_list):
+    #                 prediction_matrix.append(pred_per_query)
+    #     else:
+    #         for query in query_list:
+    #             pred_per_query = self.execute_over_all_inputs(query)
+    #             prediction_matrix.append(pred_per_query)
+    #         prediction_matrix.append(pred_per_query)
+    #     prediction_matrix = np.array(prediction_matrix).transpose()
+    #     print("constructing prediction matrix", time.time()-_start)
+    #     # print(prediction_matrix.shape)
+    #     n_instances = len(true_labels)
 
-        # Initialize
-        loss_t = np.zeros(prediction_matrix.shape[1])
-        for i in range(n_instances):
-            if i not in self.labeled_index:
-                continue
-            if true_labels[i]:
-                loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
-            else:
-                loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
+    #     # Initialize
+    #     loss_t = np.zeros(prediction_matrix.shape[1])
+    #     for i in range(n_instances):
+    #         if i not in self.labeled_index:
+    #             continue
+    #         if true_labels[i]:
+    #             loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 5)
+    #         else:
+    #             loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
 
-        eta = np.sqrt(np.log(prediction_matrix.shape[1])/(2*(len(self.labeled_index)-self.init_nlabels+1)))
-        posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
-        # Note that above equation is equivalent to np.exp(-eta * loss_t).
-        # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
-        posterior_t  /= np.sum(posterior_t)  # normalized weight
-        print("query weights", posterior_t)
-        entropy_list = np.zeros(n_instances)
-        for i in range(n_instances):
-            if i in self.labeled_index:
-                entropy_list[i] = -1
-            else:
-                entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :])
-        # find argmax of entropy (top k)
-        new_labeled_index = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
-        # max_entropy_index = np.argmax(entropy_list)
-        return new_labeled_index.tolist()
+    #     eta = np.sqrt(np.log(prediction_matrix.shape[1])/(2*(len(self.labeled_index)-self.init_nlabels+1)))
+    #     posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
+    #     # Note that above equation is equivalent to np.exp(-eta * loss_t).
+    #     # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
+    #     posterior_t  /= np.sum(posterior_t)  # normalized weight
+    #     print("query weights", posterior_t)
+    #     entropy_list = np.zeros(n_instances)
+    #     for i in range(n_instances):
+    #         if i in self.labeled_index:
+    #             entropy_list[i] = -1
+    #         else:
+    #             entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :])
+    #     # find argmax of entropy (top k)
+    #     new_labeled_index = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
+    #     # max_entropy_index = np.argmax(entropy_list)
+    #     return new_labeled_index.tolist()
 
     def _compute_u_t(self, posterior_t, predictions_c):
 
@@ -240,21 +243,30 @@ class BaseMethod:
         Pick the next segment to be labeled, using the Model Picker algorithm.
         """
         true_labels = np.array(self.labels)
+        n_instances = len(true_labels)
         prediction_matrix = []
         _start = time.time()
 
         # query_list = [query_graph.program for query_graph, _ in itertools.chain(self.candidate_queries, self.answers[:max(self.beam_width, 10)])]
         query_list = [query_graph.program for query_graph, _ in self.candidate_queries[:self.pool_size]]
-        query_list_removing_duplicates = []
-        signatures = set()
-        for program in query_list:
-            signature = rewrite_program_postgres(program)
-            if signature not in signatures:
-                new_program = str_to_program_postgres(signature)
-                query_list_removing_duplicates.append(new_program)
-                signatures.add(signature)
-        query_list = query_list_removing_duplicates
+        # query_list_removing_duplicates = []
+        # signatures = set()
+        # for program in query_list:
+        #     signature = rewrite_program_postgres(program)
+        #     if signature not in signatures:
+        #         new_program = str_to_program_postgres(signature)
+        #         query_list_removing_duplicates.append(new_program)
+        #         signatures.add(signature)
+        # query_list = query_list_removing_duplicates
         print("query pool", [rewrite_program_postgres(query) for query in query_list])
+        unlabeled_index = np.setdiff1d(np.arange(n_instances), self.labeled_index, assume_unique=True)
+
+        # If more than self.n_sampled_videos videos, sample self.n_sampled_videos videos
+        if len(unlabeled_index) > self.n_sampled_videos:
+            self.sampled_index = np.random.choice(unlabeled_index, self.n_sampled_videos, replace=False)
+        else:
+            self.sampled_index = unlabeled_index
+
         if self.multithread > 1:
             with ThreadPoolExecutor(max_workers=self.multithread) as executor:
                 for pred_per_query in executor.map(self.execute_over_all_inputs_postgres, query_list):
@@ -265,46 +277,169 @@ class BaseMethod:
                 prediction_matrix.append(pred_per_query)
         prediction_matrix = np.array(prediction_matrix).transpose()
         print("constructing prediction matrix", time.time()-_start)
-        # print(prediction_matrix.shape)
-        n_instances = len(true_labels)
+        print("prediction_matrix size", prediction_matrix.shape)
 
-        # Initialize
-        loss_t = np.zeros(prediction_matrix.shape[1])
-        for i in range(n_instances):
-            if i not in self.labeled_index:
-                continue
-            if true_labels[i]:
-                loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 10) # TODO: change the weight to 10?
-            else:
-                loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
-        # TODO: should we use loss or f1-score to compute the weights?
-        # eta = np.sqrt(np.log(prediction_matrix.shape[1])/(2*(len(self.labeled_index)-self.init_nlabels+1))) # TODO: do we need a decaying learning rate?
-        eta = 1
-        posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
-        # Note that above equation is equivalent to np.exp(-eta * loss_t).
-        # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
+
+        # # Initialize
+        # # TODO: should we use loss or f1-score to compute the weights?
+        # loss_t = np.zeros(prediction_matrix.shape[1])
+        # for i in range(n_instances):
+        #     if i not in self.labeled_index:
+        #         continue
+        #     if true_labels[i]:
+        #         loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 10) # TODO: change the weight to 10?
+        #     else:
+        #         loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
+        # # eta = np.sqrt(np.log(prediction_matrix.shape[1])/(2*(len(self.labeled_index)-self.init_nlabels+1))) # TODO: do we need a decaying learning rate?
+        # eta = 1
+        # posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
+        # # Note that above equation is equivalent to np.exp(-eta * loss_t).
+        # # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
+        # posterior_t  /= np.sum(posterior_t)  # normalized weight
+
+        # Alternative: use F1-scores as weights
+        posterior_t = [score for _, score in self.candidate_queries[:self.pool_size]]
         posterior_t  /= np.sum(posterior_t)  # normalized weight
+
         print("query weights", posterior_t)
-        entropy_list = np.zeros(n_instances)
-        for i in range(n_instances):
-            if i in self.labeled_index:
-                entropy_list[i] = -1
-            else:
-                entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :])
+        entropy_list = np.zeros(len(self.sampled_index))
+        for i in range(len(self.sampled_index)):
+            entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :])
+        ind = np.argsort(-entropy_list)
+        print("entropy list", entropy_list[ind])
+        print("sampled index", self.sampled_index[ind])
         # find argmax of entropy (top k)
-        video_segment_ids = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
-        # max_entropy_index = np.argmax(entropy_list)
-        return video_segment_ids.tolist()
+        max_entropy_index = self.sampled_index[np.argmax(entropy_list)]
+        return [max_entropy_index]
+        # video_segment_ids = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
+        # return video_segment_ids.tolist()
+
+
+    def pick_next_segment_most_likely_positive_postgres(self):
+        """
+        Pick the next segment to be labeled, using the Model Picker algorithm.
+        """
+        true_labels = np.array(self.labels)
+        n_instances = len(true_labels)
+        prediction_matrix = []
+        _start = time.time()
+
+        query_list = [query_graph.program for query_graph, _ in self.candidate_queries[:self.pool_size]]
+        print("query pool", [rewrite_program_postgres(query) for query in query_list])
+        unlabeled_index = np.setdiff1d(np.arange(n_instances), self.labeled_index, assume_unique=True)
+
+        # If more than self.n_sampled_videos videos, sample self.n_sampled_videos videos
+        if len(unlabeled_index) > self.n_sampled_videos:
+            self.sampled_index = np.random.choice(unlabeled_index, self.n_sampled_videos, replace=False)
+        else:
+            self.sampled_index = unlabeled_index
+
+        if self.multithread > 1:
+            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                for pred_per_query in executor.map(self.execute_over_all_inputs_postgres, query_list):
+                    prediction_matrix.append(pred_per_query)
+        else:
+            for query in query_list:
+                pred_per_query = self.execute_over_all_inputs_postgres(query)
+                prediction_matrix.append(pred_per_query)
+        prediction_matrix = np.array(prediction_matrix).transpose()
+        print("constructing prediction matrix", time.time()-_start)
+        print("prediction_matrix size", prediction_matrix.shape)
+
+        # Alternative: use F1-scores as weights
+        posterior_t = [score for _, score in self.candidate_queries[:self.pool_size]]
+        posterior_t  /= np.sum(posterior_t)  # normalized weight
+
+        print("query weights", posterior_t)
+        scores = np.zeros(len(self.sampled_index))
+        for i in range(len(self.sampled_index)):
+            scores[i] = np.inner(posterior_t, prediction_matrix[i, :])
+        ind = np.argsort(-scores)
+        print("entropy list", scores[ind])
+        print("sampled index", self.sampled_index[ind])
+        # find argmax of entropy (top k)
+        most_likely_positive_index = self.sampled_index[np.argmax(scores)]
+        return [most_likely_positive_index]
+        # video_segment_ids = np.argpartition(entropy_list, -self.samples_per_iter)[-self.samples_per_iter:]
+        # return video_segment_ids.tolist()
+
+
+    def get_disagreement_score(self, candidate_queries):
+        """
+        Pick the next segment to be labeled, using the Model Picker algorithm.
+        """
+        true_labels = np.array(self.labels)
+        n_instances = len(true_labels)
+        prediction_matrix = []
+        _start = time.time()
+
+        query_list = [query_graph.program for query_graph, _ in candidate_queries[:self.pool_size]]
+        print("query pool", [rewrite_program_postgres(query) for query in query_list])
+        unlabeled_index = np.setdiff1d(np.arange(n_instances), self.labeled_index, assume_unique=True)
+
+        # If more than self.n_sampled_videos videos, sample self.n_sampled_videos videos
+        if len(unlabeled_index) > self.n_sampled_videos:
+            self.sampled_index = np.random.choice(unlabeled_index, self.n_sampled_videos, replace=False)
+        else:
+            self.sampled_index = unlabeled_index
+
+        if self.multithread > 1:
+            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                for pred_per_query in executor.map(self.execute_over_all_inputs_postgres, query_list):
+                    prediction_matrix.append(pred_per_query)
+        else:
+            for query in query_list:
+                pred_per_query = self.execute_over_all_inputs_postgres(query)
+                prediction_matrix.append(pred_per_query)
+        prediction_matrix = np.array(prediction_matrix).transpose()
+        print("constructing prediction matrix", time.time()-_start)
+        print("prediction_matrix size", prediction_matrix.shape)
+
+
+        # # Initialize
+        # # TODO: should we use loss or f1-score to compute the weights?
+        # loss_t = np.zeros(prediction_matrix.shape[1])
+        # for i in range(n_instances):
+        #     if i not in self.labeled_index:
+        #         continue
+        #     if true_labels[i]:
+        #         loss_t += (np.array((prediction_matrix[i, :] != 1) * 1) * 10) # TODO: change the weight to 10?
+        #     else:
+        #         loss_t += (np.array((prediction_matrix[i, :] != 0) * 1))
+        # # eta = np.sqrt(np.log(prediction_matrix.shape[1])/(2*(len(self.labeled_index)-self.init_nlabels+1))) # TODO: do we need a decaying learning rate?
+        # eta = 1
+        # posterior_t = np.exp(-eta * (loss_t-np.min(loss_t)))
+        # # Note that above equation is equivalent to np.exp(-eta * loss_t).
+        # # `-np.min(loss_t)` is applied only to avoid entries being near zero for large eta*loss_t values before the normalization
+        # posterior_t  /= np.sum(posterior_t)  # normalized weight
+
+        # Alternative: use F1-scores as weights
+        posterior_t = [score for _, score in candidate_queries[:self.pool_size]]
+        posterior_t  /= np.sum(posterior_t)  # normalized weight
+
+        print("query weights", posterior_t)
+        entropy_list = np.zeros(len(self.sampled_index))
+        for i in range(len(self.sampled_index)):
+            entropy_list[i] = self._compute_u_t(posterior_t, prediction_matrix[i, :])
+        max_entropy_index = self.sampled_index[np.argmax(entropy_list)]
+        ind = np.argsort(-entropy_list)
+        print("entropy list", entropy_list[ind])
+        print("sampled index", self.sampled_index[ind])
+        return np.max(entropy_list), [max_entropy_index]
+
 
     def execute_over_all_inputs_postgres(self, query):
-        input_vids = self.inputs.tolist()
+        input_vids = self.inputs[self.sampled_index].tolist()
         pred_per_query = []
-        result, new_memoize = postgres_execute(self.dsn, query, self.memoize_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
+        result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(self.dsn, query, self.memoize_scene_graph_all_inputs, self.memoize_sequence_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
         if self.lock:
             self.lock.acquire()
-        for i, memo_dict in enumerate(new_memoize):
+        for i, memo_dict in enumerate(new_memoize_scene_graph):
             for k, v in memo_dict.items():
-                self.memoize_all_inputs[i][k] = v
+                self.memoize_scene_graph_all_inputs[i][k] = v
+        for i, memo_dict in enumerate(new_memoize_sequence):
+            for k, v in memo_dict.items():
+                self.memoize_sequence_all_inputs[i][k] = v
         if self.lock:
             self.lock.release()
         for i in input_vids:
