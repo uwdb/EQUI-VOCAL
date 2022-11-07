@@ -14,7 +14,7 @@ import itertools
 import shutil
 import numpy as np
 import os
-from quivr.utils import rewrite_program_postgres, str_to_program_postgres, postgres_execute
+from quivr.utils import rewrite_program_postgres, str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence
 import csv
 from itertools import repeat
 from concurrent.futures import ThreadPoolExecutor
@@ -70,7 +70,7 @@ def prepare_patsql_examples(dir_name, query_str, nruns):
                     json.dump(saved_labels, f)
 
 
-def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sampling_rate):
+def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sampling_rate, str_or_int="str"):
     dsn = "dbname=myinner_db user=enhaoz host=localhost"
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -96,9 +96,12 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                                 and a.vid = ANY(%s) and a.fid %% {v} = 0 and a.oid = 0;
                                 """.format(v=sampling_rate), [inputs.tolist()])
                                 df = pd.DataFrame(cur.fetchall())
-                                df.columns = ["oid1:Str", "vid:Str", "fid:Int"] # Rename columns
-                                df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
-                                df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                if str_or_int == "str":
+                                    df.columns = ["oid1:Str", "vid:Str", "fid:Int"] # Rename columns
+                                    df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
+                                    df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                else:
+                                    df.columns = ["oid1:Int", "vid:Int", "fid:Int"]
                                 df.to_csv(os.path.join(dir_name, query_str, str(i), "rightquadrant-n_examples_{}.csv".format(len(inputs))), index=False)
                             elif predicate == "LeftQuadrant":
                                 cur.execute("""
@@ -108,9 +111,12 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                                 and a.vid = ANY(%s) and a.fid %% {v} = 0 and a.oid = 0;
                                 """.format(v=sampling_rate), [inputs.tolist()])
                                 df = pd.DataFrame(cur.fetchall())
-                                df.columns = ["oid1:Str", "vid:Str", "fid:Int"] # Rename columns
-                                df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
-                                df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                if str_or_int == "str":
+                                    df.columns = ["oid1:Str", "vid:Str", "fid:Int"] # Rename columns
+                                    df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
+                                    df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                else:
+                                    df.columns = ["oid1:Int", "vid:Int", "fid:Int"]
                                 df.to_csv(os.path.join(dir_name, query_str, str(i), "leftquadrant-n_examples_{}.csv".format(len(inputs))), index=False)
                             elif predicate == "BottomQuadrant":
                                 cur.execute("""
@@ -120,9 +126,12 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                                 and a.vid = ANY(%s) and a.fid %% {v} = 0 and a.oid = 0;
                                 """.format(v=sampling_rate), [inputs.tolist()])
                                 df = pd.DataFrame(cur.fetchall())
-                                df.columns = ["oid1:Str", "vid:Str", "fid:Int"] # Rename columns
-                                df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
-                                df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                if str_or_int == "str":
+                                    df.columns = ["oid1:Str", "vid:Str", "fid:Int"] # Rename columns
+                                    df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
+                                    df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                else:
+                                    df.columns = ["oid1:Int", "vid:Int", "fid:Int"]
                                 df.to_csv(os.path.join(dir_name, query_str, str(i), "bottomquadrant-n_examples_{}.csv".format(len(inputs))), index=False)
                             elif predicate == "TopQuadrant":
                                 cur.execute("""
@@ -132,9 +141,12 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                                 and a.vid = ANY(%s) and a.fid %% {v} = 0 and a.oid = 0;
                                 """.format(v=sampling_rate), [inputs.tolist()])
                                 df = pd.DataFrame(cur.fetchall())
-                                df.columns = ["oid1:Str", "vid:Str", "fid:Int"] # Rename columns
-                                df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
-                                df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                if str_or_int == "str":
+                                    df.columns = ["oid1:Str", "vid:Str", "fid:Int"] # Rename columns
+                                    df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
+                                    df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                else:
+                                    df.columns = ["oid1:Int", "vid:Int", "fid:Int"]
                                 df.to_csv(os.path.join(dir_name, query_str, str(i), "topquadrant-n_examples_{}.csv".format(len(inputs))), index=False)
                             elif predicate == "Near_1":
                                 cur.execute("""
@@ -145,10 +157,13 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                                 and a.vid = ANY(%s) and a.fid %% {v} = 0 and a.oid = 0 and b.oid = 1;
                                 """.format(v=sampling_rate), [inputs.tolist()])
                                 df = pd.DataFrame(cur.fetchall())
-                                df.columns = ["oid1:Str", "oid2:Str", "vid:Str", "fid:Int"] # Rename columns
-                                df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
-                                df['oid2:Str'] = 'o' + df['oid2:Str'].astype(str)
-                                df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                if str_or_int == "str":
+                                    df.columns = ["oid1:Str", "oid2:Str", "vid:Str", "fid:Int"] # Rename columns
+                                    df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
+                                    df['oid2:Str'] = 'o' + df['oid2:Str'].astype(str)
+                                    df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                else:
+                                    df.columns = ["oid1:Int", "oid2:Int", "vid:Int", "fid:Int"]
                                 df.to_csv(os.path.join(dir_name, query_str, str(i), "near-n_examples_{}.csv".format(len(inputs))), index=False)
                             elif predicate == "Far_3":
                                 cur.execute("""
@@ -159,10 +174,13 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                                 and a.vid = ANY(%s) and a.fid %% {v} = 0 and a.oid = 0 and b.oid = 1;
                                 """.format(v=sampling_rate), [inputs.tolist()])
                                 df = pd.DataFrame(cur.fetchall())
-                                df.columns = ["oid1:Str", "oid2:Str", "vid:Str", "fid:Int"] # Rename columns
-                                df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
-                                df['oid2:Str'] = 'o' + df['oid2:Str'].astype(str)
-                                df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                if str_or_int == "str":
+                                    df.columns = ["oid1:Str", "oid2:Str", "vid:Str", "fid:Int"] # Rename columns
+                                    df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
+                                    df['oid2:Str'] = 'o' + df['oid2:Str'].astype(str)
+                                    df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                else:
+                                    df.columns = ["oid1:Int", "oid2:Int", "vid:Int", "fid:Int"]
                                 df.to_csv(os.path.join(dir_name, query_str, str(i), "far-n_examples_{}.csv".format(len(inputs))), index=False)
                             elif predicate == "Behind":
                                 cur.execute("""
@@ -173,10 +191,13 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                                 and a.vid = ANY(%s) and a.fid %% {v} = 0 and a.oid = 0 and b.oid = 1;
                                 """.format(v=sampling_rate), [inputs.tolist()])
                                 df = pd.DataFrame(cur.fetchall())
-                                df.columns = ["oid1:Str", "oid2:Str", "vid:Str", "fid:Int"] # Rename columns
-                                df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
-                                df['oid2:Str'] = 'o' + df['oid2:Str'].astype(str)
-                                df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                if str_or_int == "str":
+                                    df.columns = ["oid1:Str", "oid2:Str", "vid:Str", "fid:Int"] # Rename columns
+                                    df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
+                                    df['oid2:Str'] = 'o' + df['oid2:Str'].astype(str)
+                                    df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                else:
+                                    df.columns = ["oid1:Int", "oid2:Int", "vid:Int", "fid:Int"]
                                 df.to_csv(os.path.join(dir_name, query_str, str(i), "behind-n_examples_{}.csv".format(len(inputs))), index=False)
                             elif predicate == "FrontOf":
                                 cur.execute("""
@@ -187,10 +208,13 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                                 and a.vid = ANY(%s) and a.fid %% {v} = 0 and a.oid = 0 and b.oid = 1;
                                 """.format(v=sampling_rate), [inputs.tolist()])
                                 df = pd.DataFrame(cur.fetchall())
-                                df.columns = ["oid1:Str", "oid2:Str", "vid:Str", "fid:Int"] # Rename columns
-                                df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
-                                df['oid2:Str'] = 'o' + df['oid2:Str'].astype(str)
-                                df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                if str_or_int == "str":
+                                    df.columns = ["oid1:Str", "oid2:Str", "vid:Str", "fid:Int"] # Rename columns
+                                    df['oid1:Str'] = 'o' + df['oid1:Str'].astype(str)
+                                    df['oid2:Str'] = 'o' + df['oid2:Str'].astype(str)
+                                    df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                                else:
+                                    df.columns = ["oid1:Int", "oid2:Int", "vid:Int", "fid:Int"]
                                 df.to_csv(os.path.join(dir_name, query_str, str(i), "frontof-n_examples_{}.csv".format(len(inputs))), index=False)
                             else:
                                 raise ValueError("Unsupported predicate: {}".format(predicate))
@@ -198,22 +222,25 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                         # Output: inputs where labels are 1
                         pos_idx = np.where(labels == 1)[0]
                         output_vids = inputs[pos_idx]
-                        df = pd.DataFrame(data={"vid:Str": output_vids})
-                        df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                        if str_or_int == "str":
+                            df = pd.DataFrame(data={"vid:Str": output_vids})
+                            df['vid:Str'] = 'v' + df['vid:Str'].astype(str)
+                        else:
+                            df = pd.DataFrame(data={"vid:Int": output_vids})
                         df.to_csv(os.path.join(dir_name, query_str, str(i), "output-n_examples_{}.csv".format(len(inputs))), index=False)
 
 def prepare_data_for_various_types_of_queries(sampling_rate):
     dataset_name = "without_duration-sampling_rate_{}".format(sampling_rate)
     query_strs = [
-        "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))",
-        "Conjunction(FrontOf(o0, o1), TopQuadrant(o0))",
-        "Near_1(o0, o1); Far_3(o0, o1)",
-        "Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))",
-        "Far_3(o0, o1); Near_1(o0, o1); Far_3(o0, o1)",
-        "Conjunction(Far_3(o0, o1), BottomQuadrant(o0)); Near_1(o0, o1)",
-        "Far_3(o0, o1); Conjunction(Near_1(o0, o1), Behind(o0, o1))",
+        # "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))",
+        # "Conjunction(FrontOf(o0, o1), TopQuadrant(o0))",
+        # "Near_1(o0, o1); Far_3(o0, o1)",
+        # "Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))",
+        # "Far_3(o0, o1); Near_1(o0, o1); Far_3(o0, o1)",
+        # "Conjunction(Far_3(o0, o1), BottomQuadrant(o0)); Near_1(o0, o1)",
+        # "Far_3(o0, o1); Conjunction(Near_1(o0, o1), Behind(o0, o1))",
         "Conjunction(Far_3(o0, o1), LeftQuadrant(o0)); Conjunction(Near_1(o0, o1), LeftQuadrant(o0))",
-        "Far_3(o0, o1); Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))"
+        # "Far_3(o0, o1); Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))"
         ]
     predicates = [
         ("Near_1", "BottomQuadrant"),
@@ -228,10 +255,10 @@ def prepare_data_for_various_types_of_queries(sampling_rate):
     ]
     for query_str in query_strs:
         prepare_data_given_target_query(query_str, 0, 1, dataset_name, "Obj_trajectories", sampling_rate=sampling_rate)
-    construct_train_test("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name), n_train=500, n_test=500)
-    for query_str, predicate_list in zip(query_strs, predicates):
-        prepare_patsql_examples("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name), query_str, nruns=20)
-        prepare_patsql_inputs_outputs("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/PATSQL".format(dataset_name), query_str, predicate_list, nruns=20, sampling_rate=sampling_rate)
+    # construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name), n_train=500, n_test=500)
+    # for query_str, predicate_list in zip(query_strs, predicates):
+    #     # prepare_patsql_examples("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name), query_str, nruns=20)
+    #     prepare_patsql_inputs_outputs("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/PATSQL".format(dataset_name), query_str, predicate_list, nruns=20, sampling_rate=sampling_rate, str_or_int="str")
 
 if __name__ == '__main__':
     prepare_data_for_various_types_of_queries(sampling_rate=4)

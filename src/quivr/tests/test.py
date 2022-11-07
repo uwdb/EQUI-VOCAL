@@ -1,4 +1,4 @@
-from quivr.utils import print_program, str_to_program
+from quivr.utils import print_program, str_to_program, get_depth_and_npred
 import json
 import random
 import math
@@ -170,14 +170,21 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, program_str):
 
 def test_query(dataset_name, target_query, test_query):
     _start = time.time()
+    with open("inputs/trajectory_pairs.json", 'r') as f:
+        trajectories = json.load(f)
     with open("inputs/{}/train/{}_inputs.json".format(dataset_name, target_query), 'r') as f:
         inputs = json.load(f)
-    # with open("inputs/{}/train/{}_labels.json".format(dataset_name, target_query), 'r') as f:
-    #     labels = json.load(f)
-    inputs = np.asarray(inputs, dtype=object)
-    # labels = np.asarray(labels, dtype=object)
+    with open("inputs/{}/train/{}_labels.json".format(dataset_name, target_query), 'r') as f:
+        labels = json.load(f)
+    labels = np.asarray(labels, dtype=object)
+    trajectories = np.asarray(trajectories, dtype=object)
+    inputs = trajectories[inputs]
 
-    # Top-10 queries, majority vote
+    inputs_downsampled = []
+    for input in inputs:
+        inputs_downsampled.append([input[0][::4], input[1][::4]])
+
+    inputs = inputs_downsampled
     y_pred = []
     for i in range(len(inputs)):
         input = inputs[i]
@@ -193,8 +200,9 @@ def test_query(dataset_name, target_query, test_query):
 if __name__ == '__main__':
     # test_query_equivalent(100, 100, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Kleene(Far_1.1), MinLength_2)), True*), Near_1.05), True*), Conjunction(Kleene(Conjunction(Near_1.05, Far_0.9)), MinLength_10)), True*)", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.1, 2)), True*), Near_1.05), True*), Duration(Conjunction(Near_1.05, Far_0.9), 10)), True*)")
     # test_vocal(1, 5, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)")
-    test_query("synthetic_rare", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)", "Sequencing(Sequencing(Sequencing(Sequencing(True*, LeftOf), True*), Near_1.05), True*)")
-
+    test_query("vary_num_examples-sampling_rate_4", "Near_1.05(o0, o1); Far_0.9(o0, o1); Near_1.05(o0, o1)", "Start(Sequencing(Sequencing(Sequencing(Sequencing(Near_1.05, True*), Far_0.9), True*), Near_1.05))")
+    program = str_to_program("Start(Sequencing(Sequencing(Sequencing(Sequencing(Near_1.05, True*), Far_0.9), True*), Near_1.05))")
+    print(get_depth_and_npred(program))
 
 
     # test_quivr_answer_correctness(10, 10)

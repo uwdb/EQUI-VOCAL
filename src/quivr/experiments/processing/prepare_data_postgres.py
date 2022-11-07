@@ -4,7 +4,7 @@ import itertools
 import shutil
 import numpy as np
 import os
-from quivr.utils import rewrite_program_postgres, str_to_program_postgres, postgres_execute
+from quivr.utils import rewrite_program_postgres, str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence
 import csv
 from itertools import repeat
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +21,8 @@ import pandas as pd
 
 m = multiprocessing.Manager()
 lock = m.Lock()
-memoize_all_inputs = [LRU(10000) for _ in range(10080)]
+memoize_sequence = [LRU(10000) for _ in range(10080)]
+memoize_scene_graph = [LRU(10000) for _ in range(10080)]
 
 def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, depth, max_duration, nvars, predicate_list, attr_predicate_list, max_workers, dataset_name, nattr_pred):
     """
@@ -35,7 +36,7 @@ def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, dep
                     queries.append(res)
                     print("Generated {} queries".format(len(queries)))
     # write queries to csv file
-    with open("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/queries.csv".format(dataset_name), "w") as csvfile:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/queries.csv".format(dataset_name), "w") as csvfile:
         writer = csv.writer(csvfile)
         # write header
         writer.writerow(["query", "npos", "nneg", "ratio"])
@@ -122,12 +123,17 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
     else:
         raise ValueError("Unknown inputs_table_name: {}".format(inputs_table_name))
     _start = time.time()
-    result, new_memoize = postgres_execute(dsn, program, memoize_all_inputs, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
+    result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
+
     print("Time to execute query: {}".format(time.time() - _start))
 
     lock.acquire()
-    for i, v in enumerate(new_memoize):
-        memoize_all_inputs[i].update(v)
+    for i, memo_dict in enumerate(new_memoize_scene_graph):
+        for k, v in memo_dict.items():
+            memoize_scene_graph[i][k] = v
+    for i, memo_dict in enumerate(new_memoize_sequence):
+        for k, v in memo_dict.items():
+            memoize_sequence[i][k] = v
     lock.release()
     labels = []
     for i in range(input_vids):
@@ -138,26 +144,28 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
 
     print("Generated {} positive inputs and {} negative inputs".format(len(result), input_vids - len(result)))
 
-    if len(result) / (input_vids - len(result)) < ratio_lower_bound:
+    if len(result) / input_vids < ratio_lower_bound:
         print("Query {} doesn't have enough positive examples".format(program_str))
         return None
-    if len(result) / (input_vids - len(result)) > ratio_upper_bound:
+    if len(result) / input_vids > ratio_upper_bound:
         print("Query {} doesn't have enough negative examples".format(program_str))
         return None
 
-    if not os.path.exists("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name)):
-        os.makedirs("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name), exist_ok=True)
-    with open("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/{}_labels.json".format(dataset_name, program_str), 'w') as f:
+    if not os.path.exists("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name)):
+        os.makedirs("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name), exist_ok=True)
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/{}_labels.json".format(dataset_name, program_str), 'w') as f:
         f.write(json.dumps(labels))
     return program_str, sum(labels), len(labels) - sum(labels), sum(labels) / (len(labels) - sum(labels))
 
 def prepare_noisy_data(fn_error_rate, fp_error_rate, dataset_name):
-    source_folder_name = os.path.join("/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs", dataset_name)
-    target_folder_name = "/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}-fn_error_rate_{}-fp_error_rate_{}".format(dataset_name, fn_error_rate, fp_error_rate)
+    source_folder_name = os.path.join("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs", dataset_name)
+    target_folder_name = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}-fn_error_rate_{}-fp_error_rate_{}".format(dataset_name, fn_error_rate, fp_error_rate)
     if not os.path.exists(target_folder_name):
         os.makedirs(target_folder_name, exist_ok=True)
 
     for filename in os.listdir(source_folder_name):
+        fn_count = 0
+        fp_count = 0
         if filename.endswith("_labels.json"):
             with open(os.path.join(source_folder_name, filename), 'r') as f:
                 labels = json.load(f)
@@ -165,12 +173,15 @@ def prepare_noisy_data(fn_error_rate, fp_error_rate, dataset_name):
             for i in range(len(labels)):
                 if labels[i] and random.random() < fn_error_rate:
                     labels[i] = 0
+                    fn_count += 1
                 elif not labels[i] and random.random() < fp_error_rate:
                     labels[i] = 1
+                    fp_count += 1
             with open(os.path.join(target_folder_name, filename), 'w') as f:
                 f.write(json.dumps(labels))
+            print("fp_count: {}, fn_count: {}".format(fp_count, fn_count))
             # copy file
-            shutil.copy(os.path.join(source_folder_name, filename.replace("_labels", "_inputs")), os.path.join(target_folder_name, filename.replace("_labels", "_inputs")))
+            # shutil.copy(os.path.join(source_folder_name, filename.replace("_labels", "_inputs")), os.path.join(target_folder_name, filename.replace("_labels", "_inputs")))
 
 def construct_train_test(dir_name, n_train, n_test=None):
     for filename in os.listdir(dir_name):
@@ -223,7 +234,7 @@ def prepare_data_postgres():
                 args = ", ".join(["text, text, text, double precision, double precision, double precision, double precision"] * predicate["nargs"])
                 if predicate["parameters"]:
                     args = "double precision, " + args
-                cur.execute("CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS '/mmfs1/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}' LANGUAGE C STRICT;".format(name=predicate["name"], args=args))
+                cur.execute("CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS '/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}' LANGUAGE C STRICT;".format(name=predicate["name"], args=args))
             conn.commit()
     generate_queries(n_queries=50, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=5, depth=3, max_duration=5, nvars=3, predicate_list=predicate_list, attr_predicate_list=attr_predicate_list, max_workers=2, dataset_name="synthetic_scene_graph_rare", nattr_pred=2)
 
@@ -231,3 +242,4 @@ if __name__ == '__main__':
     # construct_train_test("inputs/synthetic_scene_graph_rare", 300)
     # prepare_postgres_data_test_trajectories()
     prepare_data_postgres()
+    # prepare_noisy_data(fn_error_rate=0.1, fp_error_rate=0.01, dataset_name="without_duration-sampling_rate_4")

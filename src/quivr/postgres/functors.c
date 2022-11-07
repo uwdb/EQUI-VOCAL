@@ -109,6 +109,26 @@ Datum LeftOf(PG_FUNCTION_ARGS) {
     PG_RETURN_BOOL(cx1 < cx2);
 }
 
+PG_FUNCTION_INFO_V1(RightOf);
+
+Datum RightOf(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(3);
+    float y1 = PG_GETARG_FLOAT8(4);
+    float x2 = PG_GETARG_FLOAT8(5);
+    float y2 = PG_GETARG_FLOAT8(6);
+    float x3 = PG_GETARG_FLOAT8(10);
+    float y3 = PG_GETARG_FLOAT8(11);
+    float x4 = PG_GETARG_FLOAT8(12);
+    float y4 = PG_GETARG_FLOAT8(13);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+    float cx2 = (x3 + x4) / 2;
+    float cy2 = (y3 + y4) / 2;
+
+    PG_RETURN_BOOL(cx1 > cx2);
+}
+
 PG_FUNCTION_INFO_V1(Behind);
 
 Datum Behind(PG_FUNCTION_ARGS) {
@@ -127,6 +147,40 @@ Datum Behind(PG_FUNCTION_ARGS) {
     float cy2 = (y3 + y4) / 2;
 
     PG_RETURN_BOOL(cy1 < cy2);
+}
+
+PG_FUNCTION_INFO_V1(FrontOf);
+
+Datum FrontOf(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(3);
+    float y1 = PG_GETARG_FLOAT8(4);
+    float x2 = PG_GETARG_FLOAT8(5);
+    float y2 = PG_GETARG_FLOAT8(6);
+    float x3 = PG_GETARG_FLOAT8(10);
+    float y3 = PG_GETARG_FLOAT8(11);
+    float x4 = PG_GETARG_FLOAT8(12);
+    float y4 = PG_GETARG_FLOAT8(13);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+    float cx2 = (x3 + x4) / 2;
+    float cy2 = (y3 + y4) / 2;
+
+    PG_RETURN_BOOL(cy1 > cy2);
+}
+
+PG_FUNCTION_INFO_V1(LeftQuadrant);
+
+Datum LeftQuadrant(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(3);
+    float y1 = PG_GETARG_FLOAT8(4);
+    float x2 = PG_GETARG_FLOAT8(5);
+    float y2 = PG_GETARG_FLOAT8(6);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+
+    PG_RETURN_BOOL(cx1 >= 0 && cx1 < 240);
 }
 
 PG_FUNCTION_INFO_V1(RightQuadrant);
@@ -157,8 +211,31 @@ Datum TopQuadrant(PG_FUNCTION_ARGS) {
     PG_RETURN_BOOL(cy1 >= 0 && cy1 < 160);
 }
 
+PG_FUNCTION_INFO_V1(BottomQuadrant);
+
+Datum BottomQuadrant(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(3);
+    float y1 = PG_GETARG_FLOAT8(4);
+    float x2 = PG_GETARG_FLOAT8(5);
+    float y2 = PG_GETARG_FLOAT8(6);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+
+    PG_RETURN_BOOL(cy1 >= 160 && cy1 <= 320);
+}
+
 // COLOR
 //
+PG_FUNCTION_INFO_V1(Color);
+
+Datum Color(PG_FUNCTION_ARGS) {
+    char* target_color = text_to_cstring(PG_GETARG_TEXT_PP(0));
+    char* color_a = text_to_cstring(PG_GETARG_TEXT_PP(2));
+
+    PG_RETURN_BOOL(strcmp(color_a, target_color) == 0);
+}
+
 PG_FUNCTION_INFO_V1(Red);
 
 Datum Red(PG_FUNCTION_ARGS) {
@@ -224,6 +301,15 @@ Datum Yellow(PG_FUNCTION_ARGS) {
 }
 
 // SHAPE
+PG_FUNCTION_INFO_V1(Shape);
+
+Datum Shape(PG_FUNCTION_ARGS) {
+    char* target_shape = text_to_cstring(PG_GETARG_TEXT_PP(0));
+    char* shape_a = text_to_cstring(PG_GETARG_TEXT_PP(1));
+
+    PG_RETURN_BOOL(strcmp(shape_a, target_shape) == 0);
+}
+
 PG_FUNCTION_INFO_V1(Cube);
 
 Datum Cube(PG_FUNCTION_ARGS) {
@@ -250,6 +336,15 @@ Datum Cylinder(PG_FUNCTION_ARGS) {
 
 // MATERIAL
 //
+PG_FUNCTION_INFO_V1(Material);
+
+Datum Material(PG_FUNCTION_ARGS) {
+    char* target_material = text_to_cstring(PG_GETARG_TEXT_PP(0));
+    char* material_a = text_to_cstring(PG_GETARG_TEXT_PP(3));
+
+    PG_RETURN_BOOL(strcmp(material_a, target_material) == 0);
+}
+
 PG_FUNCTION_INFO_V1(Metal);
 
 Datum Metal(PG_FUNCTION_ARGS) {
