@@ -21,7 +21,7 @@ def using(point=""):
     return '''%s: mem=%s MB'''%(point, usage/1024.0 )
 
 # random.seed(10)
-random.seed(time.time())
+# random.seed(time.time())
 class VOCALPostgres(BaseMethod):
 
     def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, k, samples_per_iter, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda):

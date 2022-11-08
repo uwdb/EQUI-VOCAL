@@ -10,10 +10,10 @@ from quivr.utils import str_to_program_postgres, postgres_execute, postgres_exec
 import math
 import argparse
 
-def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, reg_lambda):
-    # budgets = list(range(12, 21)) + list(range(25, 31, 5)) + [50]
-    # budgets = [50]
-    budgets = [12, 15, 20, 25, 30, 50]
+def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port):
+    budgets = list(range(12, 21)) + list(range(25, 31, 5)) + [50]
+    # budgets = [30]
+    # budgets = [12, 15, 20, 25, 30, 50]
     if dataset_name.startswith("collision"):
         list_size = 12747
     else:
@@ -33,13 +33,13 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, reg_lam
     score_median_log = []
     score_random_log = []
     runtime_log = []
-    for run in range(20):
+    for run in range(2):
     # for run in [10, 11]:
         score_median_log_per_run = []
         score_random_log_per_run = []
         runtime_log_per_run = []
         for budget in budgets:
-            output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_2-nin_10-npred_5-depth_3-max_d_5-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_{}".format(dataset_name, method, budget, reg_lambda)
+            output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_2-nin_10-npred_5-depth_3-max_d_5-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, budget)
             try:
                 # Read the log file
                 with open(os.path.join(output_dir, "{}-{}.log".format(query_str, run)), 'r') as f:
@@ -122,11 +122,10 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, reg_lam
         score_random_log.append(score_random_log_per_run)
         runtime_log.append(runtime_log_per_run)
     out_dict = {"score_median": score_median_log, "score_random": score_random_log, "runtime": runtime_log}
-    # exp_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/".format(dataset_name)
     exp_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/".format(dataset_name)
-    if not os.path.exists(os.path.join(exp_dir, "stats", method+"-lambda_{}".format(reg_lambda))):
-        os.makedirs(os.path.join(exp_dir, "stats", method+"-lambda_{}".format(reg_lambda)))
-    with open(os.path.join(exp_dir, "stats", method+"-lambda_{}".format(reg_lambda), "{}.json".format(query_str)), "w") as f:
+    if not os.path.exists(os.path.join(exp_dir, "stats", method+"-lambda_0.01")):
+        os.makedirs(os.path.join(exp_dir, "stats", method+"-lambda_0.01"))
+    with open(os.path.join(exp_dir, "stats", method+"-lambda_0.01", "{}.json".format(query_str)), "w") as f:
         json.dump(out_dict, f)
 
 
@@ -136,14 +135,14 @@ if __name__ == "__main__":
     ap.add_argument("--query_str", type=str)
     ap.add_argument("--method", type=str)
     ap.add_argument("--port", type=int, default=5432)
-    ap.add_argument("--reg_lambda", type=float)
+    # ap.add_argument("--reg_lambda", type=float)
 
     args = ap.parse_args()
     dataset_name = args.dataset_name
     query_str = args.query_str
     method = args.method
     port = args.port
-    reg_lambda = args.reg_lambda
+    # reg_lambda = args.reg_lambda
 
     if "sampling_rate" in dataset_name:
         splits = dataset_name.split("-")
@@ -155,5 +154,5 @@ if __name__ == "__main__":
         sampling_rate = None
     print("sampling_rate: ", sampling_rate)
 
-    evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, reg_lambda)
+    evaluate_vocal(dataset_name, method, query_str, sampling_rate, port)
     # evaluate_vocal_simplest_queries(method, query_str, sampling_rate, port)

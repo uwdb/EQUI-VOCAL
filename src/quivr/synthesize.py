@@ -25,8 +25,6 @@ import pandas
 import time
 from sklearn.model_selection import train_test_split
 
-# random.seed(10)
-random.seed(time.time())
 
 def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, with_kleene):
     if dataset_name.startswith("collision"):
@@ -85,11 +83,6 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     pos_idx = np.where(labels == 1)[0]
     neg_idx = np.where(labels == 0)[0]
     print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
-
-    # if "sampling_rate" in dataset_name:
-    #     idx_start = dataset_name.index("sampling_rate")
-    #     sampling_rate = int(dataset_name[idx_start + len("sampling_rate_"):])
-    #     print("sampling_rate", sampling_rate)
 
     if "sampling_rate" in dataset_name:
         splits = dataset_name.split("-")
@@ -166,8 +159,7 @@ if __name__ == '__main__':
     ap.add_argument('--output_to_file', action="store_true")
     ap.add_argument('--port', type=int, default=5432)
     ap.add_argument('--lru_capacity', type=int)
-    ap.add_argument('--labeling_interval', type=int)
-    ap.add_argument('--reg_lambda', type=float, default=0.05)
+    ap.add_argument('--reg_lambda', type=float, default=0)
 
     args = ap.parse_args()
     method_str = args.method
@@ -194,8 +186,11 @@ if __name__ == '__main__':
     output_to_file = args.output_to_file
     port = args.port
     lru_capacity = args.lru_capacity
-    labeling_interval = args.labeling_interval
     reg_lambda = args.reg_lambda
+
+    random.seed(run_id)
+    np.random.seed(run_id)
+    # random.seed(time.time())
 
     # Define file directory and name
     if method_str == "vocal":
@@ -215,7 +210,6 @@ if __name__ == '__main__':
         config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-nvars_{}-bw_{}-pool_size_{}-k_{}-budget_{}-thread_{}-lru_{}-lambda_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, max_vars, beam_width, pool_size, k, budget, multithread, lru_capacity, reg_lambda)
 
     log_dirname = os.path.join("outputs", dataset_name, method_name, config_name)
-    # log_dirname = os.path.join("outputs", dataset_name, method_name, config_name)
     log_filename = "{}-{}".format(query_str, run_id)
     # if dir not exist, create it
     if output_to_file:
@@ -305,8 +299,9 @@ if __name__ == '__main__':
         if method_str in ["vocal_postgres", "vocal_postgres_duration_refinement_last", "vocal_postgres_best_action", 'vocal_postgres_most_likely_positive']:
             samples_per_iter = [0] * (npred + (max_duration - 1) * depth)
             for i in range((budget - n_init_pos - n_init_neg)):
-                samples_per_iter[len(samples_per_iter) - 1 - i % len(samples_per_iter)] += 1
-                # samples_per_iter[i * labeling_interval] += 1
+                # samples_per_iter[len(samples_per_iter) - 1 - i % len(samples_per_iter)] += 1 # Lazy
+                samples_per_iter[i % len(samples_per_iter)] += 1 # Eager
+                # samples_per_iter[i % len(samples_per_iter)] += 1 # Even
         elif method_str == "vocal_postgres_two_stages":
             samples_per_iter = [0] * (npred + (max_duration - 1) * depth)
             for i in range((budget - n_init_pos - n_init_neg)):
