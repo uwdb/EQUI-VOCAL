@@ -115,7 +115,7 @@ class QUIVROriginal:
             sampled_unlabeled_trajectories = random.sample(sampled_unlabeled_trajectories, 100)
             _start_pick_next_sample = time.time()
             j_values = np.zeros(len(sampled_unlabeled_trajectories))
-            prediction_matrix = []
+            # prediction_matrix = []
             for i in range(len(sampled_unlabeled_trajectories)):
                 input = self.inputs[i]
                 label = self.labels[i]
@@ -125,14 +125,14 @@ class QUIVROriginal:
                     result, new_memoize = query.execute(input, -1, memoize, {})
                     self.memoize_all_inputs[i].update(new_memoize)
                     pred_per_input.append(int(result[0, len(input[0])] > 0))
-                prediction_matrix.append(pred_per_input)
+                # prediction_matrix.append(pred_per_input)
                 hist, bin_edges = np.histogram(pred_per_input, bins=2)
                 prob_i = hist/np.sum(hist)
                 j_values[i] = np.sum(prob_i * (1 - prob_i))
             next_idx = np.argmax(j_values)
             self.sample_selection_time += time.time() - _start_pick_next_sample
             if j_values[next_idx] == 0:
-                prediction_matrix = np.array(prediction_matrix)
+                # prediction_matrix = np.array(prediction_matrix)
                 for query in answer:
                     print("answer", print_program(query))
                     self.output_log.append(print_program(query))
