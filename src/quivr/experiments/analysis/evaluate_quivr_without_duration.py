@@ -37,10 +37,10 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
     inputs = np.asarray(inputs, dtype=object)
 
     # If more than 500 trajectories, randomly sample 500 trajectories for evaluation
-    if len(inputs) > 500:
-        sampled_idx = np.random.choice(len(inputs), 500, replace=False)
-        inputs = inputs[sampled_idx]
-        labels = labels[sampled_idx]
+    # if len(inputs) > 500:
+    #     sampled_idx = np.random.choice(len(inputs), 500, replace=False)
+    #     inputs = inputs[sampled_idx]
+    #     labels = labels[sampled_idx]
 
     memoize_all_inputs = [LRU(10000) for _ in range(len(inputs))]
 

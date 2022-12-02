@@ -8,7 +8,7 @@ from scipy import stats
 import itertools
 from lru import LRU
 import multiprocessing
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 import resource
 import random
 import quivr.dsl as dsl
@@ -76,16 +76,13 @@ class VOCALPostgres(BaseMethod):
         self.answers = []
         self.n_queries_explored = 0
         self.n_prediction_count = 0
-        _start = time.time()
         if self.multithread > 1:
-            self.executor = ProcessPoolExecutor(max_workers=self.multithread)
             self.m = multiprocessing.Manager()
             self.lock = self.m.Lock()
         elif self.multithread == 1:
             self.lock = None
         else:
             raise ValueError("multithread must be 1 or greater")
-        print("process pool init time:", time.time() - _start)
 
         self.output_log = []
 
@@ -268,8 +265,9 @@ class VOCALPostgres(BaseMethod):
                 candidate_queries_greater_than_zero = []
                 if self.multithread > 1:
                     updated_scores = []
-                    for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
-                        updated_scores.append(result)
+                    with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                        for result in executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                            updated_scores.append(result)
                     for i in range(len(self.candidate_queries)):
                         if updated_scores[i] > 0:
                             candidate_queries_greater_than_zero.append([self.candidate_queries[i][0], updated_scores[i]])
@@ -323,8 +321,9 @@ class VOCALPostgres(BaseMethod):
                     self.n_prediction_count += len(new_labeled_index) * len(self.candidate_queries)
                     if self.multithread > 1:
                         updated_scores = []
-                        for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
-                            updated_scores.append(result)
+                        with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                            for result in executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                                updated_scores.append(result)
                         for i in range(len(self.candidate_queries)):
                             self.candidate_queries[i][1] = updated_scores[i]
                     else:
@@ -360,8 +359,9 @@ class VOCALPostgres(BaseMethod):
             self.n_prediction_count += len(self.answers) * len(self.labeled_index)
             if self.multithread > 1:
                 updated_scores = []
-                for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.answers]):
-                    updated_scores.append(result)
+                with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                    for result in executor.map(self.get_query_score, [query.program for query, _ in self.answers]):
+                        updated_scores.append(result)
                 for i in range(len(self.answers)):
                     self.answers[i][1] = updated_scores[i]
             else:

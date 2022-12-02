@@ -473,7 +473,7 @@ class TrueStar(Predicate):
 class MinLength(Predicate):
     has_theta=True
 
-    def __init__(self, max_duration=5, theta=1, step=1, with_hole=False):
+    def __init__(self, max_duration=15, theta=1, step=5, with_hole=False):
         self.theta = theta
         self.step = step
         self.with_hole = with_hole
@@ -481,7 +481,7 @@ class MinLength(Predicate):
         super().__init__("MinLength")
 
     def init_value_range(self):
-        return [1, self.max_duration]
+        return [5, self.max_duration]
 
     def execute_with_hole(self, input, label, memoize, new_memoize):
         subquery_str = utils.print_program(self)

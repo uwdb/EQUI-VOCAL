@@ -1,3 +1,4 @@
+from collections import deque
 from sklearn.metrics import f1_score
 import resource
 import numpy as np
@@ -6,6 +7,8 @@ from scipy import stats
 from concurrent.futures import ThreadPoolExecutor
 from quivr.utils import print_program, rewrite_program, str_to_program, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching, rewrite_program_postgres, str_to_program_postgres, complexity_cost
 import itertools
+from sklearn.utils import resample
+import pandas as pd
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -63,6 +66,38 @@ class BaseMethod:
 
         f1 = f1_score(list(self.labels[self.labeled_index]), y_pred)
         score = f1 - self.reg_lambda * complexity_cost(current_query)
+        return score
+
+    def compute_query_score_bootstrapping_postgres(self, current_query):
+        # NOTE: sufficinet to lock only when writing to the memoize_all_inputs? Updating dict/list in python is atomic operation, so no conflicts for write, but reading might get old values (which is fine for us).
+        input_vids = self.inputs[self.labeled_index].tolist()
+        y_pred = []
+        result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(self.dsn, current_query, self.memoize_scene_graph_all_inputs, self.memoize_sequence_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
+        if self.lock:
+            self.lock.acquire()
+        for i, memo_dict in enumerate(new_memoize_scene_graph):
+            for k, v in memo_dict.items():
+                self.memoize_scene_graph_all_inputs[i][k] = v
+        for i, memo_dict in enumerate(new_memoize_sequence):
+            for k, v in memo_dict.items():
+                self.memoize_sequence_all_inputs[i][k] = v
+        if self.lock:
+            self.lock.release()
+        for i in input_vids:
+            if i in result:
+                y_pred.append(1)
+            else:
+                y_pred.append(0)
+
+        y_true = list(self.labels[self.labeled_index])
+        print("score before bootstrapping", f1_score(y_true, y_pred))
+        f1_bootstrapping = []
+        for _ in range(100):
+            y_true_sampled, y_pred_sampled = resample(y_true, y_pred)  # NOTE: stratify?
+            f1 = f1_score(y_true_sampled, y_pred_sampled, zero_division=1)
+            f1_bootstrapping.append(f1)
+        score = np.mean(f1_bootstrapping) - self.reg_lambda * complexity_cost(current_query)
+        print("bootstrapping score: mean {}, std {}".format(score, np.std(f1_bootstrapping)))
         return score
 
     # def pick_next_segment(self):
@@ -179,9 +214,8 @@ class BaseMethod:
     #     query_list = query_list_removing_duplicates
     #     print("query pool", [print_program(query) for query in query_list])
     #     if self.multithread > 1:
-    #         with ThreadPoolExecutor(max_workers=self.multithread) as executor:
-    #             for pred_per_query in executor.map(self.execute_over_all_inputs, query_list):
-    #                 prediction_matrix.append(pred_per_query)
+    #       for pred_per_query in self.executor.map(self.execute_over_all_inputs, query_list):
+    #           prediction_matrix.append(pred_per_query)
     #     else:
     #         for query in query_list:
     #             pred_per_query = self.execute_over_all_inputs(query)
@@ -267,10 +301,11 @@ class BaseMethod:
         else:
             self.sampled_index = unlabeled_index
 
+        self.n_prediction_count += len(query_list) * len(self.sampled_index)
         if self.multithread > 1:
-            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
-                for pred_per_query in executor.map(self.execute_over_all_inputs_postgres, query_list):
-                    prediction_matrix.append(pred_per_query)
+
+            for pred_per_query in self.executor.map(self.execute_over_all_inputs_postgres, query_list):
+                prediction_matrix.append(pred_per_query)
         else:
             for query in query_list:
                 pred_per_query = self.execute_over_all_inputs_postgres(query)
@@ -315,6 +350,18 @@ class BaseMethod:
         # return video_segment_ids.tolist()
 
 
+    def pick_next_segment_randomly_postgres(self):
+        """
+        Pick the next segment to be labeled, randomly.
+        """
+        true_labels = np.array(self.labels)
+        n_instances = len(true_labels)
+        unlabeled_index = np.setdiff1d(np.arange(n_instances), self.labeled_index, assume_unique=True)
+
+        random_index = np.random.choice(unlabeled_index, 1)[0]
+
+        return [random_index]
+
     def pick_next_segment_most_likely_positive_postgres(self):
         """
         Pick the next segment to be labeled, using the Model Picker algorithm.
@@ -334,10 +381,10 @@ class BaseMethod:
         else:
             self.sampled_index = unlabeled_index
 
+        self.n_prediction_count += len(query_list) * len(self.sampled_index)
         if self.multithread > 1:
-            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
-                for pred_per_query in executor.map(self.execute_over_all_inputs_postgres, query_list):
-                    prediction_matrix.append(pred_per_query)
+            for pred_per_query in self.executor.map(self.execute_over_all_inputs_postgres, query_list):
+                prediction_matrix.append(pred_per_query)
         else:
             for query in query_list:
                 pred_per_query = self.execute_over_all_inputs_postgres(query)
@@ -384,9 +431,8 @@ class BaseMethod:
             self.sampled_index = unlabeled_index
 
         if self.multithread > 1:
-            with ThreadPoolExecutor(max_workers=self.multithread) as executor:
-                for pred_per_query in executor.map(self.execute_over_all_inputs_postgres, query_list):
-                    prediction_matrix.append(pred_per_query)
+            for pred_per_query in self.executor.map(self.execute_over_all_inputs_postgres, query_list):
+                prediction_matrix.append(pred_per_query)
         else:
             for query in query_list:
                 pred_per_query = self.execute_over_all_inputs_postgres(query)
@@ -448,3 +494,271 @@ class BaseMethod:
             else:
                 pred_per_query.append(0)
         return pred_per_query
+
+
+
+    # def compute_query_score_duckdb(self, current_query):
+    #     # NOTE: sufficinet to lock only when writing to the memoize_all_inputs? Updating dict/list in python is atomic operation, so no conflicts for write, but reading might get old values (which is fine for us).
+    #     self.input_vids = self.inputs[self.labeled_index].tolist()
+    #     y_pred = []
+    #     result, new_memoize_scene_graph, new_memoize_sequence = self.duckdb_execute_cache_sequence(current_query, self.input_vids)
+    #     if self.lock:
+    #         self.lock.acquire()
+    #     for i, memo_dict in enumerate(new_memoize_scene_graph):
+    #         for k, v in memo_dict.items():
+    #             self.memoize_scene_graph_all_inputs[i][k] = v
+    #     for i, memo_dict in enumerate(new_memoize_sequence):
+    #         for k, v in memo_dict.items():
+    #             self.memoize_sequence_all_inputs[i][k] = v
+    #     if self.lock:
+    #         self.lock.release()
+    #     for i in self.input_vids:
+    #         if i in result:
+    #             y_pred.append(1)
+    #         else:
+    #             y_pred.append(0)
+
+    #     f1 = f1_score(list(self.labels[self.labeled_index]), y_pred)
+    #     score = f1 - self.reg_lambda * complexity_cost(current_query)
+    #     return score
+
+    # def duckdb_execute_cache_sequence(self, current_query):
+    #     """
+    #     input_vids: list of video segment ids
+    #     Example query:
+    #         Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, Behind)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)
+    #     two types of caches:
+    #         1. scene graph cache (without duration constraints): cache[graph] = vid, fid, oids (where fid is every frame that satisfies the graph)
+    #         2. sequence cache: cache[sequence] = vid, fid, oids (where fid is the minimum frame that satisfies the sequence)
+    #         Example: g1, (g1, d1), g2, (g1, d1); (g2, d2), g3, (g1, d1); (g2, d2); (g3, d3)
+    #     Output:
+    #     new_memoize: new cached results from this query, which will be added to the global cache (for multi-threading)
+    #     """
+    #     with self.con.cursor() as cur:
+    #         """
+    #         Caching implementation:
+    #         cached_df_deque = []
+    #         cached_vids_deque = []
+    #         remaining_vids = input_vids
+    #         for each query (from the most top-level to the most bottom-level):
+    #             cached_df_per_query = []
+    #             cached_vids_per_query = []
+    #             next_remaining_vids = []
+    #             for each video segment in remaining_vids:
+    #                 if the result is cached:
+    #                     add the result to cached_df_per_query
+    #                     add the video segment id to cached_vids_per_query
+    #                 else:
+    #                     add the video segment id to next_remaining_vids
+    #             push cached_df_per_query to cached_df_deque
+    #             push cached_vids_per_query to cached_vids_deque
+    #             remaining_vids = next_remaining_vids
+    #         """
+    #         new_memoize_scene_graph = [{} for _ in range(len(self.memoize_scene_graph))]
+    #         new_memoize_sequence = [{} for _ in range(len(self.memoize_sequence))]
+
+    #         # Prepare cache result
+    #         filtered_vids = []
+    #         cached_df_seq_deque = deque()
+    #         cached_vids_deque = deque()
+    #         if isinstance(self.input_vids, int):
+    #             remaining_vids = set(range(self.input_vids))
+    #         else:
+    #             remaining_vids = set(self.input_vids)
+    #         signatures = deque()
+    #         for i in range(len(current_query)):
+    #             cached_df_seq_per_query = [pd.DataFrame()]
+
+    #             # sequence cache
+    #             seq_signature = rewrite_program_postgres(current_query[:len(current_query)-i])
+    #             cached_vids_per_query = set()
+    #             next_remaining_vids = set()
+    #             for vid in remaining_vids:
+    #                 if seq_signature in self.memoize_sequence[vid]:
+    #                     cached_df_seq_per_query.append(self.memoize_sequence[vid][seq_signature])
+    #                     cached_vids_per_query.add(vid)
+    #                 else:
+    #                     next_remaining_vids.add(vid)
+    #             cached_df_seq_per_query = pd.concat(cached_df_seq_per_query, ignore_index=True)
+    #             cached_df_seq_deque.append(cached_df_seq_per_query)
+    #             cached_vids_deque.append(cached_vids_per_query)
+    #             if i == 0:
+    #                 filtered_vids = list(next_remaining_vids)
+    #             remaining_vids = next_remaining_vids
+
+    #             signatures.append(seq_signature)
+    #         cached_vids_deque.append(remaining_vids)
+    #         # print("filtered_vids", filtered_vids)
+    #         # select input videos
+    #         _start = time.time()
+    #         if isinstance(self.input_vids, int):
+    #             if self.sampling_rate:
+    #                 cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT oid, vid, fid / {} as fid, shape, color, material, x1, y1, x2, y2 FROM Obj WHERE vid < {} AND fid % {} = 0;".format(self.sampling_rate, self.input_vids, self.sampling_rate))
+    #             else:
+    #                 cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM Obj WHERE vid < {};".format(self.input_vids))
+    #         else:
+    #             if self.sampling_rate:
+    #                 cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT oid, vid, fid / {} as fid, shape, color, material, x1, y1, x2, y2 FROM Obj WHERE vid = ANY(%s) AND fid %% {} = 0;".format(self.sampling_rate, self.sampling_rate), [filtered_vids])
+    #             else:
+    #                 cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM Obj WHERE vid = ANY(%s);", [filtered_vids])
+    #         cur.execute("CREATE INDEX IF NOT EXISTS idx_obj_filtered ON Obj_filtered (vid, fid, oid);")
+    #         # print("select input videos: ", time.time() - _start)
+
+    #         encountered_variables_prev_graphs = []
+    #         encountered_variables_current_graph = []
+    #         delta_input_vids = []
+    #         for graph_idx, dict in enumerate(current_query):
+    #             _start = time.time()
+    #             # Generate scene graph:
+    #             scene_graph = dict["scene_graph"]
+    #             duration_constraint = dict["duration_constraint"]
+    #             for p in scene_graph:
+    #                 for v in p["variables"]:
+    #                     if v not in encountered_variables_current_graph:
+    #                         encountered_variables_current_graph.append(v)
+
+    #             delta_input_vids.extend(cached_vids_deque.pop())
+    #             # Execute for unseen videos
+    #             _start_execute = time.time()
+    #             encountered_variables_current_graph = sorted(encountered_variables_current_graph, key=lambda x: int(x[1:]))
+    #             tables = ", ".join(["Obj_filtered as {}".format(v) for v in encountered_variables_current_graph])
+    #             where_clauses = []
+    #             where_clauses.append("{}.vid = ANY(%s)".format(encountered_variables_current_graph[0]))
+    #             for i in range(len(encountered_variables_current_graph)-1):
+    #                 where_clauses.append("{v1}.vid = {v2}.vid and {v1}.fid = {v2}.fid".format(v1=encountered_variables_current_graph[i], v2=encountered_variables_current_graph[i+1])) # join variables
+    #             for p in scene_graph:
+    #                 predicate = p["predicate"]
+    #                 parameter = p["parameter"]
+    #                 variables = p["variables"]
+    #                 args = []
+    #                 for v in variables:
+    #                     args.append("{v}.shape, {v}.color, {v}.material, {v}.x1, {v}.y1, {v}.x2, {v}.y2".format(v=v))
+    #                 args = ", ".join(args)
+    #                 if parameter:
+    #                     if isinstance(parameter, str):
+    #                         args = "'{}', {}".format(parameter, args)
+    #                     else:
+    #                         args = "{}, {}".format(parameter, args)
+    #                 where_clauses.append("{}({}) = true".format(predicate, args))
+    #             if is_trajectory:
+    #                 # only for trajectory example
+    #                 for v in encountered_variables_current_graph:
+    #                     where_clauses.append("{}.oid = {}".format(v, v[1:]))
+    #             else:
+    #                 # For general case
+    #                 for var_pair in itertools.combinations(encountered_variables_current_graph, 2):
+    #                     where_clauses.append("{}.oid <> {}.oid".format(var_pair[0], var_pair[1]))
+    #             where_clauses = " and ".join(where_clauses)
+    #             fields = "{v}.vid as vid, {v}.fid as fid, ".format(v=encountered_variables_current_graph[0])
+    #             fields += ", ".join(["{v}.oid as {v}_oid".format(v=v) for v in encountered_variables_current_graph])
+    #             oid_list = ["{}_oid".format(v) for v in encountered_variables_current_graph]
+    #             oids = ", ".join(oid_list)
+    #             sql_sring = """
+    #             CREATE TEMPORARY TABLE g{} AS
+    #             SELECT {}
+    #             FROM {}
+    #             WHERE {};
+    #             """.format(graph_idx, fields, tables, where_clauses)
+    #             # print(sql_sring)
+    #             cur.execute(sql_sring, [delta_input_vids])
+    #             # cur.execute("CREATE INDEX IF NOT EXISTS idx_g{} ON g{} (vid);".format(graph_idx, graph_idx))
+    #             # print("execute for unseen videos: ", time.time() - _start_execute)
+    #             # print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
+
+    #             # Read cached results
+    #             seq_signature = signatures.pop()
+    #             cached_results = cached_df_seq_deque.pop()
+
+    #             _start_filtered = time.time()
+    #             if graph_idx > 0:
+    #                 obj_union = copy.deepcopy(encountered_variables_prev_graphs)
+    #                 obj_intersection = []
+    #                 obj_union_fields = []
+    #                 obj_intersection_fields = []
+    #                 for v in encountered_variables_prev_graphs:
+    #                     obj_union_fields.append("t0.{}_oid".format(v))
+    #                 for v in encountered_variables_current_graph:
+    #                     if v in encountered_variables_prev_graphs:
+    #                         obj_intersection.append(v)
+    #                         obj_intersection_fields.append("t0.{v}_oid = t1.{v}_oid".format(v=v))
+    #                     else:
+    #                         obj_union.append(v)
+    #                         obj_union_fields.append("t1.{}_oid".format(v))
+    #                 obj_union_fields = ", ".join(obj_union_fields)
+    #                 obj_intersection_fields = " and ".join(obj_intersection_fields)
+    #                 # where_clauses = "t0.vid = ANY(%s)"
+    #                 # if current_seq == "g0_seq_view":
+    #                 #     where_clauses += " and t0.vid = t1.vid and t0.fid2 < t1.fid1"
+    #                 # else:
+    #                 #     where_clauses += " and t0.vid = t1.vid and t0.fid < t1.fid1"
+    #                 sql_string = """
+    #                 CREATE TEMPORARY TABLE g{graph_idx}_filtered AS (
+    #                     SELECT t0.vid, t1.fid, {obj_union_fields}
+    #                     FROM g{graph_idx_prev}_contiguous t0, g{graph_idx} t1
+    #                     WHERE t0.vid = t1.vid AND {obj_intersection_fields} AND t0.fid < t1.fid
+    #                 );
+    #                 """.format(graph_idx=graph_idx, graph_idx_prev=graph_idx-1, obj_union_fields=obj_union_fields, obj_intersection_fields=obj_intersection_fields)
+    #                 # print(sql_string)
+    #                 cur.execute(sql_string)
+    #             else:
+    #                 obj_union = encountered_variables_current_graph
+    #             # print("filtered: ", time.time() - _start_filtered)
+
+    #             # Generate scene graph sequence:
+    #             _start_windowed = time.time()
+    #             table_name = "g{}_filtered".format(graph_idx) if graph_idx > 0 else "g{}".format(graph_idx)
+    #             obj_union_fields = ", ".join(["{}_oid".format(v) for v in obj_union])
+    #             sql_string = """
+    #                 CREATE TEMPORARY TABLE g{graph_idx}_windowed AS (
+    #                 SELECT vid, fid, {obj_union_fields},
+    #                 lead(fid, {duration_constraint} - 1, 0) OVER (PARTITION BY vid, {obj_union_fields} ORDER BY fid) as fid_offset
+    #                 FROM {table_name}
+    #             );
+    #             """.format(graph_idx=graph_idx, duration_constraint=duration_constraint, obj_union_fields=obj_union_fields, table_name=table_name)
+    #             # print(sql_string)
+    #             cur.execute(sql_string)
+    #             # print("windowed: ", time.time() - _start_windowed)
+
+    #             _start_contiguous = time.time()
+    #             sql_string = """
+    #                 CREATE TEMPORARY TABLE g{graph_idx}_contiguous AS (
+    #                 SELECT vid, {obj_union_fields}, min(fid_offset) AS fid
+    #                 FROM g{graph_idx}_windowed
+    #                 WHERE fid_offset = fid + ({duration_constraint} - 1)
+    #                 GROUP BY vid, {obj_union_fields}
+    #             );
+    #             """.format(graph_idx=graph_idx, obj_union_fields=obj_union_fields, duration_constraint=duration_constraint)
+    #             # print(sql_string)
+    #             cur.execute(sql_string)
+    #             # print("contiguous: ", time.time() - _start_contiguous)
+    #             # Store new cached results
+    #             for input_vid in delta_input_vids:
+    #                 new_memoize_sequence[input_vid][seq_signature] = pd.DataFrame()
+    #             _start_execute = time.time()
+    #             cur.execute("SELECT * FROM g{}_contiguous".format(graph_idx))
+    #             df = pd.DataFrame(cur.fetchall())
+    #             # print("[store cache]: fetchall", time.time() - _start_execute)
+    #             _start_store = time.time()
+    #             if df.shape[0]: # if results not empty
+    #                 df.columns = [x.name for x in cur.description]
+    #                 for vid, group in df.groupby("vid"):
+    #                     cached_df = group.reset_index(drop=True)
+    #                     new_memoize_sequence[vid][seq_signature] = cached_df
+    #             # print("[store cache]: store", time.time() - _start_store)
+    #             # Appending cached results of seen videos:
+    #             _start_append = time.time()
+    #             if cached_results.shape[0]:
+    #                 # save dataframe to an in memory buffer
+    #                 buffer = StringIO()
+    #                 cached_results.to_csv(buffer, header=False, index = False)
+    #                 buffer.seek(0)
+    #                 cur.copy_from(buffer, "g{}_contiguous".format(graph_idx), sep=",")
+    #             # print("append: ", time.time() - _start_append)
+    #             encountered_variables_prev_graphs = obj_union
+    #             encountered_variables_current_graph = []
+
+    #         cur.execute("SELECT DISTINCT vid FROM g{}_contiguous".format(len(current_query) - 1))
+    #         # print("SELECT DISTINCT vid FROM g{}_contiguous".format(len(current_query) - 1))
+    #         output_vids = cur.fetchall()
+    #         output_vids = [row[0] for row in output_vids]
+    #     return output_vids, new_memoize_scene_graph, new_memoize_sequence
