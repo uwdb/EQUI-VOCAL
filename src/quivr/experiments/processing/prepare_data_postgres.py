@@ -15,6 +15,7 @@ import multiprocessing
 from lru import LRU
 from sklearn.model_selection import train_test_split
 import pandas as pd
+import argparse
 
 # random.seed(1234)
 # np.random.seed(10)
@@ -24,14 +25,14 @@ lock = m.Lock()
 memoize_sequence = [LRU(10000) for _ in range(10080)]
 memoize_scene_graph = [LRU(10000) for _ in range(10080)]
 
-def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, depth, max_duration, nvars, predicate_list, attr_predicate_list, max_workers, dataset_name, nattr_pred):
+def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, depth, max_duration, nvars, predicate_list, attr_predicate_list, max_workers, dataset_name, nattr_pred, port):
     """
     Generate (n_queries) queries with the same complexity (npred, depth), removing those that don't have enough positive data (i.e., highly imbalanced)
     """
     queries = []
     while len(queries) < n_queries:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for res in executor.map(generate_one_query, repeat(npred, max_workers), repeat(depth, max_workers), repeat(max_duration, max_workers), repeat(nvars, max_workers), repeat(predicate_list, max_workers), repeat(attr_predicate_list, max_workers), repeat(ratio_lower_bound, max_workers), repeat(ratio_upper_bound, max_workers), repeat(dataset_name, max_workers), repeat(nattr_pred, max_workers)):
+            for res in executor.map(generate_one_query, repeat(npred, max_workers), repeat(depth, max_workers), repeat(max_duration, max_workers), repeat(nvars, max_workers), repeat(predicate_list, max_workers), repeat(attr_predicate_list, max_workers), repeat(ratio_lower_bound, max_workers), repeat(ratio_upper_bound, max_workers), repeat(dataset_name, max_workers), repeat(nattr_pred, max_workers), repeat(port, max_workers)):
                 if res:
                     queries.append(res)
                     print("Generated {} queries".format(len(queries)))
@@ -43,7 +44,7 @@ def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, dep
         writer.writerows(queries)
 
 
-def generate_one_query(npred, depth, max_duration, nvars, predicate_list, attr_predicate_list, ratio_lower_bound, ratio_upper_bound, dataset_name, nattr_pred):
+def generate_one_query(npred, depth, max_duration, nvars, predicate_list, attr_predicate_list, ratio_lower_bound, ratio_upper_bound, dataset_name, nattr_pred, port):
     """
     Generate one query with the specific complexity (npred, depth), using predicates from predicate_list.
     """
@@ -76,12 +77,15 @@ def generate_one_query(npred, depth, max_duration, nvars, predicate_list, attr_p
         candidates = [i for i in range(depth) if npred_per_scene_graph[i] < len(predicate_list)]
         npred_per_scene_graph[random.choice(candidates)] += 1
 
-    x = np.arange(1, max_duration + 1)
+    duration_unit = 5
+    x = np.arange(1, max_duration // duration_unit + 2)
     weights = x ** (-1.6)
     weights /= weights.sum()
-    bounded_zipf = stats.rv_discrete(name='bounded_zipf', values=(x, weights))
+    duration_values = [1]
+    for i in range(1, max_duration // duration_unit + 1):
+        duration_values.append(i * duration_unit)
+    bounded_zipf = stats.rv_discrete(name='bounded_zipf', values=(duration_values, weights))
     duration_per_scene_graph = bounded_zipf.rvs(size=depth)
-
     scene_graphs = []
     for i in range(depth):
         sampled_predicates = random.sample(predicate_list, npred_per_scene_graph[i])
@@ -101,10 +105,10 @@ def generate_one_query(npred, depth, max_duration, nvars, predicate_list, attr_p
     query = rewrite_program_postgres(program)
     print(query)
     inputs_table_name = "Obj_clevrer"
-    return prepare_data_given_target_query(query, ratio_lower_bound, ratio_upper_bound, dataset_name, inputs_table_name)
+    return prepare_data_given_target_query(query, ratio_lower_bound, ratio_upper_bound, dataset_name, inputs_table_name, port)
 
 
-def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_bound, dataset_name, inputs_table_name, sampling_rate):
+def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_bound, dataset_name, inputs_table_name, port, sampling_rate=None):
     """
     Given the target query (in string format), generate inputs.json and labels.json files containing
     inputs.json.
@@ -112,7 +116,7 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
     ratio: minimum ratio of positive examples to negative examples
     """
     program = str_to_program_postgres(program_str)
-    dsn = "dbname=myinner_db user=enhaoz host=localhost"
+    dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
 
     if inputs_table_name == "Obj_clevrer":
         is_trajectory = False
@@ -143,7 +147,6 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
             labels.append(0)
 
     print("Generated {} positive inputs and {} negative inputs".format(len(result), input_vids - len(result)))
-
     if len(result) / input_vids < ratio_lower_bound:
         print("Query {} doesn't have enough positive examples".format(program_str))
         return None
@@ -224,22 +227,34 @@ def construct_train_test_per_query(dir_name, query_str, n_train, n_test):
     print("inputs_test", len(inputs_test))
     print("labels_test", len(labels_test), sum(labels_test))
 
-def prepare_data_postgres():
-    predicate_list = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightOf", "parameters": None, "nargs": 2}, {"name": "FrontOf", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "LeftQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "BottomQuadrant", "parameters": None, "nargs": 1}]
-    attr_predicate_list = [{"name": "Gray", "parameters": None, "nargs": 1}, {"name": "Red", "parameters": None, "nargs": 1}, {"name": "Blue", "parameters": None, "nargs": 1}, {"name": "Green", "parameters": None, "nargs": 1}, {"name": "Brown", "parameters": None, "nargs": 1}, {"name": "Cyan", "parameters": None, "nargs": 1}, {"name": "Purple", "parameters": None, "nargs": 1}, {"name": "Yellow", "parameters": None, "nargs": 1}, {"name": "Cube", "parameters": None, "nargs": 1}, {"name": "Sphere", "parameters": None, "nargs": 1}, {"name": "Cylinder", "parameters": None, "nargs": 1}, {"name": "Metal", "parameters": None, "nargs": 1}, {"name": "Rubber", "parameters": None, "nargs": 1}]
-    with psycopg.connect("dbname=myinner_db user=enhaoz host=localhost") as conn:
-        with conn.cursor() as cur:
-            # Create predicate functions (if not exists)
-            for predicate in itertools.chain(predicate_list, attr_predicate_list):
-                args = ", ".join(["text, text, text, double precision, double precision, double precision, double precision"] * predicate["nargs"])
-                if predicate["parameters"]:
-                    args = "double precision, " + args
-                cur.execute("CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS '/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}' LANGUAGE C STRICT;".format(name=predicate["name"], args=args))
-            conn.commit()
-    generate_queries(n_queries=50, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=5, depth=3, max_duration=5, nvars=3, predicate_list=predicate_list, attr_predicate_list=attr_predicate_list, max_workers=2, dataset_name="synthetic_scene_graph_rare", nattr_pred=2)
+def prepare_data_postgres(port):
+    predicate_list = [
+        {"name": "Near", "parameters": [1], "nargs": 2},
+        {"name": "Far", "parameters": [3], "nargs": 2},
+        {"name": "LeftOf", "parameters": None, "nargs": 2},
+        {"name": "Behind", "parameters": None, "nargs": 2},
+        {"name": "RightOf", "parameters": None, "nargs": 2},
+        {"name": "FrontOf", "parameters": None, "nargs": 2},
+        {"name": "RightQuadrant", "parameters": None, "nargs": 1},
+        {"name": "LeftQuadrant", "parameters": None, "nargs": 1},
+        {"name": "TopQuadrant", "parameters": None, "nargs": 1},
+        {"name": "BottomQuadrant", "parameters": None, "nargs": 1}
+        ]
+    # attr_predicate_list = [{"name": "Gray", "parameters": None, "nargs": 1}, {"name": "Red", "parameters": None, "nargs": 1}, {"name": "Blue", "parameters": None, "nargs": 1}, {"name": "Green", "parameters": None, "nargs": 1}, {"name": "Brown", "parameters": None, "nargs": 1}, {"name": "Cyan", "parameters": None, "nargs": 1}, {"name": "Purple", "parameters": None, "nargs": 1}, {"name": "Yellow", "parameters": None, "nargs": 1}, {"name": "Cube", "parameters": None, "nargs": 1}, {"name": "Sphere", "parameters": None, "nargs": 1}, {"name": "Cylinder", "parameters": None, "nargs": 1}, {"name": "Metal", "parameters": None, "nargs": 1}, {"name": "Rubber", "parameters": None, "nargs": 1}]
+    attr_predicate_list = [
+        {"name": "Color", "parameters": ["gray", "red", "blue", "green", "brown", "cyan", "purple", "yellow"], "nargs": 1},
+        {"name": "Shape", "parameters": ["cube", "sphere", "cylinder"], "nargs": 1},
+        {"name": "Material", "parameters": ["metal", "rubber"], "nargs": 1}
+    ]
+    # generate_queries(n_queries=10, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=3, depth=1, max_duration=1, nvars=3, predicate_list=predicate_list, attr_predicate_list=attr_predicate_list, max_workers=4, dataset_name="synthetic_scene_graph_without_duration-npred_3-nattr_pred_1-depth_1", nattr_pred=1, port=port)
+    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/synthetic_scene_graph_without_duration-npred_3-nattr_pred_1-depth_1", n_train=500)
 
 if __name__ == '__main__':
-    # construct_train_test("inputs/synthetic_scene_graph_rare", 300)
-    # prepare_postgres_data_test_trajectories()
-    prepare_data_postgres()
-    # prepare_noisy_data(fn_error_rate=0.1, fp_error_rate=0.01, dataset_name="without_duration-sampling_rate_4")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=5432)
+    args = ap.parse_args()
+    port = args.port
+
+    # prepare_data_trajectories(port, sampling_rate)
+    prepare_data_postgres(port)
+    # prepare_data_given_target_query(query, 0, 1, "", "Obj_clevrer", None)

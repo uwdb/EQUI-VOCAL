@@ -76,6 +76,7 @@ class QUIVROriginal:
         else:
             raise ValueError("multithread must be 1 or greater")
         self.count_candidate_queries = 0
+        self.count_predictions = 0
         self.output_log = []
 
     def run(self, init_labeled_index):
@@ -98,6 +99,10 @@ class QUIVROriginal:
         self.output_log.append("[Runtime so far] {}".format(self.zero_step_total_time))
         print("[Memory footprint] {}".format(using("profile")))
         self.output_log.append("[Memory footprint] {}".format(using("profile")))
+        print("[Count candidate queries] {}".format(self.count_candidate_queries))
+        self.output_log.append("[Count candidate queries] {}".format(self.count_candidate_queries))
+        print("[Count predictions] {}".format(self.count_predictions))
+        self.output_log.append("[Count predictions] {}".format(self.count_predictions))
 
         # Sampling-based active learning: sample 100 queries and 100 unlabeled trajecotries.
         while len(self.labeled_index) < self.budget and len(answer) > 0:
@@ -123,6 +128,7 @@ class QUIVROriginal:
                 pred_per_input = []
                 for query in sampled_answer:
                     result, new_memoize = query.execute(input, -1, memoize, {})
+                    self.count_predictions += 1
                     self.memoize_all_inputs[i].update(new_memoize)
                     pred_per_input.append(int(result[0, len(input[0])] > 0))
                 # prediction_matrix.append(pred_per_input)
@@ -156,6 +162,7 @@ class QUIVROriginal:
             memoize = self.memoize_all_inputs[next_idx]
             for query in answer:
                 result, new_memoize = query.execute(input, -1, memoize, {})
+                self.count_predictions += 1
                 self.memoize_all_inputs[next_idx].update(new_memoize)
                 if (result[0, len(input[0])] > 0) == label:
                     updated_answer.append(query)
@@ -171,6 +178,10 @@ class QUIVROriginal:
             self.output_log.append("[Runtime so far] {}".format(time.time() - _start_total_time))
             print("[Memory footprint] {}".format(using("profile")))
             self.output_log.append("[Memory footprint] {}".format(using("profile")))
+            print("[Count candidate queries] {}".format(self.count_candidate_queries))
+            self.output_log.append("[Count candidate queries] {}".format(self.count_candidate_queries))
+            print("[Count predictions] {}".format(self.count_predictions))
+            self.output_log.append("[Count predictions] {}".format(self.count_predictions))
 
         total_time = time.time() - _start_total_time
         total_time_log = "[Runtime] enumerate all possible answers time: {}, prune partial query time: {}, prune parameter values time: {}, find children time: {}, other time: {}, zero steps total time: {}, sample selection time: {}, pruning in active learning time: {}, total time: {}".format(self.enumerate_all_possible_answers_time, self.prune_partial_query_time, self.prune_parameter_values_time, self.find_children_time, self.other_time, self.zero_step_total_time, self.sample_selection_time, self.prune_inconsistent_queries_active_learing_time, total_time)
@@ -178,6 +189,8 @@ class QUIVROriginal:
         self.output_log.append(total_time_log)
         print("[Count candidate queries] {}".format(self.count_candidate_queries))
         self.output_log.append("[Count candidate queries] {}".format(self.count_candidate_queries))
+        print("[Count predictions] {}".format(self.count_predictions))
+        self.output_log.append("[Count predictions] {}".format(self.count_predictions))
         return self.output_log
 
     def zero_steps(self):
@@ -208,6 +221,7 @@ class QUIVROriginal:
                 # NOTE: additional pruning?
                 memoize = self.memoize_all_inputs[i]
                 result, new_memoize = current_query.execute(input, label, memoize, {})
+                self.count_predictions += 1
                 self.memoize_all_inputs[i].update(new_memoize)
                 if (result[0, len(input[0])] > 0) != label:
                     overapproximation_for_all_inputs = False
@@ -227,7 +241,7 @@ class QUIVROriginal:
             # ELSE: adds all the children of Q to queue.
             else:
                 _start_find_children = time.time()
-                all_children = current_query_graph.get_all_children(with_parameter_hole=True, with_kleene=self.with_kleene) # Considering only conjunction and sequencing
+                all_children = current_query_graph.get_all_children(with_parameter_hole=False, with_kleene=self.with_kleene) # Considering only conjunction and sequencing
                 # all_children = current_query_graph.get_all_children(with_parameter_hole=False, with_kleene=True) # Considering conjunction, sequencing, and Kleene star
                 queue.extend(all_children)
                 self.find_children_time += time.time() - _start_find_children
@@ -247,6 +261,7 @@ class QUIVROriginal:
 
                 memoize = self.memoize_all_inputs[i]
                 result, new_memoize = candidate_query.execute(input, label, memoize, {})
+                self.count_predictions += 1
                 self.memoize_all_inputs[i].update(new_memoize)
                 if (result[0, len(input[0])] > 0) != label:
                     matched = False
@@ -304,6 +319,7 @@ class QUIVROriginal:
             label = self.labels[i]
             memoize = self.memoize_all_inputs[i]
             result, new_memoize = new_query.execute(input, label, memoize, {})
+            self.count_predictions += 1
             self.memoize_all_inputs[i].update(new_memoize)
             if label == 1:
                 theta_ub = min(result[0, len(input[0])], theta_ub)

@@ -8,13 +8,14 @@ from scipy import stats
 import itertools
 from lru import LRU
 import multiprocessing
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 import resource
 import random
 import quivr.dsl as dsl
 from functools import cmp_to_key
-import psycopg2 as psycopg
+import duckdb
 import uuid
+import pandas as pd
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -22,7 +23,7 @@ def using(point=""):
 
 class VOCALPostgres(BaseMethod):
 
-    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg):
+    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda):
         self.dataset_name = dataset_name
         self.inputs = inputs
         self.labels = labels
@@ -44,15 +45,11 @@ class VOCALPostgres(BaseMethod):
         self.reg_lambda = reg_lambda
         self.active_learning = self.pick_next_segment_model_picker_postgres
         self.get_query_score = self.compute_query_score_postgres
-        self.n_init_pos = n_init_pos
-        self.n_init_neg = n_init_neg
-        self.duration_unit = 5
+        n_init_pos = 2
+        n_init_neg = 10
 
-        if self.duration_unit == 1:
-            samples_per_iter = [0] * (self.max_npred + (self.max_duration - 1) * self.max_depth)
-        else:
-            samples_per_iter = [0] * (self.max_npred + (self.max_duration // self.duration_unit) * self.max_depth)
-        for i in range((self.budget - self.n_init_pos - self.n_init_neg)):
+        samples_per_iter = [0] * (self.max_npred + (self.max_duration - 1) * self.max_depth)
+        for i in range((self.budget - n_init_pos - n_init_neg)):
             # samples_per_iter[len(samples_per_iter) - 1 - i % len(samples_per_iter)] += 1 # Lazy
             # samples_per_iter[i % len(samples_per_iter)] += 1 # Eager
             samples_per_iter[len(samples_per_iter)//2+((i% len(samples_per_iter)+1)//2)*(-1)**(i% len(samples_per_iter))] += 1 # Iterate from the middle
@@ -76,66 +73,43 @@ class VOCALPostgres(BaseMethod):
         self.answers = []
         self.n_queries_explored = 0
         self.n_prediction_count = 0
-        _start = time.time()
         if self.multithread > 1:
-            self.executor = ProcessPoolExecutor(max_workers=self.multithread)
             self.m = multiprocessing.Manager()
             self.lock = self.m.Lock()
         elif self.multithread == 1:
             self.lock = None
         else:
             raise ValueError("multithread must be 1 or greater")
-        print("process pool init time:", time.time() - _start)
 
         self.output_log = []
 
-        _start = time.time()
-        self.dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
-        print("dsn", self.dsn)
-        with psycopg.connect(self.dsn) as conn:
-            with conn.cursor() as cur:
-                if not self.is_trajectory: # Queries complying with the scene graph model
-                    self.inputs_table_name = "Obj_clevrer_{}".format(uuid.uuid4().hex)
-                    cur.execute("""
-                    CREATE TABLE {} AS
-                    SELECT *
-                    FROM Obj_clevrer
-                    WHERE vid = ANY(%s);
-                    """.format(self.inputs_table_name), [inputs.tolist()])
-                else: # Queries complying with the trajectory model
-                    if dataset_name.startswith("collision"):
-                        self.inputs_table_name = "Obj_collision_{}".format(uuid.uuid4().hex)
-                        cur.execute("""
-                        CREATE TABLE {} AS
-                        SELECT *
-                        FROM Obj_collision
-                        WHERE vid = ANY(%s);
-                        """.format(self.inputs_table_name), [inputs.tolist()])
-                    else:
-                        self.inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
-                        cur.execute("""
-                        CREATE TABLE {} AS
-                        SELECT *
-                        FROM Obj_trajectories
-                        WHERE vid = ANY(%s);
-                        """.format(self.inputs_table_name), [inputs.tolist()])
-
-                cur.execute("CREATE INDEX IF NOT EXISTS idx_{t} ON {t} (vid);".format(t=self.inputs_table_name))
-                # Create predicate functions (if not exists)
-                for predicate in self.predicate_list:
-                    args = ", ".join(["text, text, text, double precision, double precision, double precision, double precision"] * predicate["nargs"])
-                    if predicate["parameters"]:
-                        if isinstance(predicate["parameters"][0], str):
-                            args = "text, " + args
-                        else:
-                            args = "double precision, " + args
-                    cur.execute("""
-                    CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS
-                    '/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}'
-                    LANGUAGE C STRICT;
-                    """.format(name=predicate["name"], args=args))
-                conn.commit()
-        print("Time to create inputs table: {}".format(time.time() - _start))
+        con = duckdb.connect(database='vocal.duckdb', read_only=True)
+        if not self.is_trajectory: # Queries complying with the scene graph model
+            self.inputs_table_name = "Obj_clevrer_{}".format(uuid.uuid4().hex)
+            con.execute("""
+            CREATE TABLE {t} AS
+            SELECT oid, vid, fid / {v} as fid, shape, color, material, x1, y1, x2, y2
+            FROM Obj_clevrer
+            WHERE vid = ANY(%s) AND fid % {v} = 0
+            """.format(t=self.inputs_table_name, v=self.sampling_rate), [inputs.tolist()])
+        else: # Queries complying with the trajectory model
+            if dataset_name.startswith("collision"):
+                self.inputs_table_name = "Obj_collision_{}".format(uuid.uuid4().hex)
+                con.execute("""
+                CREATE TABLE {t} AS
+                SELECT oid, vid, fid / {v} as fid, shape, color, material, x1, y1, x2, y2
+                FROM Obj_collision
+                WHERE vid = ANY(%s) AND fid % {v} = 0
+                 """.format(t=self.inputs_table_name, v=self.sampling_rate), [inputs.tolist()])
+            else:
+                self.inputs_table_name = "Obj_trajectories_{}".format(uuid.uuid4().hex)
+                con.execute("""
+                CREATE TABLE {t} AS
+                SELECT oid, vid, fid / {v} as fid, shape, color, material, x1, y1, x2, y2
+                FROM Obj_trajectories
+                WHERE vid = ANY(%s) AND fid % {v} = 0;
+                 """.format(t=self.inputs_table_name, v=self.sampling_rate), [inputs.tolist()])
+        con.execute("CREATE INDEX idx_{t} ON {t} (vid);".format(t=self.inputs_table_name))
 
     def compare_with_ties(self, x, y):
         if x < y:
@@ -183,11 +157,6 @@ class VOCALPostgres(BaseMethod):
         self.output_log.append("[# predictions] {}".format(self.n_prediction_count))
         print(using("profile"))
         self.output_log.append(using("profile"))
-
-        # Drop input table
-        with psycopg.connect(self.dsn) as conn:
-            with conn.cursor() as cur:
-                cur.execute("DROP TABLE {};".format(self.inputs_table_name))
 
         return self.output_log
 
@@ -268,8 +237,9 @@ class VOCALPostgres(BaseMethod):
                 candidate_queries_greater_than_zero = []
                 if self.multithread > 1:
                     updated_scores = []
-                    for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
-                        updated_scores.append(result)
+                    with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                        for result in executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                            updated_scores.append(result)
                     for i in range(len(self.candidate_queries)):
                         if updated_scores[i] > 0:
                             candidate_queries_greater_than_zero.append([self.candidate_queries[i][0], updated_scores[i]])
@@ -323,8 +293,9 @@ class VOCALPostgres(BaseMethod):
                     self.n_prediction_count += len(new_labeled_index) * len(self.candidate_queries)
                     if self.multithread > 1:
                         updated_scores = []
-                        for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
-                            updated_scores.append(result)
+                        with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                            for result in executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                                updated_scores.append(result)
                         for i in range(len(self.candidate_queries)):
                             self.candidate_queries[i][1] = updated_scores[i]
                     else:
@@ -360,8 +331,9 @@ class VOCALPostgres(BaseMethod):
             self.n_prediction_count += len(self.answers) * len(self.labeled_index)
             if self.multithread > 1:
                 updated_scores = []
-                for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.answers]):
-                    updated_scores.append(result)
+                with ThreadPoolExecutor(max_workers=self.multithread) as executor:
+                    for result in executor.map(self.get_query_score, [query.program for query, _ in self.answers]):
+                        updated_scores.append(result)
                 for i in range(len(self.answers)):
                     self.answers[i][1] = updated_scores[i]
             else:

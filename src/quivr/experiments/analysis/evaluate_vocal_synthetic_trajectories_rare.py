@@ -10,9 +10,9 @@ from quivr.utils import str_to_program_postgres, postgres_execute, postgres_exec
 import math
 import argparse
 
-def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port):
-    budgets = list(range(12, 21)) + list(range(25, 31, 5)) + [50]
-    # budgets = [30]
+def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, init):
+    # budgets = list(range(12, 21)) + list(range(25, 51, 5))
+    budgets = [50]
     # budgets = [12, 15, 20, 25, 30, 50]
     if dataset_name.startswith("collision"):
         list_size = 12747
@@ -39,7 +39,12 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port):
         score_random_log_per_run = []
         runtime_log_per_run = []
         for budget in budgets:
-            output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_2-nin_10-npred_5-depth_3-max_d_5-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, budget)
+        # for init_example in init_examples:
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_2-nin_10-npred_5-depth_3-max_d_15-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, budget) # trajectory pairs dataset
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_10-nin_10-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, budget) # scene graphs dataset
+            output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_{}-nin_{}-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_100-budget_100-thread_4-lru_None-lambda_0.01".format(dataset_name, method, init, init) # scene graphs dataset
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_{}-nin_{}-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, init, init, budget+init+init) # scene graphs dataset
+
             try:
                 # Read the log file
                 with open(os.path.join(output_dir, "{}-{}.log".format(query_str, run)), 'r') as f:
@@ -63,13 +68,13 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port):
                         print(line)
                         test_query_str = line.split("'")[1]
                         score = float(line.split("'")[2][1:-1])
-                        # program = str_to_program_postgres(test_query_str)
                         if score > max_score:
                             max_score = score
                             returned_queries = [test_query_str]
                         elif score == max_score:
                             returned_queries.append(test_query_str)
-                        # c = cost(program)
+                        # program = str_to_program_postgres(test_query_str)
+                        # c = complexity_cost(program)
                         # if c < min_cost:
                         #     min_cost = c
                         #     returned_queries = [test_query_str]
@@ -85,10 +90,15 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port):
                     dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
                     if dataset_name.startswith("collision"):
                         inputs_table_name = "Obj_collision"
+                        is_trajectory = True
+                    elif "scene_graph" in dataset_name:
+                        inputs_table_name = "Obj_clevrer"
+                        is_trajectory = False
                     else:
                         inputs_table_name = "Obj_trajectories"
+                        is_trajectory = True
                     _start = time.time()
-                    outputs, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, test_program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=True, sampling_rate=sampling_rate)
+                    outputs, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, test_program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
 
                     for i, memo_dict in enumerate(new_memoize_scene_graph):
                         for k, v in memo_dict.items():
@@ -123,9 +133,9 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port):
         runtime_log.append(runtime_log_per_run)
     out_dict = {"score_median": score_median_log, "score_random": score_random_log, "runtime": runtime_log}
     exp_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/".format(dataset_name)
-    if not os.path.exists(os.path.join(exp_dir, "stats", method+"-lambda_0.01")):
-        os.makedirs(os.path.join(exp_dir, "stats", method+"-lambda_0.01"))
-    with open(os.path.join(exp_dir, "stats", method+"-lambda_0.01", "{}.json".format(query_str)), "w") as f:
+    if not os.path.exists(os.path.join(exp_dir, "stats", method+"-init_{}".format(init))):
+        os.makedirs(os.path.join(exp_dir, "stats", method+"-init_{}".format(init)), exist_ok=True)
+    with open(os.path.join(exp_dir, "stats", method+"-init_{}".format(init), "{}.json".format(query_str)), "w") as f:
         json.dump(out_dict, f)
 
 
@@ -135,7 +145,6 @@ if __name__ == "__main__":
     ap.add_argument("--query_str", type=str)
     ap.add_argument("--method", type=str)
     ap.add_argument("--port", type=int, default=5432)
-    # ap.add_argument("--reg_lambda", type=float)
 
     args = ap.parse_args()
     dataset_name = args.dataset_name
@@ -153,6 +162,15 @@ if __name__ == "__main__":
     else:
         sampling_rate = None
     print("sampling_rate: ", sampling_rate)
-
-    evaluate_vocal(dataset_name, method, query_str, sampling_rate, port)
-    # evaluate_vocal_simplest_queries(method, query_str, sampling_rate, port)
+    # bw_values = [5, 10, 15, 20]
+    # for bw in bw_values:
+        # evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, bw)
+    # k_values = [10]
+    # for k in k_values:
+    #     evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, k)
+    init_examples = [5, 10, 15, 20, 25]
+    for init in init_examples:
+        evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, init)
+    # cpu_values = [1, 2, 4, 8]
+    # for cpu_value in cpu_values:
+    #     evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, cpu_value)

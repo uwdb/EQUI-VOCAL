@@ -2,7 +2,7 @@
 -- OS Type: linux
 -- DB Type: web
 -- Total Memory (RAM): 100 GB
--- CPUs num: 1
+-- CPUs num: 4
 -- Data Storage: ssd
 
 ALTER SYSTEM SET
@@ -30,14 +30,14 @@ ALTER SYSTEM SET
 ALTER SYSTEM SET
  max_wal_size = '16GB';
 ALTER SYSTEM SET
+ max_worker_processes = '4';
+ALTER SYSTEM SET
+ max_parallel_workers_per_gather = '2';
+ALTER SYSTEM SET
+ max_parallel_workers = '4';
+ALTER SYSTEM SET
+ max_parallel_maintenance_workers = '2';
+ALTER SYSTEM SET
  wal_level = minimal;
 ALTER SYSTEM SET
  max_wal_senders = 0;
-
--- -- Assume mem=200GB
--- ALTER SYSTEM SET shared_buffers = '50GB'; -- The value should be set to 15% to 25% of the machine’s total RAM.
--- ALTER SYSTEM SET work_mem = '1GB'; -- Total RAM * 0.25 / max_connections
--- ALTER SYSTEM SET maintenance_work_mem = '10GB'; -- Total RAM * 0.05
--- ALTER SYSTEM SET effective_cache_size = '100GB'; -- Recommendations are to set Effective_cache_size at 50% of the machine’s total RAM.
--- ALTER SYSTEM SET temp_buffers = '1.5GB';
--- -- ALTER SYSTEM RESET ALL;

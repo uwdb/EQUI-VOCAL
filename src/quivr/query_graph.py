@@ -19,6 +19,7 @@ class QueryGraph(object):
             self.program = dsl.StartOperator()
         else:
             raise ValueError("Unknown algorithm:", topdown_or_bottomup)
+        self.duration_unit = 5
         self.depth = 0
         self.npred = 0 # npred = n_trivial + n_nontrivial
         self.n_trivial = 0 # number of <true>* predicates
@@ -223,7 +224,10 @@ class QueryGraph(object):
                 else:
                     # candidate = functionclass()
                     # candidates.append(candidate)
-                    candidate_with_kleene = dsl.KleeneOperator(functionclass())
+                    if isinstance(functionclass(), dsl.TrueStar):
+                        candidate_with_kleene = functionclass()
+                    else:
+                        candidate_with_kleene = dsl.KleeneOperator(functionclass())
                     candidates.append(candidate_with_kleene)
             else:
                 candidate = functionclass()
@@ -530,7 +534,7 @@ class QueryGraph(object):
                             variables_list = [["o0", "o1"]]
                     # Gneral case:
                     else:
-                        variables_list = itertools.combinations(self.variables, nvars)
+                        variables_list = itertools.permutations(self.variables, nvars)
                     for variables in variables_list:
                         is_duplicate_predicate = False
                         for p in scene_graph:
@@ -568,7 +572,7 @@ class QueryGraph(object):
                         variables_list = [["o0", "o1"]]
                 # Gneral case:
                 else:
-                    variables_list = itertools.combinations(self.variables, nvars)
+                    variables_list = itertools.permutations(self.variables, nvars)
                 for variables in variables_list:
                     predicate = {"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)}
                     new_scene_graph = {"scene_graph": [predicate], "duration_constraint": 1}
@@ -585,7 +589,10 @@ class QueryGraph(object):
             scene_graph = dict["scene_graph"]
             if dict["duration_constraint"] < self.max_duration:
                 new_query = copy.deepcopy(self)
-                new_query.program[scene_graph_idx]["duration_constraint"] += 1
+                if new_query.program[scene_graph_idx]["duration_constraint"] == 1 and self.duration_unit != 1:
+                    new_query.program[scene_graph_idx]["duration_constraint"] = self.duration_unit
+                else:
+                    new_query.program[scene_graph_idx]["duration_constraint"] += self.duration_unit
                 print("Action C: ", rewrite_program_postgres(new_query.program))
                 all_children.append(new_query)
 
@@ -643,7 +650,7 @@ class QueryGraph(object):
                                 variables_list = [["o0", "o1"]]
                         # Gneral case:
                         else:
-                            variables_list = itertools.combinations(self.variables, nvars)
+                            variables_list = itertools.permutations(self.variables, nvars)
                         for variables in variables_list:
                             is_duplicate_predicate = False
                             for p in scene_graph:
@@ -681,7 +688,7 @@ class QueryGraph(object):
                             variables_list = [["o0", "o1"]]
                     # Gneral case:
                     else:
-                        variables_list = itertools.combinations(self.variables, nvars)
+                        variables_list = itertools.permutations(self.variables, nvars)
                     for variables in variables_list:
                         predicate = {"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)}
                         new_scene_graph = {"scene_graph": [predicate], "duration_constraint": 1}
@@ -698,7 +705,10 @@ class QueryGraph(object):
             scene_graph = dict["scene_graph"]
             if dict["duration_constraint"] < self.max_duration:
                 new_query = copy.deepcopy(self)
-                new_query.program[scene_graph_idx]["duration_constraint"] += 1
+                if new_query.program[scene_graph_idx]["duration_constraint"] == 1 and self.duration_unit != 1:
+                    new_query.program[scene_graph_idx]["duration_constraint"] = self.duration_unit
+                else:
+                    new_query.program[scene_graph_idx]["duration_constraint"] += self.duration_unit
                 print("Action C: ", rewrite_program_postgres(new_query.program))
                 all_children.append(new_query)
 
@@ -748,7 +758,7 @@ class QueryGraph(object):
                             variables_list = [["o0", "o1"]]
                     # Gneral case:
                     else:
-                        variables_list = itertools.combinations(self.variables, nvars)
+                        variables_list = itertools.permutations(self.variables, nvars)
                     for variables in variables_list:
                         is_duplicate_predicate = False
                         for p in scene_graph:
@@ -786,7 +796,7 @@ class QueryGraph(object):
                         variables_list = [["o0", "o1"]]
                 # Gneral case:
                 else:
-                    variables_list = itertools.combinations(self.variables, nvars)
+                    variables_list = itertools.permutations(self.variables, nvars)
                 for variables in variables_list:
                     predicate = {"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)}
                     new_scene_graph = {"scene_graph": [predicate], "duration_constraint": 1}
@@ -824,7 +834,10 @@ class QueryGraph(object):
             scene_graph = dict["scene_graph"]
             if dict["duration_constraint"] < self.max_duration:
                 new_query = copy.deepcopy(self)
-                new_query.program[scene_graph_idx]["duration_constraint"] += 1
+                if new_query.program[scene_graph_idx]["duration_constraint"] == 1 and self.duration_unit != 1:
+                    new_query.program[scene_graph_idx]["duration_constraint"] = self.duration_unit
+                else:
+                    new_query.program[scene_graph_idx]["duration_constraint"] += self.duration_unit
                 print("Action C: ", rewrite_program_postgres(new_query.program))
                 all_children.append(new_query)
 
@@ -874,7 +887,7 @@ class QueryGraph(object):
                                     variables_list = [["o0", "o1"]]
                             # Gneral case:
                             else:
-                                variables_list = itertools.combinations(self.variables, nvars)
+                                variables_list = itertools.permutations(self.variables, nvars)
                             for variables in variables_list:
                                 is_duplicate_predicate = False
                                 for p in scene_graph:
@@ -912,7 +925,7 @@ class QueryGraph(object):
                                 variables_list = [["o0", "o1"]]
                         # Gneral case:
                         else:
-                            variables_list = itertools.combinations(self.variables, nvars)
+                            variables_list = itertools.permutations(self.variables, nvars)
                         for variables in variables_list:
                             predicate = {"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)}
                             new_scene_graph = {"scene_graph": [predicate], "duration_constraint": 1}
@@ -929,7 +942,10 @@ class QueryGraph(object):
                     scene_graph = dict["scene_graph"]
                     if dict["duration_constraint"] < self.max_duration:
                         new_query = copy.deepcopy(self)
-                        new_query.program[scene_graph_idx]["duration_constraint"] += 1
+                        if new_query.program[scene_graph_idx]["duration_constraint"] == 1 and self.duration_unit != 1:
+                            new_query.program[scene_graph_idx]["duration_constraint"] = self.duration_unit
+                        else:
+                            new_query.program[scene_graph_idx]["duration_constraint"] += self.duration_unit
                         print("Action C: ", rewrite_program_postgres(new_query.program))
                         all_children.append(new_query)
             else:

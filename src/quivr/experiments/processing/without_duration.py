@@ -230,17 +230,20 @@ def prepare_patsql_inputs_outputs(dir_name, query_str, predicate_list, nruns, sa
                         df.to_csv(os.path.join(dir_name, query_str, str(i), "output-n_examples_{}.csv".format(len(inputs))), index=False)
 
 def prepare_data_for_various_types_of_queries(sampling_rate):
-    dataset_name = "without_duration-sampling_rate_{}".format(sampling_rate)
+    if (not sampling_rate) or sampling_rate == 1:
+        dataset_name = "without_duration"
+    else:
+        dataset_name = "without_duration-sampling_rate_{}".format(sampling_rate)
     query_strs = [
-        # "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))",
-        # "Conjunction(FrontOf(o0, o1), TopQuadrant(o0))",
-        # "Near_1(o0, o1); Far_3(o0, o1)",
-        # "Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))",
-        # "Far_3(o0, o1); Near_1(o0, o1); Far_3(o0, o1)",
-        # "Conjunction(Far_3(o0, o1), BottomQuadrant(o0)); Near_1(o0, o1)",
-        # "Far_3(o0, o1); Conjunction(Near_1(o0, o1), Behind(o0, o1))",
+        "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))",
+        "Conjunction(FrontOf(o0, o1), TopQuadrant(o0))",
+        "Near_1(o0, o1); Far_3(o0, o1)",
+        "Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))",
+        "Far_3(o0, o1); Near_1(o0, o1); Far_3(o0, o1)",
+        "Conjunction(Far_3(o0, o1), BottomQuadrant(o0)); Near_1(o0, o1)",
+        "Far_3(o0, o1); Conjunction(Near_1(o0, o1), Behind(o0, o1))",
         "Conjunction(Far_3(o0, o1), LeftQuadrant(o0)); Conjunction(Near_1(o0, o1), LeftQuadrant(o0))",
-        # "Far_3(o0, o1); Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))"
+        "Far_3(o0, o1); Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))"
         ]
     predicates = [
         ("Near_1", "BottomQuadrant"),
@@ -261,4 +264,4 @@ def prepare_data_for_various_types_of_queries(sampling_rate):
     #     prepare_patsql_inputs_outputs("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/PATSQL".format(dataset_name), query_str, predicate_list, nruns=20, sampling_rate=sampling_rate, str_or_int="str")
 
 if __name__ == '__main__':
-    prepare_data_for_various_types_of_queries(sampling_rate=4)
+    prepare_data_for_various_types_of_queries(sampling_rate=None)
