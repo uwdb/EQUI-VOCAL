@@ -9,11 +9,44 @@ import time
 from quivr.utils import str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching, complexity_cost
 import math
 import argparse
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
 
-def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, init):
+def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, multithread, cpu_value):
+    def compute_f1_score(test_query):
+        test_program = str_to_program_postgres(test_query)
+        outputs, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, test_program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
+
+        if lock:
+            lock.acquire()
+        for i, memo_dict in enumerate(new_memoize_scene_graph):
+            for k, v in memo_dict.items():
+                memoize_scene_graph[i][k] = v
+        for i, memo_dict in enumerate(new_memoize_sequence):
+            for k, v in memo_dict.items():
+                memoize_sequence[i][k] = v
+        if lock:
+            lock.release()
+        preds = []
+        for input in input_vids:
+            if input in outputs:
+                preds.append(1)
+            else:
+                preds.append(0)
+        score = f1_score(labels, preds)
+        print(score)
+        return score
+
+    if multithread > 1:
+        executor = ThreadPoolExecutor(max_workers=multithread)
+        m = multiprocessing.Manager()
+        lock = m.Lock()
+    elif multithread == 1:
+        lock = None
+
     # budgets = list(range(12, 21)) + list(range(25, 51, 5))
     budgets = [50]
-    # budgets = [12, 15, 20, 25, 30, 50]
+    # budgets = [30, 50, 100]
     if dataset_name.startswith("collision"):
         list_size = 12747
     else:
@@ -33,17 +66,23 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, init):
     score_median_log = []
     score_random_log = []
     runtime_log = []
-    for run in range(2):
+    for run in range(5):
+    # for run in range(20):
+    # for run in run_id:
     # for run in [10, 11]:
         score_median_log_per_run = []
         score_random_log_per_run = []
         runtime_log_per_run = []
         for budget in budgets:
         # for init_example in init_examples:
-            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_2-nin_10-npred_5-depth_3-max_d_15-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, budget) # trajectory pairs dataset
-            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_10-nin_10-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, budget) # scene graphs dataset
-            output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_{}-nin_{}-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_100-budget_100-thread_4-lru_None-lambda_0.01".format(dataset_name, method, init, init) # scene graphs dataset
-            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_{}-nin_{}-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, init, init, budget+init+init) # scene graphs dataset
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_2-nin_10-npred_5-depth_3-max_d_1-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(dataset_name, method, budget) # trajectory pairs dataset
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_1000-budget_{}-thread_4-lru_None-lambda_0.001".format(dataset_name, method, budget) # vary budget
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_{}-nin_{}-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_1000-budget_{}-thread_4-lru_None-lambda_0.001".format(dataset_name, method, init, init, budget) # vary init
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_{}-pool_size_100-k_1000-budget_100-thread_4-lru_None-lambda_0.001".format(dataset_name, method, bw) # vary bw
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_{}-budget_100-thread_4-lru_None-lambda_0.001".format(dataset_name, method, k_value) # vary k_value
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_1000-budget_{}-thread_4-lru_None-lambda_{}".format(dataset_name, method, budget, reg_lambda) # vary lambda (scene graphs)
+            # output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_2-nin_10-npred_5-depth_3-max_d_15-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_4-lru_None-lambda_{}".format(dataset_name, method, budget, reg_lambda) # vary lambda (trajectory)
+            output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}/nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_1000-budget_50-thread_{}-lru_None-lambda_0.001".format(dataset_name, method, cpu_value) # vary cpu
 
             try:
                 # Read the log file
@@ -83,39 +122,26 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, init):
                 print("returned_queries", len(returned_queries))
                 print("run: {}, budget: {}".format(run, budget))
 
+                dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
+                if dataset_name.startswith("collision"):
+                    inputs_table_name = "Obj_collision"
+                    is_trajectory = True
+                elif "scene_graph" in dataset_name:
+                    inputs_table_name = "Obj_clevrer"
+                    is_trajectory = False
+                else:
+                    inputs_table_name = "Obj_trajectories"
+                    is_trajectory = True
+
                 f1_scores = []
-                for test_query in returned_queries:
-                    test_program = str_to_program_postgres(test_query)
-
-                    dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
-                    if dataset_name.startswith("collision"):
-                        inputs_table_name = "Obj_collision"
-                        is_trajectory = True
-                    elif "scene_graph" in dataset_name:
-                        inputs_table_name = "Obj_clevrer"
-                        is_trajectory = False
-                    else:
-                        inputs_table_name = "Obj_trajectories"
-                        is_trajectory = True
-                    _start = time.time()
-                    outputs, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, test_program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
-
-                    for i, memo_dict in enumerate(new_memoize_scene_graph):
-                        for k, v in memo_dict.items():
-                            memoize_scene_graph[i][k] = v
-                    for i, memo_dict in enumerate(new_memoize_sequence):
-                        for k, v in memo_dict.items():
-                            memoize_sequence[i][k] = v
-
-                    preds = []
-                    for input in input_vids:
-                        if input in outputs:
-                            preds.append(1)
-                        else:
-                            preds.append(0)
-                    score = f1_score(labels, preds)
-                    print(score)
-                    f1_scores.append(score)
+                if multithread > 1:
+                    f1_scores = []
+                    for result in executor.map(compute_f1_score, returned_queries):
+                        f1_scores.append(result)
+                else:
+                    for test_query in returned_queries:
+                        score = compute_f1_score(test_query)
+                        f1_scores.append(score)
                 median_f1 = np.median(f1_scores)
                 score_random = np.random.choice(f1_scores)
                 print("Median F1: ", median_f1)
@@ -133,11 +159,47 @@ def evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, init):
         runtime_log.append(runtime_log_per_run)
     out_dict = {"score_median": score_median_log, "score_random": score_random_log, "runtime": runtime_log}
     exp_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/".format(dataset_name)
-    if not os.path.exists(os.path.join(exp_dir, "stats", method+"-init_{}".format(init))):
-        os.makedirs(os.path.join(exp_dir, "stats", method+"-init_{}".format(init)), exist_ok=True)
-    with open(os.path.join(exp_dir, "stats", method+"-init_{}".format(init), "{}.json".format(query_str)), "w") as f:
+    #### vary init ####
+    # if not os.path.exists(os.path.join(exp_dir, "stats", method+"-init_{}-budget_{}".format(init, budget))):
+    #     os.makedirs(os.path.join(exp_dir, "stats", method+"-init_{}-budget_{}".format(init, budget)), exist_ok=True)
+    # with open(os.path.join(exp_dir, "stats", method+"-init_{}-budget_{}".format(init, budget), "{}.json".format(query_str)), "w") as f:
+    #     json.dump(out_dict, f)
+
+    #### vary bw ####
+    # if not os.path.exists(os.path.join(exp_dir, "stats", method+"-bw_{}".format(bw))):
+    #     os.makedirs(os.path.join(exp_dir, "stats", method+"-bw_{}".format(bw)), exist_ok=True)
+    # with open(os.path.join(exp_dir, "stats", method+"-bw_{}".format(bw), "{}.json".format(query_str)), "w") as f:
+    #     json.dump(out_dict, f)
+
+    ### vary cpu ####
+    if not os.path.exists(os.path.join(exp_dir, "stats", method+"-cpu_{}-budget_50".format(cpu_value))):
+        os.makedirs(os.path.join(exp_dir, "stats", method+"-cpu_{}-budget_50".format(cpu_value)), exist_ok=True)
+    with open(os.path.join(exp_dir, "stats", method+"-cpu_{}-budget_50".format(cpu_value), "{}.json".format(query_str)), "w") as f:
         json.dump(out_dict, f)
 
+    #### vary k_value ####
+    # if not os.path.exists(os.path.join(exp_dir, "stats", method+"-k_{}".format(k_value))):
+    #     os.makedirs(os.path.join(exp_dir, "stats", method+"-k_{}".format(k_value)), exist_ok=True)
+    # with open(os.path.join(exp_dir, "stats", method+"-k_{}".format(k_value), "{}.json".format(query_str)), "w") as f:
+    #     json.dump(out_dict, f)
+
+    #### vary lambda (scene graphs) ####
+    # if not os.path.exists(os.path.join(exp_dir, "stats", method+"-lambda_{}-budget_{}".format(reg_lambda, budgets[0]))):
+    #     os.makedirs(os.path.join(exp_dir, "stats", method+"-lambda_{}-budget_{}".format(reg_lambda, budgets[0])), exist_ok=True)
+    # with open(os.path.join(exp_dir, "stats", method+"-lambda_{}-budget_{}".format(reg_lambda, budgets[0]), "{}.json".format(query_str)), "w") as f:
+    #     json.dump(out_dict, f)
+
+    #### vary lambda (trajectories) ####
+    # if not os.path.exists(os.path.join(exp_dir, "stats", method+"-lambda_{}-budget_{}".format(reg_lambda, budgets[0]))):
+    #     os.makedirs(os.path.join(exp_dir, "stats", method+"-lambda_{}-budget_{}".format(reg_lambda, budgets[0])), exist_ok=True)
+    # with open(os.path.join(exp_dir, "stats", method+"-lambda_{}-budget_{}".format(reg_lambda, budgets[0]), "{}-{}.json".format(query_str, run_id[0])), "w") as f:
+    #     json.dump(out_dict, f)
+
+    #### vary budget ####
+    # if not os.path.exists(os.path.join(exp_dir, "stats", method)):
+    #     os.makedirs(os.path.join(exp_dir, "stats", method), exist_ok=True)
+    # with open(os.path.join(exp_dir, "stats", method, "{}.json".format(query_str)), "w") as f:
+    #     json.dump(out_dict, f)
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
@@ -145,13 +207,18 @@ if __name__ == "__main__":
     ap.add_argument("--query_str", type=str)
     ap.add_argument("--method", type=str)
     ap.add_argument("--port", type=int, default=5432)
+    ap.add_argument("--multithread", type=int, default=1)
+    ap.add_argument("--budget", type=int)
+    ap.add_argument("--run_id", type=int)
 
     args = ap.parse_args()
     dataset_name = args.dataset_name
     query_str = args.query_str
     method = args.method
     port = args.port
-    # reg_lambda = args.reg_lambda
+    multithread = args.multithread
+    budget = args.budget
+    run_id = args.run_id
 
     if "sampling_rate" in dataset_name:
         splits = dataset_name.split("-")
@@ -162,15 +229,36 @@ if __name__ == "__main__":
     else:
         sampling_rate = None
     print("sampling_rate: ", sampling_rate)
-    # bw_values = [5, 10, 15, 20]
+    #### vary budget ####
+    # evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, multithread)
+
+    #### vary bw ####
+    # bw_values = [1, 5, 10, 15, 20]
     # for bw in bw_values:
-        # evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, bw)
-    # k_values = [10]
-    # for k in k_values:
-    #     evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, k)
-    init_examples = [5, 10, 15, 20, 25]
-    for init in init_examples:
-        evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, init)
+    #     evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, multithread, bw)
+
+    #### vary k ####
+    # k_values = [1, 10, 100, 1000]
+    # for k_value in k_values:
+    #     evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, multithread, k_value)
+
+    #### vary init ####
+    # init_examples = [5, 10, 15, 20, 25]
+    # for init in init_examples:
+    #     evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, multithread, init)
+
+    #### vary cpu ####
     # cpu_values = [1, 2, 4, 8]
-    # for cpu_value in cpu_values:
-    #     evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, cpu_value)
+    cpu_values = [1]
+    for cpu_value in cpu_values:
+        evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, multithread, cpu_value)
+
+    #### vary reg_lambda ####
+    # reg_lambdas = [0.0]
+    # reg_lambdas = [0.0, 0.001, 0.005, 0.01, 0.05]
+    # for reg_lambda in reg_lambdas:
+    #     evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, multithread, reg_lambda)
+
+    #### vary reg_lambda ####
+    # reg_lambda = 0.01
+    # evaluate_vocal(dataset_name, method, query_str, sampling_rate, port, multithread, reg_lambda, [budget], [run_id])

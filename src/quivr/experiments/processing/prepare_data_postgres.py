@@ -77,15 +77,24 @@ def generate_one_query(npred, depth, max_duration, nvars, predicate_list, attr_p
         candidates = [i for i in range(depth) if npred_per_scene_graph[i] < len(predicate_list)]
         npred_per_scene_graph[random.choice(candidates)] += 1
 
+    # duration_unit = 5
+    # x = np.arange(1, max_duration // duration_unit + 2)
+    # weights = x ** (-1.6)
+    # weights /= weights.sum()
+    # duration_values = [1]
+    # for i in range(1, max_duration // duration_unit + 1):
+    #     duration_values.append(i * duration_unit)
+    # bounded_zipf = stats.rv_discrete(name='bounded_zipf', values=(duration_values, weights))
+    # duration_per_scene_graph = bounded_zipf.rvs(size=depth)
+
     duration_unit = 5
-    x = np.arange(1, max_duration // duration_unit + 2)
-    weights = x ** (-1.6)
-    weights /= weights.sum()
     duration_values = [1]
     for i in range(1, max_duration // duration_unit + 1):
         duration_values.append(i * duration_unit)
-    bounded_zipf = stats.rv_discrete(name='bounded_zipf', values=(duration_values, weights))
-    duration_per_scene_graph = bounded_zipf.rvs(size=depth)
+    duration_per_scene_graph = [1 for _ in range(depth)]
+    while sum(duration_per_scene_graph) == depth and max_duration > 1:
+        duration_per_scene_graph = [random.choice(duration_values) for _ in range(depth)]
+
     scene_graphs = []
     for i in range(depth):
         sampled_predicates = random.sample(predicate_list, npred_per_scene_graph[i])
@@ -246,8 +255,8 @@ def prepare_data_postgres(port):
         {"name": "Shape", "parameters": ["cube", "sphere", "cylinder"], "nargs": 1},
         {"name": "Material", "parameters": ["metal", "rubber"], "nargs": 1}
     ]
-    # generate_queries(n_queries=10, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=3, depth=1, max_duration=1, nvars=3, predicate_list=predicate_list, attr_predicate_list=attr_predicate_list, max_workers=4, dataset_name="synthetic_scene_graph_without_duration-npred_3-nattr_pred_1-depth_1", nattr_pred=1, port=port)
-    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/synthetic_scene_graph_without_duration-npred_3-nattr_pred_1-depth_1", n_train=500)
+    generate_queries(n_queries=40, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=5, depth=3, max_duration=1, nvars=3, predicate_list=predicate_list, attr_predicate_list=attr_predicate_list, max_workers=4, dataset_name="synthetic_scene_graph_without_duration-npred_5-nattr_pred_2-40", nattr_pred=2, port=port)
+    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/synthetic_scene_graph_without_duration-npred_5-nattr_pred_2-40", n_train=500)
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()

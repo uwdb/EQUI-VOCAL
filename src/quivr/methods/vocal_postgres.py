@@ -8,7 +8,7 @@ from scipy import stats
 import itertools
 from lru import LRU
 import multiprocessing
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 import resource
 import random
 import quivr.dsl as dsl
@@ -78,7 +78,7 @@ class VOCALPostgres(BaseMethod):
         self.n_prediction_count = 0
         _start = time.time()
         if self.multithread > 1:
-            self.executor = ProcessPoolExecutor(max_workers=self.multithread)
+            self.executor = ThreadPoolExecutor(max_workers=self.multithread)
             self.m = multiprocessing.Manager()
             self.lock = self.m.Lock()
         elif self.multithread == 1:

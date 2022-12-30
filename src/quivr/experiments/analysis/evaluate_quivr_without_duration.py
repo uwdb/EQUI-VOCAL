@@ -60,7 +60,7 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
         if line == "[Step {}]".format(step):
             returned_queries = []
             continue
-        elif line.startswith("[# queries]"):
+        elif line.startswith("[# queries]") or line.startswith("[Count candidate queries]") or line.startswith("[Count predictions]"):
             continue
         elif line.startswith("[Runtime so far]"):
             runtime = float(line.replace("[Runtime so far] ", ""))
