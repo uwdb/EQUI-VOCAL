@@ -15,5 +15,7 @@ src/datalog/souffle/*
 *.deb
 *.npz
 *.log
-src/quivr/inputs/
-src/quivr/outputs/
+inputs/
+outputs/
+*.ipynb_checkpoints/
+easy-install.pth

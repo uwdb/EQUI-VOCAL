@@ -1,1 +1,0 @@
-python synthesize.py --method quivr_original --n_init_pos 2 --n_init_neg 10 --dataset_name "without_duration-sampling_rate_4" --npred 5 --depth 3 --max_duration 1 --budget 50 --multithread 1 --query_str "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))" --run_id 0 --output_to_file
