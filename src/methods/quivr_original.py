@@ -1,13 +1,10 @@
-from webbrowser import get
 from utils import print_program, get_depth_and_npred
 from query_graph import QueryGraph
 import dsl as dsl
 import copy
 import numpy as np
-from scipy import stats
 import time
 import multiprocessing
-from concurrent.futures import ThreadPoolExecutor
 import resource
 import random
 from lru import LRU
@@ -214,8 +211,7 @@ class QUIVROriginal:
             # ELSE: adds all the children of Q to queue.
             else:
                 _start_find_children = time.time()
-                all_children = current_query_graph.get_all_children(with_parameter_hole=False, with_kleene=self.with_kleene) # Considering only conjunction and sequencing
-                # all_children = current_query_graph.get_all_children(with_parameter_hole=False, with_kleene=True) # Considering conjunction, sequencing, and Kleene star
+                all_children = current_query_graph.get_all_children(with_parameter_hole=False, with_kleene=self.with_kleene)
                 queue.extend(all_children)
                 self.find_children_time += time.time() - _start_find_children
 
@@ -357,7 +353,7 @@ class QUIVROriginal:
                     self.count_all_parameter_holes(current_query)
             # ELSE: adds all the children of Q to queue.
             else:
-                all_children = current_query_graph.get_all_children(with_parameter_hole=False, with_kleene=self.with_kleene) # Considering only conjunction and sequencing
+                all_children = current_query_graph.get_all_children(with_parameter_hole=False, with_kleene=self.with_kleene)
                 queue.extend(all_children)
         print("[Query count]", self.query_count)
         self.output_log.append("[Query count] {}".format(self.query_count))

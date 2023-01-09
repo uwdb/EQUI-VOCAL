@@ -317,6 +317,7 @@ def rewrite_program_helper(program):
 
 def postgres_execute(dsn, current_query, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=True, sampling_rate=None):
     """
+    Caching the result of every sub-query of current_query (not used in evaluation)
     input_vids: list of video segment ids
     Example query:
         Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, Behind)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)
@@ -1301,9 +1302,6 @@ def quivr_str_to_postgres_program(quivr_str):
 
 if __name__ == '__main__':
     dsn = "dbname=myinner_db user=enhaoz host=localhost"
-    # correct_filename("synthetic-fn_error_rate_0.3-fp_error_rate_0.075")
-    # get_query_str_from_filename("inputs/synthetic_rare",)
-    # construct_train_test("Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Back), True*), Left), True*), Conjunction(Conjunction(Back, Left), Far_0.9)), True*)", n_train=300)
 
     memoize_scene_graph = [{} for _ in range(10000)]
     memoize_sequence = [{} for _ in range(10000)]
