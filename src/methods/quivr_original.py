@@ -1,30 +1,3 @@
-"""
-The implementation of the QUIVR baseline algorithm, which uses hard constraints to prune intermediate queries, and the original query expansion rules.
-
-Algorithm (pseudocode):
-queue = [??]
-candidates_list = []
-answer_list = []
-
-while queue not empty:
-    Q = queue.pop()
-    if overapproximation(Q) doesn't match inputs:
-        continue
-    else if Q is a sketch:
-        Computes all parameters for Q that are consistent with W (for each parameter in Q,
-        compute its largest/smallest possible value when overapproximating all other parameters).
-        Add them to candidates_list
-    else:
-        Add all the children of Q to queue
-
-for Q in candidates_list:
-    if Q matches with W, add it to answer_list
-
-return answer_list
-"""
-
-# Adapted from https://github.com/trishullab/near
-
 from webbrowser import get
 from utils import print_program, get_depth_and_npred
 from query_graph import QueryGraph

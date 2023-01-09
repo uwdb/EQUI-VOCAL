@@ -2,20 +2,9 @@ import csv
 import os
 from methods.exhaustive_search import ExhaustiveSearch
 from utils import print_program, rewrite_program_postgres, str_to_program
-from methods.quivr_exact import QUIVR
 from methods.quivr_original import QUIVROriginal
 from methods.quivr_original_no_kleene import QUIVROriginalNoKleene
-from methods.vocal import VOCAL
-from methods.quivr_soft import QUIVRSoft
-from methods.random import Random
 from methods.vocal_postgres import VOCALPostgres
-from methods.vocal_postgres_duration_refinement_last import VOCALPostgresDurationRefinementLast
-from methods.vocal_postgres_two_stages import VOCALPostgresTwoStages
-from methods.vocal_postgres_best_action import VOCALPostgresBestAction
-from methods.vocal_postgres_most_likely_positive import VOCALPostgresMostLikelyPositive
-from methods.vocal_postgres_adaptive_search_space import VOCALPostgresAdaptiveSearchSpace
-from methods.vocal_postgres_adaptive_search_space_bootstrap import VOCALPostgresAdaptiveSearchSpaceBootstrap
-from methods.vocal_postgres_explore import VOCALPostgresExplore
 from methods.vocal_postgres_no_active_learning import VOCALPostgresNoActiveLearning
 import json
 import random
@@ -99,28 +88,8 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     print("sampling_rate", sampling_rate)
     init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
     print(init_labeled_index)
-    if method == "vocal":
-        algorithm = VOCAL(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy)
-    elif method == "quivr_soft":
-        algorithm = QUIVRSoft(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy)
-    elif method == "random":
-        algorithm = Random(inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread)
-    elif method == "vocal_postgres":
+    if method == "vocal_postgres":
         algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    elif method == "vocal_postgres_duration_refinement_last":
-        algorithm = VOCALPostgresDurationRefinementLast(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    elif method == "vocal_postgres_two_stages":
-        algorithm = VOCALPostgresTwoStages(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    elif method == "vocal_postgres_best_action":
-        algorithm = VOCALPostgresBestAction(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    elif method == "vocal_postgres_most_likely_positive":
-        algorithm = VOCALPostgresMostLikelyPositive(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    elif method == "vocal_postgres_adaptive_search_space":
-        algorithm = VOCALPostgresAdaptiveSearchSpace(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    elif method == "vocal_postgres_adaptive_search_space_bootstrap":
-        algorithm = VOCALPostgresAdaptiveSearchSpaceBootstrap(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    elif method == "vocal_postgres_explore":
-        algorithm = VOCALPostgresExplore(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
     elif method == "vocal_postgres_no_active_learning":
         algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
     output_log = algorithm.run(init_labeled_index)
@@ -161,7 +130,6 @@ if __name__ == '__main__':
     ap.add_argument('--beam_width', type=int, default=32)
     ap.add_argument('--pool_size', type=int, default=100)
     ap.add_argument('--k', type=int, default=100)
-    # ap.add_argument('--samples_per_iter', type=int, default=1)
     ap.add_argument('--budget', type=int, default=100)
     ap.add_argument('--multithread', type=int, default=1)
     ap.add_argument('--strategy', type=str, default="sampling")
@@ -205,18 +173,9 @@ if __name__ == '__main__':
     # random.seed(time.time())
 
     # Define file directory and name
-    if method_str == "vocal":
-        method_name = "{}-{}-unrestricted_v4".format(method_str, strategy)
-        config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-pool_size_{}-k_{}-budget_{}-thread_{}-lru_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, lru_capacity)
-    elif method_str in ["quivr_original", "quivr_original_no_kleene"]:
+    if method_str in ["quivr_original", "quivr_original_no_kleene"]:
         method_name = method_str
         config_name = "nip_{}-nin_{}-npred_{}-n_nontrivial_{}-n_trivial_{}-depth_{}-max_d_{}-thread_{}-lru_{}".format(n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, multithread, lru_capacity)
-    # elif method_str == "quivr_soft":
-    #     method_name = "{}-{}".format(method_str, strategy)
-    #     config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-pool_size_{}-k_{}-per_iter_{}-budget_{}-thread_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, samples_per_iter, budget, multithread)
-    elif method_str == "random":
-        method_name = "{}-unrestricted_v4".format(method_str)
-        config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-bw_{}-pool_size_{}-k_{}-budget_{}-thread_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread)
     elif method_str.startswith("vocal_postgres"):
         method_name = "{}-{}".format(method_str, strategy)
         config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-nvars_{}-bw_{}-pool_size_{}-k_{}-budget_{}-thread_{}-lru_{}-lambda_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, max_vars, beam_width, pool_size, k, budget, multithread, lru_capacity, reg_lambda)
@@ -232,12 +191,7 @@ if __name__ == '__main__':
 
 
     # Define candidate predicates
-    if dataset_name.startswith("collision"):
-        if method_str.startswith("vocal_postgres"):
-            predicate_dict = [{"name": "Near", "parameters": [0.8, 1, 1.2], "nargs": 2}, {"name": "Far", "parameters": [1, 1.5, 2, 2.5, 3], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightOf", "parameters": None, "nargs": 2}, {"name": "FrontOf", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "LeftQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "BottomQuadrant", "parameters": None, "nargs": 1}]
-        elif method_str == "quivr_original":
-            predicate_dict = {dsl.Near: [-1], dsl.Far: [3], dsl.MinLength: None, dsl.LeftOf: None, dsl.RightOf: None, dsl.Behind: None, dsl.FrontOf: None, dsl.LeftQuadrant: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None, dsl.BottomQuadrant: None}
-    elif dataset_name.startswith("synthetic_rare"):
+    if dataset_name.startswith("synthetic_rare"):
         if method_str.startswith("vocal_postgres"):
             predicate_dict = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}]
         else:
@@ -247,7 +201,6 @@ if __name__ == '__main__':
             predicate_dict = [{"name": "Near", "parameters": [1], "nargs": 2}, {"name": "Far", "parameters": [3], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightOf", "parameters": None, "nargs": 2}, {"name": "FrontOf", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "LeftQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "BottomQuadrant", "parameters": None, "nargs": 1}]
         elif method_str == "quivr_original":
             predicate_dict = {dsl.Near: [-1], dsl.Far: [3], dsl.MinLength: None, dsl.LeftOf: None, dsl.RightOf: None, dsl.Behind: None, dsl.FrontOf: None, dsl.LeftQuadrant: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None, dsl.BottomQuadrant: None}
-            # predicate_dict = {dsl.Near: [-1], dsl.Far: [3], dsl.LeftOf: None, dsl.RightOf: None, dsl.Behind: None, dsl.FrontOf: None, dsl.LeftQuadrant: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None, dsl.BottomQuadrant: None}
         elif method_str == "quivr_original_no_kleene":
             predicate_dict = {dsl.Near: [-1], dsl.Far: [3], dsl.LeftOf: None, dsl.RightOf: None, dsl.Behind: None, dsl.FrontOf: None, dsl.LeftQuadrant: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None, dsl.BottomQuadrant: None}
     elif "scene_graph" in dataset_name:
@@ -304,7 +257,7 @@ if __name__ == '__main__':
         output_log = test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, with_kleene=False)
     elif method_str == "exhaustive":
         test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict)
-    elif method_str in ['vocal', 'quivr_soft', 'random', 'vocal_postgres', 'vocal_postgres_duration_refinement_last', 'vocal_postgres_two_stages', 'vocal_postgres_best_action', 'vocal_postgres_most_likely_positive', 'vocal_postgres_adaptive_search_space', 'vocal_postgres_adaptive_search_space_bootstrap', 'vocal_postgres_explore', 'vocal_postgres_no_active_learning']:
+    elif method_str in ['vocal_postgres', 'vocal_postgres_no_active_learning']:
         output_log = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port)
 
     if output_to_file:
@@ -314,10 +267,3 @@ if __name__ == '__main__':
 
         verbose_f.close()
         sys.stdout = sys.__stdout__
-
-
-
-# Scene graphs queries
-# SQ1: Duration(Conjunction(Far_3(o0, o1), RightQuadrant(o1)), 15); Conjunction(FrontOf(o0, o1), Near_1(o0, o1)); Duration(Conjunction(Far_3(o0, o1), RightQuadrant(o1)), 5)
-# SQ2: Conjunction(Conjunction(Color_cyan(o0), Far_3(o1, o2)), Shape_sphere(o1)); Conjunction(FrontOf(o1, o2), Near_1(o1, o2)); Conjunction(Far_3(o1, o2), TopQuadrant(o2))
-# SQ3: Duration(Conjunction(LeftOf(o0, o1), Shape_sphere(o1)), 15); Conjunction(FrontOf(o0, o2), Near_1(o0, o2)); Duration(Conjunction(Behind(o0, o2), Far_3(o0, o2)), 5)
