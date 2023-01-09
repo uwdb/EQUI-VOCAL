@@ -1,17 +1,13 @@
 from methods.base_method import BaseMethod
-from utils import rewrite_program_postgres, str_to_program_postgres, complexity_cost
+from utils import rewrite_program_postgres, str_to_program_postgres
 from query_graph import QueryGraph
-import copy
 import numpy as np
 import time
-from scipy import stats
-import itertools
 from lru import LRU
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 import resource
 import random
-import dsl
 from functools import cmp_to_key
 import psycopg2 as psycopg
 import uuid

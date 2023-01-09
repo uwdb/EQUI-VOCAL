@@ -120,33 +120,13 @@ class SequencingOperator(BaseOperator):
 #             # M * pow * pow
 #             return np.max(np.minimum(self.submodules["iteration"].execute(input, label, memoize)[0][..., np.newaxis], np.max(np.minimum(pow[..., np.newaxis], pow[np.newaxis, ...]), axis=1)), axis=1)
 
-# NOTE: the implementation is actually Kleene Plus. Otherwise, Quivr takes forever.
+# NOTE: the implementation is actually Kleene Plus. Otherwise, Quivr takes even longer.
 class KleeneOperator(BaseOperator):
     def __init__(self, function1=None):
         if function1 is None:
             function1 = PredicateHole()
         submodules = { "kleene": function1}
         super().__init__(submodules, name="Kleene")
-
-    # def execute(self, input, label, memoize, new_memoize):
-    #     subquery_str = utils.print_program(self)
-    #     if subquery_str in memoize:
-    #         return memoize[subquery_str], new_memoize
-    #     if subquery_str in new_memoize:
-    #         return new_memoize[subquery_str], new_memoize
-    #     identity_mtx = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
-    #     np.fill_diagonal(identity_mtx, np.inf)
-
-    #     if len(input[0]) == 0:
-    #         result = identity_mtx
-    #     else:
-    #         Q_mtx, new_memoize = self.submodules["kleene"].execute(input, label, memoize, new_memoize)
-    #         base = np.maximum(identity_mtx, Q_mtx)
-    #         result = power(base, len(input[0]))
-
-    #     new_memoize[subquery_str] = result
-
-    #     return result, new_memoize
 
     def execute(self, input, label, memoize, new_memoize):
         subquery_str = utils.print_program(self)
@@ -194,36 +174,6 @@ class DurationOperator(BaseOperator):
         kleene = KleeneOperator(self.submodules["duration"])
         conj = ConjunctionOperator(kleene, MinLength(self.theta, self.theta))
         return conj.execute(input, label, memoize, new_memoize)
-
-
-# class DurationOperator(BaseOperator):
-#     def __init__(self, function1, theta):
-#         # theta >= 2 and is an integer
-#         self.theta = int(theta)
-#         submodules = { "duration": function1 }
-#         super().__init__(submodules, name="Duration")
-
-#     def execute(self, input, label, memoize, cache=True):
-#         subquery_str = utils.print_program(self, as_dict_key=True)
-#         if subquery_str in memoize:
-#             return memoize[subquery_str], memoize
-#         if len(input[0]) < self.theta:
-#             return np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf), memoize
-
-#         Q_mtx, memoize = self.submodules["duration"].execute(input, label, memoize)
-#         base_arr = [Q_mtx]
-
-#         for _ in range(2, len(input[0]) + 1):
-#             Q_pow_k = np.amax(np.minimum(base_arr[-1][..., np.newaxis], Q_mtx[np.newaxis, ...]), axis=1)
-#             base_arr.append(Q_pow_k)
-
-#         result = np.amax(np.stack(base_arr[(self.theta-1):], axis=0), axis=0)
-
-#         if cache:
-#             memoize[subquery_str] = result
-
-#         return result, memoize
-
 
 ############### Predicate ################
 @functools.total_ordering
