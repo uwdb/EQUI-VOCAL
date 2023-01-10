@@ -22,8 +22,5 @@ To reproduce experiment, run this command:
 ## Evaluate query performance
 To evaluate the performance of synthesized queries, run this command:
 ```sh
-# Trajectories dataset
-./eval_vocal_trajectory.sh
-# Scene graphs dataset
-./eval_vocal_scene_graph.sh
+./eval_vocal.sh
 ```
