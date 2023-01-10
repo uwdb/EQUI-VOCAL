@@ -1,39 +1,28 @@
-import csv
 import os
 from methods.exhaustive_search import ExhaustiveSearch
-from utils import print_program, rewrite_program_postgres, str_to_program
 from methods.quivr_original import QUIVROriginal
 from methods.quivr_original_no_kleene import QUIVROriginalNoKleene
 from methods.vocal_postgres import VOCALPostgres
 from methods.vocal_postgres_no_active_learning import VOCALPostgresNoActiveLearning
 import json
 import random
-import math
 import numpy as np
-from sklearn.metrics import f1_score
 import argparse
 import sys
 import dsl as dsl
-import pandas
-import time
-from sklearn.model_selection import train_test_split
 
 
-def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, with_kleene):
+def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, with_kleene):
     if dataset_name.startswith("collision"):
-        with open("inputs/collision.json", 'r') as f:
+        with open(os.path.join(input_dir, "collision.json"), 'r') as f:
             trajectories = json.load(f)
-        with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
-            inputs = json.load(f)
-        with open("inputs/{}/train/{}_labels.json".format(dataset_name, query_str), 'r') as f:
-            labels = json.load(f)
     else:
-        with open("inputs/trajectory_pairs.json", 'r') as f:
+        with open(os.path.join(input_dir, "trajectory_pairs.json"), 'r') as f:
             trajectories = json.load(f)
-        with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
-            inputs = json.load(f)
-        with open("inputs/{}/train/{}_labels.json".format(dataset_name, query_str), 'r') as f:
-            labels = json.load(f)
+    with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
+        inputs = json.load(f)
+    with open(os.path.join(input_dir, "{}/train/{}_labels.json".format(dataset_name, query_str)), 'r') as f:
+        labels = json.load(f)
     trajectories = np.asarray(trajectories, dtype=object)
     labels = np.asarray(labels, dtype=object)
     inputs = trajectories[inputs]
@@ -65,11 +54,11 @@ def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivia
 
     return output_log
 
-def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port):
+def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
 
-    with open("inputs/{}/train/{}_inputs.json".format(dataset_name, query_str), 'r') as f:
+    with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
         inputs = json.load(f)
-    with open("inputs/{}/train/{}_labels.json".format(dataset_name, query_str), 'r') as f:
+    with open(os.path.join(input_dir, "{}/train/{}_labels.json".format(dataset_name, query_str)), 'r') as f:
         labels = json.load(f)
     inputs = np.asarray(inputs) # input video ids
     labels = np.asarray(labels)
@@ -96,11 +85,11 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     return output_log
 
 
-def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict):
+def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict, input_dir):
     # read from json file
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_inputs_test.json", 'r') as f:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/inputs/collision_inputs_test.json", 'r') as f:
         inputs = json.load(f)
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision_labels_test.json", 'r') as f:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/inputs/collision_labels_test.json", 'r') as f:
         labels = json.load(f)
 
     inputs = np.asarray(inputs, dtype=object)
@@ -116,35 +105,33 @@ def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, mu
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--method', type=str)
-    ap.add_argument('--n_labeled_pos', type=int, default=50)
-    ap.add_argument('--n_labeled_neg', type=int, default=250)
-    ap.add_argument('--n_init_pos', type=int, default=10)
-    ap.add_argument('--n_init_neg', type=int, default=50)
-    ap.add_argument('--dataset_name', type=str)
-    ap.add_argument('--npred', type=int, default=5)
+    ap.add_argument('--method', type=str, help='Query synthesis method.')
+    ap.add_argument('--n_init_pos', type=int, default=2, help='Number of initial positive examples provided by the user.')
+    ap.add_argument('--n_init_neg', type=int, default=10, help='Number of initial negative examples provided by the user.')
+    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.')
+    ap.add_argument('--npred', type=int, default=5, help='Maximum number of predicates that the synthesized queries can have.')
     ap.add_argument('--n_nontrivial', type=int)
     ap.add_argument('--n_trivial', type=int)
-    ap.add_argument('--depth', type=int, default=3)
-    ap.add_argument('--max_duration', type=int, default=2)
-    ap.add_argument('--beam_width', type=int, default=32)
-    ap.add_argument('--pool_size', type=int, default=100)
-    ap.add_argument('--k', type=int, default=100)
-    ap.add_argument('--budget', type=int, default=100)
-    ap.add_argument('--multithread', type=int, default=1)
-    ap.add_argument('--strategy', type=str, default="sampling")
-    ap.add_argument('--max_vars', type=int, default=2)
-    ap.add_argument('--query_str', type=str, default="collision")
-    ap.add_argument('--run_id', type=int)
-    ap.add_argument('--output_to_file', action="store_true")
-    ap.add_argument('--port', type=int, default=5432)
-    ap.add_argument('--lru_capacity', type=int)
-    ap.add_argument('--reg_lambda', type=float, default=0.01)
+    ap.add_argument('--depth', type=int, default=3, help='For EQUI-VOCAL: Maximum number of region graphs that the synthesized queries can have. For Quivr: Maximum depth of the nested constructs that the synthesized queries can have.')
+    ap.add_argument('--max_duration', type=int, default=1, help='Maximum number of the duration constraint.')
+    ap.add_argument('--beam_width', type=int, default=32, help='Beam width.')
+    ap.add_argument('--pool_size', type=int, default=100, help='Number of queries sampled during example selection.')
+    ap.add_argument('--k', type=int, default=100, help='Number of queries in the final answer.')
+    ap.add_argument('--budget', type=int, default=100, help='Labeling budget.')
+    ap.add_argument('--multithread', type=int, default=1, help='Number of CPUs to use.')
+    ap.add_argument('--strategy', type=str, default="sampling", help='Strategy for query sampling.')
+    ap.add_argument('--max_vars', type=int, default=2, help='Maximum number of variables that the synthesized queries can have.')
+    ap.add_argument('--query_str', type=str, help='Target query in compact notation.')
+    ap.add_argument('--run_id', type=int, help='Run ID.')
+    ap.add_argument('--output_to_file', action="store_true", help='Whether write the output to file or not.')
+    ap.add_argument('--port', type=int, default=5432, help='Port number of the database.')
+    ap.add_argument('--lru_capacity', type=int, help='LRU cache capacity. Only used for Quivr due to its large memory footprint.')
+    ap.add_argument('--reg_lambda', type=float, default=0.01, help='Regularization parameter.')
+    ap.add_argument('--input_dir', type=str, default="/gscratch/balazinska/enhaoz/complex_event_video/inputs", help='Input directory.')
+    ap.add_argument('--output_dir', type=str, default="/gscratch/balazinska/enhaoz/complex_event_video/outputs", help='Output directory.')
 
     args = ap.parse_args()
     method_str = args.method
-    n_labeled_pos = args.n_labeled_pos
-    n_labeled_neg = args.n_labeled_neg
     n_init_pos = args.n_init_pos
     n_init_neg = args.n_init_neg
     dataset_name = args.dataset_name
@@ -167,6 +154,8 @@ if __name__ == '__main__':
     port = args.port
     lru_capacity = args.lru_capacity
     reg_lambda = args.reg_lambda
+    input_dir = args.input_dir
+    output_dir = args.output_dir
 
     random.seed(run_id)
     np.random.seed(run_id)
@@ -180,7 +169,7 @@ if __name__ == '__main__':
         method_name = "{}-{}".format(method_str, strategy)
         config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-nvars_{}-bw_{}-pool_size_{}-k_{}-budget_{}-thread_{}-lru_{}-lambda_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, max_vars, beam_width, pool_size, k, budget, multithread, lru_capacity, reg_lambda)
 
-    log_dirname = os.path.join("outputs", dataset_name, method_name, config_name)
+    log_dirname = os.path.join(output_dir, dataset_name, method_name, config_name)
     log_filename = "{}-{}".format(query_str, run_id)
     # if dir not exist, create it
     if output_to_file:
@@ -252,13 +241,13 @@ if __name__ == '__main__':
     print(args)
 
     if method_str == 'quivr_original':
-        output_log = test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, with_kleene=True)
+        output_log = test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, with_kleene=True)
     elif method_str == 'quivr_original_no_kleene':
-        output_log = test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, with_kleene=False)
+        output_log = test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, with_kleene=False)
     elif method_str == "exhaustive":
-        test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict)
+        test_exhaustive(n_init_pos, n_init_neg, npred, depth, max_duration, multithread, predicate_dict, input_dir)
     elif method_str in ['vocal_postgres', 'vocal_postgres_no_active_learning']:
-        output_log = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port)
+        output_log = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
 
     if output_to_file:
         with open(os.path.join(log_dirname, "{}.log".format(log_filename)), 'w') as f:

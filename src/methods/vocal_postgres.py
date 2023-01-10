@@ -49,8 +49,6 @@ class VOCALPostgres(BaseMethod):
         else:
             samples_per_iter = [0] * (self.max_npred + (self.max_duration // self.duration_unit) * self.max_depth)
         for i in range((self.budget - self.n_init_pos - self.n_init_neg)):
-            # samples_per_iter[len(samples_per_iter) - 1 - i % len(samples_per_iter)] += 1 # Lazy
-            # samples_per_iter[i % len(samples_per_iter)] += 1 # Eager
             samples_per_iter[len(samples_per_iter)//2+((i% len(samples_per_iter)+1)//2)*(-1)**(i% len(samples_per_iter))] += 1 # Iterate from the middle
         self.samples_per_iter = samples_per_iter
 
@@ -127,7 +125,7 @@ class VOCALPostgres(BaseMethod):
                             args = "double precision, " + args
                     cur.execute("""
                     CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS
-                    '/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/postgres/functors', '{name}'
+                    '/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', '{name}'
                     LANGUAGE C STRICT;
                     """.format(name=predicate["name"], args=args))
                 conn.commit()
