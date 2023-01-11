@@ -4,10 +4,29 @@ A prototype implementation of EQUI-VOCAL, which is a system to automatically syn
 
 # Example Usage
 
-## Start your PostgreSQL server
+## Set up your PostgreSQL server
+
+1. Download the data.
+
+3. Run the following commands to create a PostgreSQL server instance and then load data into the database.
 
 ```sh
-pg_ctl -D /gscratch/balazinska/enhaoz/mylocal_db start
+# Create a PostgreSQL server instance
+initdb -D mylocal_db --no-locale --encoding=UTF8
+# Start the server
+pg_ctl -D mylocal_db start
+# Create a database
+createdb --owner=enhaoz myinner_db
+# Configure
+psql -f postgres/alter_config-cpu_1-mem_100.sql  myinner_db
+# Restart the server
+pg_ctl -D mylocal_db restart
+# Create relations
+psql -f postgres/create_table.sql myinner_db
+# Load data
+psql -f postgres/load_data.sql myinner_db
+# Load user-defined functions
+psql -f postgres/create_udf.sql myinner_db
 ```
 
 ## Run query synthesis
