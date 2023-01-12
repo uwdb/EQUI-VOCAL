@@ -1,0 +1,2 @@
+postgres/obj_clevrer.csv filter=lfs diff=lfs merge=lfs -text
+postgres/obj_trajectories.csv filter=lfs diff=lfs merge=lfs -text
