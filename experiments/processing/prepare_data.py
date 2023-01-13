@@ -4,9 +4,9 @@ import random
 import itertools
 import shutil
 import numpy as np
-import dsl
+import src.dsl
 import os
-from utils import str_to_program, print_program
+from src.utils import str_to_program, print_program
 import csv
 from itertools import repeat
 from functools import partial

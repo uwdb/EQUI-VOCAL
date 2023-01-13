@@ -2,17 +2,23 @@
 
 A prototype implementation of EQUI-VOCAL, which is a system to automatically synthesize compositional queries over videos from limited user interactions. See the [technical report](https://arxiv.org/abs/2301.00929) for more details.
 
-## Cloning
+## Setup Instructions
 
-Install Git Large File Storage before cloning the repository, then,
+The project uses `conda` to manage dependencies. To install conda, follow the instructions [here](https://docs.conda.io/projects/conda/en/latest/user-guide/install/).
+
+The project uses Git Large File Storage to track large files. To install Git LFS, follow the instructions [here](https://git-lfs.github.com/).
 
 ```sh
+# Clone the repository
 git clone https://github.com/uwdb/EQUI-VOCAL.git
-```
-
-Pulling large files using the following commands:
-```sh
 cd EQUI-VOCAL
+
+# Create a conda environment (called equi-vocal) and install dependencies
+conda env create -f environment.yml
+conda activate equi-vocal
+python -m pip install -e .
+
+# Pull large files
 git lfs install
 git lfs pull
 ```
@@ -20,8 +26,7 @@ git lfs pull
 ## Example Usage
 
 ### Set up your PostgreSQL server
-
-1. Run the following commands to create a PostgreSQL server instance and then load data into the database.
+Run the following commands to create a PostgreSQL server instance and then load data into the database.
 
 ```sh
 # Create a PostgreSQL server instance
@@ -43,8 +48,9 @@ psql -f postgres/create_udf.sql myinner_db
 ```
 
 ### Run query synthesis
-To reproduce experiment, run this command:
+To reproduce experiment, run the following commands:
 ```sh
+cd scripts
 # Trajectories dataset
 ./run_vocal_trajectory.sh
 # Scene graphs dataset

@@ -1,6 +1,6 @@
-from methods.base_method import BaseMethod
-from utils import rewrite_program_postgres, str_to_program_postgres
-from query_graph import QueryGraph
+from src.methods.base_method import BaseMethod
+from src.utils import rewrite_program_postgres, str_to_program_postgres
+from src.query_graph import QueryGraph
 import numpy as np
 import time
 from lru import LRU

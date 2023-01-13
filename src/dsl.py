@@ -2,8 +2,8 @@
 import math
 import copy
 import numpy as np
-import utils as utils
 import functools
+import src.utils as utils
 
 # (predicate), conjunction, sequencing, Kleene star, finite k iteration
 # Omit nested Kleene star operators, as well as Kleene star around sequencing.

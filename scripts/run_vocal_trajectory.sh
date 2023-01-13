@@ -16,5 +16,5 @@ python \
     --strategy "topk" \
     --query_str "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))" `# TQ1` \
     --run_id 0 \
-    --output_to_file \
+    --output_dir "../outputs_test" \
     --reg_lambda 0.01

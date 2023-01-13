@@ -1,8 +1,8 @@
 import copy
-import dsl as dsl
-from utils import print_program, rewrite_program_postgres, str_to_program_postgres, get_depth_and_npred
 import itertools
 from collections import deque
+import src.dsl as dsl
+from src.utils import print_program, rewrite_program_postgres, str_to_program_postgres, get_depth_and_npred
 
 class QueryGraph(object):
 

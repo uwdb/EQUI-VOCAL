@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score
-from utils import str_to_program, get_depth_and_npred
+from src.utils import str_to_program, get_depth_and_npred
 from lru import LRU
 import argparse
 

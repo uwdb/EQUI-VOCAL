@@ -1,4 +1,4 @@
-from methods.quivr_original import QUIVROriginal
+from src.methods.quivr_original import QUIVROriginal
 
 class QUIVROriginalNoKleene(QUIVROriginal):
     def __init__(self, *args, **kwargs):

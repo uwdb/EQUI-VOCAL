@@ -1,5 +1,5 @@
-from methods.base_method import BaseMethod
-from utils import print_program
+from src.methods.base_method import BaseMethod
+from src.utils import print_program
 from query_graph import QueryGraph
 import numpy as np
 import time
@@ -8,7 +8,7 @@ import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 import resource
 import random
-import dsl as dsl
+import src.dsl as dsl
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss

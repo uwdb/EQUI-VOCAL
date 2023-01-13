@@ -1,5 +1,5 @@
 
-from prepare_trajectories_data_postgres import prepare_data_given_target_query
+from experiments.processing.prepare_trajectories_data_postgres import prepare_data_given_target_query
 
 if __name__ == "__main__":
     sampling_rate = 2

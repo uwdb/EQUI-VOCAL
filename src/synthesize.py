@@ -1,15 +1,15 @@
 import os
-from methods.exhaustive_search import ExhaustiveSearch
-from methods.quivr_original import QUIVROriginal
-from methods.quivr_original_no_kleene import QUIVROriginalNoKleene
-from methods.vocal_postgres import VOCALPostgres
-from methods.vocal_postgres_no_active_learning import VOCALPostgresNoActiveLearning
 import json
 import random
 import numpy as np
 import argparse
 import sys
-import dsl as dsl
+from src.methods.exhaustive_search import ExhaustiveSearch
+from src.methods.quivr_original import QUIVROriginal
+from src.methods.quivr_original_no_kleene import QUIVROriginalNoKleene
+from src.methods.vocal_postgres import VOCALPostgres
+from src.methods.vocal_postgres_no_active_learning import VOCALPostgresNoActiveLearning
+import src.dsl as dsl
 
 
 def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, with_kleene):
