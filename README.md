@@ -146,5 +146,6 @@ options:
 ```
 The following script provides an example configuration used in the paper:
 ```sh
+cd scripts
 ./eval_vocal.sh
 ```
