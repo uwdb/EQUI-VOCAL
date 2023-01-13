@@ -1,6 +1,6 @@
 from src.methods.base_method import BaseMethod
 from src.utils import print_program
-from query_graph import QueryGraph
+from src.query_graph import QueryGraph
 import numpy as np
 import time
 from lru import LRU

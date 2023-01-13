@@ -52,7 +52,7 @@ psql -f postgres/create_udf.sql myinner_db
 ### Run query synthesis
 To reproduce experiment, run this command under the `src` directory:
 
-```sh
+```buildoutcfg
 python synthesize.py [-h] [--method METHOD] [--n_init_pos N_INIT_POS] [--n_init_neg N_INIT_NEG]
                      [--dataset_name DATASET_NAME] [--npred NPRED] [--n_nontrivial N_NONTRIVIAL]
                      [--n_trivial N_TRIVIAL] [--depth DEPTH] [--max_duration MAX_DURATION] [--beam_width BEAM_WIDTH]
@@ -114,7 +114,7 @@ cd scripts
 
 ### Evaluate query performance
 To evaluate the performance of synthesized queries, run this command under the `experiments/analysis` directory:
-```sh
+```buildoutcfg
 python evaluate_vocal.py [-h]
                          [--dataset_name {synthetic_scene_graph_easy,synthetic_scene_graph_medium,synthetic_scene_graph_hard,without_duration-sampling_rate_4,trajectories_duration,trajectories_handwritten}]
                          [--query_str QUERY_STR]
