@@ -6,8 +6,6 @@ A prototype implementation of EQUI-VOCAL, which is a system to automatically syn
 
 The project uses `conda` to manage dependencies. To install conda, follow the instructions [here](https://docs.conda.io/projects/conda/en/latest/user-guide/install/).
 
-The project uses Git Large File Storage to track large files. To install Git LFS, follow the instructions [here](https://git-lfs.github.com/).
-
 ```sh
 # Clone the repository
 git clone https://github.com/uwdb/EQUI-VOCAL.git
@@ -17,7 +15,11 @@ cd EQUI-VOCAL
 conda env create -f environment.yml
 conda activate equi-vocal
 python -m pip install -e .
+```
 
+The project uses Git Large File Storage to track large files.
+
+```sh
 # Pull large files
 git lfs install
 git lfs pull
