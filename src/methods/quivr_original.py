@@ -1,6 +1,6 @@
-from utils import print_program, get_depth_and_npred
-from query_graph import QueryGraph
-import dsl as dsl
+from src.utils import print_program, get_depth_and_npred
+from src.query_graph import QueryGraph
+import src.dsl as dsl
 import copy
 import numpy as np
 import time

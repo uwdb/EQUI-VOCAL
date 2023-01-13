@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.metrics import f1_score
 from lru import LRU
 import time
-from utils import str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching, complexity_cost
+from src.utils import str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching, complexity_cost
 import math
 import argparse
 import multiprocessing

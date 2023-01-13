@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='equi_vocal',
-      version='0.1.1',
+      version='0.2',
       description='',
       author='',
       author_email='',

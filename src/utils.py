@@ -3,7 +3,7 @@ import json
 import os
 import random
 import numpy as np
-import dsl as dsl
+import src.dsl as dsl
 import psycopg2 as psycopg
 import copy
 from lru import LRU
