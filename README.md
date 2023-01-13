@@ -54,28 +54,33 @@ psql -f postgres/create_udf.sql myinner_db
 To synthesis query, run this command under the `<project_root_dir>/src` directory:
 
 ```buildoutcfg
-python synthesize.py [-h] [--method METHOD] [--n_init_pos N_INIT_POS] [--n_init_neg N_INIT_NEG]
-                     [--dataset_name DATASET_NAME] [--npred NPRED] [--n_nontrivial N_NONTRIVIAL]
-                     [--n_trivial N_TRIVIAL] [--depth DEPTH] [--max_duration MAX_DURATION] [--beam_width BEAM_WIDTH]
-                     [--pool_size POOL_SIZE] [--k K] [--budget BUDGET] [--multithread MULTITHREAD]
-                     [--strategy STRATEGY] [--max_vars MAX_VARS] [--query_str QUERY_STR] [--run_id RUN_ID]
-                     [--output_to_file] [--port PORT] [--lru_capacity LRU_CAPACITY] [--reg_lambda REG_LAMBDA]
+python synthesize.py [-h] [--method {vocal_postgres,vocal_postgres_no_active_learning,quivr_original,quivr_original_no_kleene}]
+                     [--n_init_pos N_INIT_POS] [--n_init_neg N_INIT_NEG]
+                     [--dataset_name {synthetic_scene_graph_easy,synthetic_scene_graph_medium,synthetic_scene_graph_hard,without_duration-sampling_rate_4,trajectories_duration,trajectories_handwritten,without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01,without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03}]
+                     [--npred NPRED] [--n_nontrivial N_NONTRIVIAL] [--n_trivial N_TRIVIAL] [--depth DEPTH]
+                     [--max_duration MAX_DURATION] [--beam_width BEAM_WIDTH] [--pool_size POOL_SIZE] [--k K] [--budget BUDGET]
+                     [--multithread MULTITHREAD] [--strategy STRATEGY] [--max_vars MAX_VARS] [--query_str QUERY_STR]
+                     [--run_id RUN_ID] [--output_to_file] [--port PORT] [--lru_capacity LRU_CAPACITY] [--reg_lambda REG_LAMBDA]
                      [--input_dir INPUT_DIR] [--output_dir OUTPUT_DIR]
 
 options:
   -h, --help            show this help message and exit
-  --method METHOD       Query synthesis method.
+  --method {vocal_postgres,vocal_postgres_no_active_learning,quivr_original,quivr_original_no_kleene}
+                        Query synthesis method.
   --n_init_pos N_INIT_POS
                         Number of initial positive examples provided by the user.
   --n_init_neg N_INIT_NEG
                         Number of initial negative examples provided by the user.
-  --dataset_name DATASET_NAME
+  --dataset_name {synthetic_scene_graph_easy,synthetic_scene_graph_medium,synthetic_scene_graph_hard,without_duration-sampling_rate_4,trajectories_duration,trajectories_handwritten,without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01,without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03}
                         Name of the dataset.
   --npred NPRED         Maximum number of predicates that the synthesized queries can have.
   --n_nontrivial N_NONTRIVIAL
+                        Maximum number of non-trivial predicates that the synthesized queries can have. Used by Quivr.
   --n_trivial N_TRIVIAL
-  --depth DEPTH         For EQUI-VOCAL: Maximum number of region graphs that the synthesized queries can have. For
-                        Quivr: Maximum depth of the nested constructs that the synthesized queries can have.
+                        Maximum number of trivial predicates (i.e., <True>* predicate) that the synthesized queries can have.
+                        Used by Quivr.
+  --depth DEPTH         For EQUI-VOCAL: Maximum number of region graphs that the synthesized queries can have. For Quivr:
+                        Maximum depth of the nested constructs that the synthesized queries can have.
   --max_duration MAX_DURATION
                         Maximum number of the duration constraint.
   --beam_width BEAM_WIDTH
@@ -89,10 +94,10 @@ options:
   --strategy STRATEGY   Strategy for query sampling.
   --max_vars MAX_VARS   Maximum number of variables that the synthesized queries can have.
   --query_str QUERY_STR
-                        Target query in compact notation.
-  --run_id RUN_ID       Run ID.
-  --output_to_file      Whether write the output to file or not.
-  --port PORT           Port number of the database.
+                        Target query written in the compact notation.
+  --run_id RUN_ID       Run ID. This sets the random seed.
+  --output_to_file      Whether write the output to file or print the output on the terminal console.
+  --port PORT           Port on which Postgres is to listen.
   --lru_capacity LRU_CAPACITY
                         LRU cache capacity. Only used for Quivr due to its large memory footprint.
   --reg_lambda REG_LAMBDA
@@ -118,27 +123,27 @@ To evaluate the performance of synthesized queries, run this command under the `
 ```buildoutcfg
 python evaluate_vocal.py [-h]
                          [--dataset_name {synthetic_scene_graph_easy,synthetic_scene_graph_medium,synthetic_scene_graph_hard,without_duration-sampling_rate_4,trajectories_duration,trajectories_handwritten}]
-                         [--query_str QUERY_STR]
-                         [--method {vocal_postgres_no_active_learning-topk,vocal_postgres-topk}] [--port PORT]
-                         [--multithread MULTITHREAD] [--budget BUDGET] [--task_name TASK_NAME] [--value VALUE]
-                         [--run_id RUN_ID] [--input_dir INPUT_DIR] [--output_dir OUTPUT_DIR]
+                         [--query_str QUERY_STR] [--method {vocal_postgres_no_active_learning-topk,vocal_postgres-topk}]
+                         [--port PORT] [--multithread MULTITHREAD] [--budget BUDGET]
+                         [--task_name {trajectory,budget,bw,k,num_init,cpu,reg_lambda}] [--value VALUE] [--run_id RUN_ID]
+                         [--input_dir INPUT_DIR] [--output_dir OUTPUT_DIR]
 
 options:
   -h, --help            show this help message and exit
   --dataset_name {synthetic_scene_graph_easy,synthetic_scene_graph_medium,synthetic_scene_graph_hard,without_duration-sampling_rate_4,trajectories_duration,trajectories_handwritten}
                         Dataset to evaluate.
   --query_str QUERY_STR
-                        Target query to evalaute, in compact notation.
+                        Target query to evalaute, written in the compact notation.
   --method {vocal_postgres_no_active_learning-topk,vocal_postgres-topk}
                         Query synthesis method.
-  --port PORT           Port number of the database.
+  --port PORT           Port on which Postgres is to listen.
   --multithread MULTITHREAD
                         Number of CPUs to use.
   --budget BUDGET       Labeling budget.
-  --task_name TASK_NAME
-                        Task name.
-  --value VALUE         Value of the tested hyperparameter. If specified, evaluate on the single value; otherwise,
-                        evaluate on all values.
+  --task_name {trajectory,budget,bw,k,num_init,cpu,reg_lambda}
+                        Task name, e.g., the name of the tested hyperparameter.
+  --value VALUE         Value of the tested hyperparameter. If specified, evaluate on the single value; otherwise, evaluate on
+                        all values tested in our experiment.
   --run_id RUN_ID       Run ID.
   --input_dir INPUT_DIR
                         Input directory.
