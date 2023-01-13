@@ -28,9 +28,10 @@ git lfs pull
 ## Example Usage
 
 ### Set up your PostgreSQL server
-Run the following commands to create a PostgreSQL server instance and then load data into the database.
+Run the following commands to create a PostgreSQL server instance and then load data into the database. This will create a databse cluster `mylocal_db` and the database data will be stored in `<project_root_dir>/mylocal_db`.
 
 ```sh
+cd <project_root_dir>
 # Create a PostgreSQL server instance
 initdb -D mylocal_db --no-locale --encoding=UTF8
 # Start the server
@@ -50,7 +51,7 @@ psql -f postgres/create_udf.sql myinner_db
 ```
 
 ### Run query synthesis
-To reproduce experiment, run this command under the `src` directory:
+To synthesis query, run this command under the `<project_root_dir>/src` directory:
 
 ```buildoutcfg
 python synthesize.py [-h] [--method METHOD] [--n_init_pos N_INIT_POS] [--n_init_neg N_INIT_NEG]
@@ -113,7 +114,7 @@ cd scripts
 ```
 
 ### Evaluate query performance
-To evaluate the performance of synthesized queries, run this command under the `experiments/analysis` directory:
+To evaluate the performance of synthesized queries, run this command under the `<project_root_dir>/experiments/analysis` directory:
 ```buildoutcfg
 python evaluate_vocal.py [-h]
                          [--dataset_name {synthetic_scene_graph_easy,synthetic_scene_graph_medium,synthetic_scene_graph_hard,without_duration-sampling_rate_4,trajectories_duration,trajectories_handwritten}]
@@ -146,6 +147,6 @@ options:
 ```
 The following script provides an example configuration used in the paper:
 ```sh
-cd scripts
+cd <project_root_dir>/scripts
 ./eval_vocal.sh
 ```

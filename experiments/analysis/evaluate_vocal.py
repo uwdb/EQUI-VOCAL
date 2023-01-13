@@ -268,16 +268,16 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset_name", type=str, help='Dataset to evaluate.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten'])
-    ap.add_argument("--query_str", type=str, help='Target query to evalaute, in compact notation.')
+    ap.add_argument("--query_str", type=str, help='Target query to evalaute, written in the compact notation.')
     ap.add_argument("--method", type=str, help='Query synthesis method.', choices=['vocal_postgres_no_active_learning-topk', 'vocal_postgres-topk'])
-    ap.add_argument("--port", type=int, default=5432, help='Port number of the database.')
+    ap.add_argument("--port", type=int, default=5432, help='Port on which Postgres is to listen.')
     ap.add_argument("--multithread", type=int, default=1, help='Number of CPUs to use.')
     ap.add_argument("--budget", type=int, help='Labeling budget.')
-    ap.add_argument("--task_name", type=str, help='Task name.')
-    ap.add_argument("--value", type=int, help='Value of the tested hyperparameter. If specified, evaluate on the single value; otherwise, evaluate on all values.')
+    ap.add_argument("--task_name", type=str, help='Task name, e.g., the name of the tested hyperparameter.', choices=['trajectory', 'budget', 'bw', 'k', 'num_init', 'cpu', 'reg_lambda'])
+    ap.add_argument("--value", type=int, help='Value of the tested hyperparameter. If specified, evaluate on the single value; otherwise, evaluate on all values tested in our experiment.')
     ap.add_argument("--run_id", type=int, help='Run ID.')
-    ap.add_argument('--input_dir', type=str, default="/gscratch/balazinska/enhaoz/complex_event_video/inputs", help='Input directory.')
-    ap.add_argument('--output_dir', type=str, default="/gscratch/balazinska/enhaoz/complex_event_video/outputs", help='Output directory.')
+    ap.add_argument('--input_dir', type=str, default="../../inputs", help='Input directory.')
+    ap.add_argument('--output_dir', type=str, default="../../outputs", help='Output directory.')
 
     args = ap.parse_args()
     dataset_name = args.dataset_name
@@ -347,13 +347,13 @@ if __name__ == "__main__":
             evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "cpu", cpu_value)
 
     #### vary reg_lambda_scene_graph ####
-    if task_name == "reg_lambda":
+    if task_name == "reg_lambda" and "scene_graph" in dataset_name:
         if value:
             reg_lambdas = [value]
         else:
             reg_lambdas = [0.0, 0.001, 0.01]
         for reg_lambda in reg_lambdas:
-            evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "reg_lambda", reg_lambda)
+            evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "lambda_scene_graph", reg_lambda)
 
     ### vary reg_lambda_trajectory ####
     if task_name == "reg_lambda" and not "scene_graph" in dataset_name:
@@ -362,4 +362,4 @@ if __name__ == "__main__":
         else:
             reg_lambdas = [0.0, 0.001, 0.01]
         for reg_lambda in reg_lambdas:
-            evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "reg_lambda", reg_lambda, budget=budget, run_id=run_id)
+            evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "lambda_trajectory", reg_lambda, budget=budget, run_id=run_id)
