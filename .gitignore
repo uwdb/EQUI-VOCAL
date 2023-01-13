@@ -1,3 +1,4 @@
+# Ignore the following
 *.mp4
 data/
 *.txt
@@ -8,13 +9,23 @@ data/
 *.pkl
 __pycache__/
 *egg*
-*.json
 *.pdf
 src/datalog/souffle/*
 *.deb
 *.npz
 *.log
-inputs/
-outputs/
+inputs/*
+inputs/without_duration-sampling_rate_4/PATSQL/
+outputs/*
 *.ipynb_checkpoints/
 easy-install.pth
+
+# Un-ignore the following
+!inputs/synthetic_scene_graph_easy/
+!inputs/synthetic_scene_graph_medium/
+!inputs/synthetic_scene_graph_hard/
+!inputs/without_duration-sampling_rate_4/
+!inputs/without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01/
+!inputs/without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03/
+!inputs/trajectories_handwritten/
+!inputs/trajectories_duration/
