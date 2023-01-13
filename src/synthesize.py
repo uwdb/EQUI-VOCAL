@@ -104,13 +104,13 @@ def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, mu
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--method', type=str, help='Query synthesis method.')
+    ap.add_argument('--method', type=str, help='Query synthesis method.', choices=['vocal_postgres', 'vocal_postgres_no_active_learning', 'quivr_original', 'quivr_original_no_kleene'])
     ap.add_argument('--n_init_pos', type=int, default=2, help='Number of initial positive examples provided by the user.')
     ap.add_argument('--n_init_neg', type=int, default=10, help='Number of initial negative examples provided by the user.')
-    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.')
+    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01', 'without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03'])
     ap.add_argument('--npred', type=int, default=5, help='Maximum number of predicates that the synthesized queries can have.')
-    ap.add_argument('--n_nontrivial', type=int)
-    ap.add_argument('--n_trivial', type=int)
+    ap.add_argument('--n_nontrivial', type=int, help='Maximum number of non-trivial predicates that the synthesized queries can have. Used by Quivr.')
+    ap.add_argument('--n_trivial', type=int, help='Maximum number of trivial predicates (i.e., <True>* predicate) that the synthesized queries can have. Used by Quivr.')
     ap.add_argument('--depth', type=int, default=3, help='For EQUI-VOCAL: Maximum number of region graphs that the synthesized queries can have. For Quivr: Maximum depth of the nested constructs that the synthesized queries can have.')
     ap.add_argument('--max_duration', type=int, default=1, help='Maximum number of the duration constraint.')
     ap.add_argument('--beam_width', type=int, default=32, help='Beam width.')
@@ -118,16 +118,16 @@ if __name__ == '__main__':
     ap.add_argument('--k', type=int, default=100, help='Number of queries in the final answer.')
     ap.add_argument('--budget', type=int, default=100, help='Labeling budget.')
     ap.add_argument('--multithread', type=int, default=1, help='Number of CPUs to use.')
-    ap.add_argument('--strategy', type=str, default="sampling", help='Strategy for query sampling.')
+    ap.add_argument('--strategy', type=str, default="topk", help='Strategy for query sampling.')
     ap.add_argument('--max_vars', type=int, default=2, help='Maximum number of variables that the synthesized queries can have.')
-    ap.add_argument('--query_str', type=str, help='Target query in compact notation.')
-    ap.add_argument('--run_id', type=int, help='Run ID.')
-    ap.add_argument('--output_to_file', action="store_true", help='Whether write the output to file or not.')
-    ap.add_argument('--port', type=int, default=5432, help='Port number of the database.')
+    ap.add_argument('--query_str', type=str, help='Target query written in the compact notation.')
+    ap.add_argument('--run_id', type=int, help='Run ID. This sets the random seed.')
+    ap.add_argument('--output_to_file', action="store_true", help='Whether write the output to file or print the output on the terminal console.')
+    ap.add_argument('--port', type=int, default=5432, help='Port on which Postgres is to listen.')
     ap.add_argument('--lru_capacity', type=int, help='LRU cache capacity. Only used for Quivr due to its large memory footprint.')
     ap.add_argument('--reg_lambda', type=float, default=0.01, help='Regularization parameter.')
-    ap.add_argument('--input_dir', type=str, default="/gscratch/balazinska/enhaoz/complex_event_video/inputs", help='Input directory.')
-    ap.add_argument('--output_dir', type=str, default="/gscratch/balazinska/enhaoz/complex_event_video/outputs", help='Output directory.')
+    ap.add_argument('--input_dir', type=str, default="../inputs", help='Input directory.')
+    ap.add_argument('--output_dir', type=str, default="../outputs", help='Output directory.')
 
     args = ap.parse_args()
     method_str = args.method
@@ -179,12 +179,7 @@ if __name__ == '__main__':
 
 
     # Define candidate predicates
-    if dataset_name.startswith("synthetic_rare"):
-        if method_str.startswith("vocal_postgres"):
-            predicate_dict = [{"name": "Near", "parameters": [1.05], "nargs": 2}, {"name": "Far", "parameters": [0.9], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}]
-        else:
-            predicate_dict = {dsl.Near: [-1.05], dsl.Far: [0.9], dsl.LeftOf: None, dsl.Behind: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None}
-    elif dataset_name.startswith("synthetic_trajectories_rare") or dataset_name.startswith("trajectories_handwritten") or dataset_name.startswith("trajectories_duration"):
+    if dataset_name.startswith("trajectories_handwritten") or dataset_name.startswith("trajectories_duration"):
         if method_str.startswith("vocal_postgres"):
             predicate_dict = [{"name": "Near", "parameters": [1], "nargs": 2}, {"name": "Far", "parameters": [3], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightOf", "parameters": None, "nargs": 2}, {"name": "FrontOf", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "LeftQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "BottomQuadrant", "parameters": None, "nargs": 1}]
         elif method_str == "quivr_original":
