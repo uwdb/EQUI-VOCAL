@@ -50,7 +50,60 @@ psql -f postgres/create_udf.sql myinner_db
 ```
 
 ### Run query synthesis
-To reproduce experiment, run the following commands:
+To reproduce experiment, run this command under the `src` directory:
+
+```sh
+python synthesize.py [-h] [--method METHOD] [--n_init_pos N_INIT_POS] [--n_init_neg N_INIT_NEG]
+                     [--dataset_name DATASET_NAME] [--npred NPRED] [--n_nontrivial N_NONTRIVIAL]
+                     [--n_trivial N_TRIVIAL] [--depth DEPTH] [--max_duration MAX_DURATION] [--beam_width BEAM_WIDTH]
+                     [--pool_size POOL_SIZE] [--k K] [--budget BUDGET] [--multithread MULTITHREAD]
+                     [--strategy STRATEGY] [--max_vars MAX_VARS] [--query_str QUERY_STR] [--run_id RUN_ID]
+                     [--output_to_file] [--port PORT] [--lru_capacity LRU_CAPACITY] [--reg_lambda REG_LAMBDA]
+                     [--input_dir INPUT_DIR] [--output_dir OUTPUT_DIR]
+
+options:
+  -h, --help            show this help message and exit
+  --method METHOD       Query synthesis method.
+  --n_init_pos N_INIT_POS
+                        Number of initial positive examples provided by the user.
+  --n_init_neg N_INIT_NEG
+                        Number of initial negative examples provided by the user.
+  --dataset_name DATASET_NAME
+                        Name of the dataset.
+  --npred NPRED         Maximum number of predicates that the synthesized queries can have.
+  --n_nontrivial N_NONTRIVIAL
+  --n_trivial N_TRIVIAL
+  --depth DEPTH         For EQUI-VOCAL: Maximum number of region graphs that the synthesized queries can have. For
+                        Quivr: Maximum depth of the nested constructs that the synthesized queries can have.
+  --max_duration MAX_DURATION
+                        Maximum number of the duration constraint.
+  --beam_width BEAM_WIDTH
+                        Beam width.
+  --pool_size POOL_SIZE
+                        Number of queries sampled during example selection.
+  --k K                 Number of queries in the final answer.
+  --budget BUDGET       Labeling budget.
+  --multithread MULTITHREAD
+                        Number of CPUs to use.
+  --strategy STRATEGY   Strategy for query sampling.
+  --max_vars MAX_VARS   Maximum number of variables that the synthesized queries can have.
+  --query_str QUERY_STR
+                        Target query in compact notation.
+  --run_id RUN_ID       Run ID.
+  --output_to_file      Whether write the output to file or not.
+  --port PORT           Port number of the database.
+  --lru_capacity LRU_CAPACITY
+                        LRU cache capacity. Only used for Quivr due to its large memory footprint.
+  --reg_lambda REG_LAMBDA
+                        Regularization parameter.
+  --input_dir INPUT_DIR
+                        Input directory.
+  --output_dir OUTPUT_DIR
+                        Output directory.
+```
+
+The following scripts provide example configurations for the trajectories dataset and the scene graphs dataset used in the paper:
+
 ```sh
 cd scripts
 # Trajectories dataset
@@ -60,7 +113,38 @@ cd scripts
 ```
 
 ### Evaluate query performance
-To evaluate the performance of synthesized queries, run this command:
+To evaluate the performance of synthesized queries, run this command under the `experiments/analysis` directory:
+```sh
+python evaluate_vocal.py [-h]
+                         [--dataset_name {synthetic_scene_graph_easy,synthetic_scene_graph_medium,synthetic_scene_graph_hard,without_duration-sampling_rate_4,trajectories_duration,trajectories_handwritten}]
+                         [--query_str QUERY_STR]
+                         [--method {vocal_postgres_no_active_learning-topk,vocal_postgres-topk}] [--port PORT]
+                         [--multithread MULTITHREAD] [--budget BUDGET] [--task_name TASK_NAME] [--value VALUE]
+                         [--run_id RUN_ID] [--input_dir INPUT_DIR] [--output_dir OUTPUT_DIR]
+
+options:
+  -h, --help            show this help message and exit
+  --dataset_name {synthetic_scene_graph_easy,synthetic_scene_graph_medium,synthetic_scene_graph_hard,without_duration-sampling_rate_4,trajectories_duration,trajectories_handwritten}
+                        Dataset to evaluate.
+  --query_str QUERY_STR
+                        Target query to evalaute, in compact notation.
+  --method {vocal_postgres_no_active_learning-topk,vocal_postgres-topk}
+                        Query synthesis method.
+  --port PORT           Port number of the database.
+  --multithread MULTITHREAD
+                        Number of CPUs to use.
+  --budget BUDGET       Labeling budget.
+  --task_name TASK_NAME
+                        Task name.
+  --value VALUE         Value of the tested hyperparameter. If specified, evaluate on the single value; otherwise,
+                        evaluate on all values.
+  --run_id RUN_ID       Run ID.
+  --input_dir INPUT_DIR
+                        Input directory.
+  --output_dir OUTPUT_DIR
+                        Output directory.
+```
+The following script provides an example configuration used in the paper:
 ```sh
 ./eval_vocal.sh
 ```
