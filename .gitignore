@@ -19,6 +19,7 @@ inputs/without_duration-sampling_rate_4/PATSQL/
 outputs/*
 *.ipynb_checkpoints/
 easy-install.pth
+experiments/gpt/openai_key.txt
 
 # Un-ignore the following
 !inputs/synthetic_scene_graph_easy/
