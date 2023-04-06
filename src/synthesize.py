@@ -107,7 +107,7 @@ if __name__ == '__main__':
     ap.add_argument('--method', type=str, help='Query synthesis method.', choices=['vocal_postgres', 'vocal_postgres_no_active_learning', 'quivr_original', 'quivr_original_no_kleene'])
     ap.add_argument('--n_init_pos', type=int, default=2, help='Number of initial positive examples provided by the user.')
     ap.add_argument('--n_init_neg', type=int, default=10, help='Number of initial negative examples provided by the user.')
-    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01', 'without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03'])
+    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01', 'without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03', 'demo_queries_scene_graph', 'shibuya', 'user_study_queries_scene_graph'])
     ap.add_argument('--npred', type=int, default=5, help='Maximum number of predicates that the synthesized queries can have.')
     ap.add_argument('--n_nontrivial', type=int, help='Maximum number of non-trivial predicates that the synthesized queries can have. Used by Quivr.')
     ap.add_argument('--n_trivial', type=int, help='Maximum number of trivial predicates (i.e., <True>* predicate) that the synthesized queries can have. Used by Quivr.')
@@ -155,7 +155,6 @@ if __name__ == '__main__':
     reg_lambda = args.reg_lambda
     input_dir = args.input_dir
     output_dir = args.output_dir
-
     random.seed(run_id)
     np.random.seed(run_id)
     # random.seed(time.time())
