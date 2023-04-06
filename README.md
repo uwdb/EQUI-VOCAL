@@ -12,7 +12,8 @@ git clone https://github.com/uwdb/EQUI-VOCAL.git
 cd EQUI-VOCAL
 
 # Create a conda environment (called equi-vocal) and install dependencies
-conda env create -f environment.yml
+conda env create -f environment.yml --name equi-vocal
+conda env export –no-builds > environment.yml
 conda activate equi-vocal
 python -m pip install -e .
 ```
@@ -24,6 +25,15 @@ The project uses Git Large File Storage to track large files.
 git lfs install
 git lfs pull
 ```
+
+in postgres/create_udf.sql, change all file paths to correct path to EQUI-VOCAL/postgres/functors
+
+in src/methods/vocal_postgres.py :
+
+Line 87: change user value to user name
+
+Line 128: Replace file path with correct file path to functors folder
+
 
 ## Example Usage
 
@@ -37,7 +47,7 @@ initdb -D mylocal_db --no-locale --encoding=UTF8
 # Start the server
 pg_ctl -D mylocal_db start
 # Create a database
-createdb --owner=enhaoz myinner_db
+createdb --owner=<user_name> myinner_db
 # Configure
 psql -f postgres/alter_config-cpu_1-mem_100.sql  myinner_db
 # Restart the server
@@ -48,6 +58,10 @@ psql -f postgres/create_table.sql myinner_db
 psql -f postgres/load_data.sql myinner_db
 # Load user-defined functions
 psql -f postgres/create_udf.sql myinner_db
+# Recompile and link C functions:
+cc -I /usr/local/Cellar/postgresql@14/14.7/include/postgresql@14/server -c functors.c
+cc -bundle -flat_namespace -undefined suppress -o functors.so functors.o
+
 ```
 
 ### Run query synthesis

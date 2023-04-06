@@ -123,8 +123,11 @@ class BaseMethod:
 
         return [random_index]
 
-    def execute_over_all_inputs_postgres(self, query):
-        input_vids = self.inputs[self.sampled_index].tolist()
+    def execute_over_all_inputs_postgres(self, query, is_test=False):
+        if is_test:
+            input_vids = self.test_inputs.tolist()
+        else:
+            input_vids = self.inputs[self.sampled_index].tolist()
         pred_per_query = []
         result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(self.dsn, query, self.memoize_scene_graph_all_inputs, self.memoize_sequence_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
         if self.lock:
