@@ -78,6 +78,39 @@ def str_to_program(program_str):
         return dsl.LeftQuadrant()
     elif program_str.startswith("RightQuadrant"):
         return dsl.RightQuadrant()
+    ###  dsl.AEastward4: None, dsl.AEastward3: None, dsl.AEastward2: None, dsl.AWestward2: None, dsl.ASouthward1Upper: None, dsl.AStopped: [2], dsl.AHighAccel: [2], dsl.BEastward4: None, dsl.BEastward3: None, dsl.BEastward2: None, dsl.BWestward2: None, dsl.BSouthward1Upper: None, dsl.BStopped: [2], dsl.BHighAccel: [2], dsl.DistanceSmall: [100], dsl.Faster: [1.5]
+    elif program_str.startswith("AEastward4"):
+        return dsl.AEastward4()
+    elif program_str.startswith("AEastward3"):
+        return dsl.AEastward3()
+    elif program_str.startswith("AEastward2"):
+        return dsl.AEastward2()
+    elif program_str.startswith("AWestward2"):
+        return dsl.AWestward2()
+    elif program_str.startswith("ASouthward1Upper"):
+        return dsl.ASouthward1Upper()
+    elif program_str.startswith("AStopped"):
+        return dsl.AStopped(theta=-float(program_str.split("_")[1]))
+    elif program_str.startswith("AHighAccel"):
+        return dsl.AHighAccel(theta=float(program_str.split("_")[1]))
+    elif program_str.startswith("BEastward4"):
+        return dsl.BEastward4()
+    elif program_str.startswith("BEastward3"):
+        return dsl.BEastward3()
+    elif program_str.startswith("BEastward2"):
+        return dsl.BEastward2()
+    elif program_str.startswith("BWestward2"):
+        return dsl.BWestward2()
+    elif program_str.startswith("BSouthward1Upper"):
+        return dsl.BSouthward1Upper()
+    elif program_str.startswith("BStopped"):
+        return dsl.BStopped(theta=-float(program_str.split("_")[1]))
+    elif program_str.startswith("BHighAccel"):
+        return dsl.BHighAccel(theta=float(program_str.split("_")[1]))
+    elif program_str.startswith("DistanceSmall"):
+        return dsl.DistanceSmall(theta=-float(program_str.split("_")[1]))
+    elif program_str.startswith("Faster"):
+        return dsl.Faster(theta=float(program_str.split("_")[1]))
     else:
         idx = program_str.find("(")
         idx_r = program_str.rfind(")")
@@ -378,7 +411,7 @@ def postgres_execute(dsn, current_query, memoize_scene_graph, memoize_sequence, 
                 cached_df_seq_per_query = [pd.DataFrame()]
 
                 # sequence cache
-                seq_signature = rewrite_program_postgres(current_query[:len(current_query)-i])
+                seq_signature = rewrite_program_postgres(current_query[:len(current_query)-i], not is_trajectory)
                 cached_vids_per_query = set()
                 next_remaining_vids = set()
                 for vid in remaining_vids:
@@ -508,7 +541,7 @@ def postgres_execute(dsn, current_query, memoize_scene_graph, memoize_sequence, 
                 # print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
 
                 # Read cached results
-                # signature = rewrite_program_postgres(current_query[:graph_idx+1])
+                # signature = rewrite_program_postgres(current_query[:graph_idx+1], not is_trajectory)
                 cached_results = cached_df_seq_deque.pop()
                 delta_input_vids.extend(cached_vids_deque.pop())
 
@@ -628,6 +661,12 @@ def postgres_execute_cache_sequence(dsn, current_query, memoize_scene_graph, mem
     Output:
     new_memoize: new cached results from this query, which will be added to the global cache (for multi-threading)
     """
+
+    if inputs_table_name.startswith("Obj_warsaw") or inputs_table_name.startswith("Obj_shibuya"):
+        is_traffic = True
+    else:
+        is_traffic = False
+
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             """
@@ -665,7 +704,7 @@ def postgres_execute_cache_sequence(dsn, current_query, memoize_scene_graph, mem
                 cached_df_seq_per_query = [pd.DataFrame()]
 
                 # sequence cache
-                seq_signature = rewrite_program_postgres(current_query[:len(current_query)-i])
+                seq_signature = rewrite_program_postgres(current_query[:len(current_query)-i], not is_trajectory)
                 cached_vids_per_query = set()
                 next_remaining_vids = set()
                 for vid in remaining_vids:
@@ -688,13 +727,13 @@ def postgres_execute_cache_sequence(dsn, current_query, memoize_scene_graph, mem
             _start = time.time()
             if isinstance(input_vids, int):
                 if sampling_rate:
-                    cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT oid, vid, fid / {} as fid, shape, color, material, x1, y1, x2, y2 FROM {} WHERE vid < {} AND fid % {} = 0;".format(sampling_rate, inputs_table_name, input_vids, sampling_rate))
+                    cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT oid, vid, fid / {} as fid, {} FROM {} WHERE vid < {} AND fid % {} = 0;".format(sampling_rate, "x1, y1, x2, y2, vx, vy, ax, ay" if is_traffic else "x1, y1, x2, y2, shape, color, material", inputs_table_name, input_vids, sampling_rate))
                 else:
                     cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid < {};".format(inputs_table_name, input_vids))
                 input_vids = list(range(input_vids))
             else:
                 if sampling_rate:
-                    cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT oid, vid, fid / {} as fid, shape, color, material, x1, y1, x2, y2 FROM {} WHERE vid = ANY(%s) AND fid %% {} = 0;".format(sampling_rate, inputs_table_name, sampling_rate), [filtered_vids])
+                    cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT oid, vid, fid / {} as fid, {} FROM {} WHERE vid = ANY(%s) AND fid %% {} = 0;".format(sampling_rate, "x1, y1, x2, y2, vx, vy, ax, ay" if is_traffic else "x1, y1, x2, y2, shape, color, material", inputs_table_name, sampling_rate), [filtered_vids])
                 else:
                     cur.execute("CREATE TEMPORARY TABLE Obj_filtered AS SELECT * FROM {} WHERE vid = ANY(%s);".format(inputs_table_name), [filtered_vids])
             cur.execute("CREATE INDEX IF NOT EXISTS idx_obj_filtered ON Obj_filtered (vid, fid, oid);")
@@ -728,7 +767,10 @@ def postgres_execute_cache_sequence(dsn, current_query, memoize_scene_graph, mem
                     variables = p["variables"]
                     args = []
                     for v in variables:
-                        args.append("{v}.shape, {v}.color, {v}.material, {v}.x1, {v}.y1, {v}.x2, {v}.y2".format(v=v))
+                        if is_traffic:
+                            args.append("{v}.x1, {v}.y1, {v}.x2, {v}.y2, {v}.vx, {v}.vy, {v}.ax, {v}.ay".format(v=v))
+                        else:
+                            args.append("{v}.shape, {v}.color, {v}.material, {v}.x1, {v}.y1, {v}.x2, {v}.y2".format(v=v))
                     args = ", ".join(args)
                     if parameter:
                         if isinstance(parameter, str):
@@ -844,6 +886,7 @@ def postgres_execute_cache_sequence(dsn, current_query, memoize_scene_graph, mem
                 # Appending cached results of seen videos:
                 _start_append = time.time()
                 if cached_results.shape[0]:
+                    # print("cached_results", cached_results.head())
                     # save dataframe to an in memory buffer
                     buffer = StringIO()
                     cached_results.to_csv(buffer, header=False, index = False)
@@ -1017,11 +1060,12 @@ def postgres_execute_no_caching(dsn, current_query, memoize_scene_graph, memoize
     return output_vids, new_memoize_scene_graph, new_memoize_sequence
 
 
-def rewrite_program_postgres(orig_program):
+def rewrite_program_postgres(orig_program, rewrite_variables=True):
     """
     Input:
     program: query in the dictionary format
     Output: query in string format, which is ordered properly (uniquely).
+    NOTE: For trajectories, we don't rewrite the variables, since we expect the query to indicate which objects the predicate is referring to, as assumed in the Quivr paper.
     """
     def print_scene_graph(predicate_list):
         if len(predicate_list) == 1:
@@ -1050,18 +1094,21 @@ def rewrite_program_postgres(orig_program):
     encountered_variables = []
     for dict in program:
         scene_graph = dict["scene_graph"]
-        scene_graph = sorted(scene_graph, key=lambda x: x["predicate"])
-        for i, p in enumerate(scene_graph):
-            rewritten_variables = []
-            for v in p["variables"]:
-                if v not in encountered_variables:
-                    encountered_variables.append(v)
-                    rewritten_variables.append("o" + str(len(encountered_variables) - 1))
-                else:
-                    rewritten_variables.append("o" + str(encountered_variables.index(v)))
-            # Sort rewritten variables
-            rewritten_variables = sorted(rewritten_variables)
-            scene_graph[i]["variables"] = rewritten_variables
+        scene_graph = sorted(scene_graph, key=lambda x: x["predicate"] + " ".join(x["variables"]))
+        if rewrite_variables:
+            # Rewrite variables
+            for i, p in enumerate(scene_graph):
+                rewritten_variables = []
+                for v in p["variables"]:
+                    if v not in encountered_variables:
+                        encountered_variables.append(v)
+                        rewritten_variables.append("o" + str(len(encountered_variables) - 1))
+                    else:
+                        rewritten_variables.append("o" + str(encountered_variables.index(v)))
+                # Sort rewritten variables
+                # NOTE: Why do we want to sort?
+                rewritten_variables = sorted(rewritten_variables)
+                scene_graph[i]["variables"] = rewritten_variables
         dict["scene_graph"] = scene_graph
 
     scene_graphs = []

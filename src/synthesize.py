@@ -15,6 +15,9 @@ def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivia
     if dataset_name.startswith("collision"):
         with open(os.path.join(input_dir, "collision.json"), 'r') as f:
             trajectories = json.load(f)
+    elif dataset_name == "warsaw":
+        with open(os.path.join(input_dir, "warsaw_trajectory_pairs.json"), 'r') as f:
+            trajectories = json.load(f)
     else:
         with open(os.path.join(input_dir, "trajectory_pairs.json"), 'r') as f:
             trajectories = json.load(f)
@@ -146,7 +149,7 @@ if __name__ == '__main__':
     ap.add_argument('--method', type=str, help='Query synthesis method.', choices=['vocal_postgres', 'vocal_postgres_no_active_learning', 'quivr_original', 'quivr_original_no_kleene'])
     ap.add_argument('--n_init_pos', type=int, default=2, help='Number of initial positive examples provided by the user.')
     ap.add_argument('--n_init_neg', type=int, default=10, help='Number of initial negative examples provided by the user.')
-    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01', 'without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03', 'demo_queries_scene_graph', 'shibuya', 'user_study_queries_scene_graph'])
+    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01', 'without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03', 'demo_queries_scene_graph', 'shibuya', 'warsaw','user_study_queries_scene_graph', 'synthetic_scene_graph_hard_v2'])
     ap.add_argument('--npred', type=int, default=5, help='Maximum number of predicates that the synthesized queries can have.')
     ap.add_argument('--n_nontrivial', type=int, help='Maximum number of non-trivial predicates that the synthesized queries can have. Used by Quivr.')
     ap.add_argument('--n_trivial', type=int, help='Maximum number of trivial predicates (i.e., <True>* predicate) that the synthesized queries can have. Used by Quivr.')
@@ -224,6 +227,15 @@ if __name__ == '__main__':
             predicate_dict = {dsl.Near: [-1], dsl.Far: [3], dsl.MinLength: None, dsl.LeftOf: None, dsl.RightOf: None, dsl.Behind: None, dsl.FrontOf: None, dsl.LeftQuadrant: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None, dsl.BottomQuadrant: None}
         elif method_str == "quivr_original_no_kleene":
             predicate_dict = {dsl.Near: [-1], dsl.Far: [3], dsl.LeftOf: None, dsl.RightOf: None, dsl.Behind: None, dsl.FrontOf: None, dsl.LeftQuadrant: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None, dsl.BottomQuadrant: None}
+    elif dataset_name == "warsaw":
+        if method_str.startswith("vocal_postgres"):
+            predicate_dict = [{"name": "Eastward4", "parameters": None, "nargs": 1}, {"name": "Eastward3", "parameters": None, "nargs": 1}, {"name": "Eastward2", "parameters": None, "nargs": 1}, {"name": "Westward2", "parameters": None, "nargs": 1}, {"name": "Southward1Upper", "parameters": None, "nargs": 1}, {"name": "Stopped", "parameters": [2], "nargs": 1}, {"name": "HighAccel", "parameters": [2], "nargs": 1}, {"name": "DistanceSmall", "parameters": [100], "nargs": 2}, {"name": "Faster", "parameters": [1.5], "nargs": 2}]
+        elif method_str == "quivr_original":
+            predicate_dict = {dsl.MinLength: None, dsl.AEastward4: None, dsl.AEastward3: None, dsl.AEastward2: None, dsl.AWestward2: None, dsl.ASouthward1Upper: None, dsl.AStopped: [-2], dsl.AHighAccel: [2], dsl.BEastward4: None, dsl.BEastward3: None, dsl.BEastward2: None, dsl.BWestward2: None, dsl.BSouthward1Upper: None, dsl.BStopped: [-2], dsl.BHighAccel: [2], dsl.DistanceSmall: [-100], dsl.Faster: [1.5]}
+        elif method_str == "quivr_original_no_kleene":
+            predicate_dict = {dsl.AEastward4: None, dsl.AEastward3: None, dsl.AEastward2: None, dsl.AWestward2: None, dsl.ASouthward1Upper: None, dsl.AStopped: [-2], dsl.AHighAccel: [2], dsl.BEastward4: None, dsl.BEastward3: None, dsl.BEastward2: None, dsl.BWestward2: None, dsl.BSouthward1Upper: None, dsl.BStopped: [-2], dsl.BHighAccel: [2], dsl.DistanceSmall: [-100], dsl.Faster: [1.5]}
+        else:
+            raise NotImplementedError
     elif "scene_graph" in dataset_name:
         if method_str.startswith("vocal_postgres"):
             predicate_dict = [{"name": "Near", "parameters": [1], "nargs": 2}, {"name": "Far", "parameters": [3], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightOf", "parameters": None, "nargs": 2}, {"name": "FrontOf", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "LeftQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "BottomQuadrant", "parameters": None, "nargs": 1}, {"name": "Color", "parameters": ["gray", "red", "blue", "green", "brown", "cyan", "purple", "yellow"], "nargs": 1}, {"name": "Shape", "parameters": ["cube", "sphere", "cylinder"], "nargs": 1}, {"name": "Material", "parameters": ["metal", "rubber"], "nargs": 1}]

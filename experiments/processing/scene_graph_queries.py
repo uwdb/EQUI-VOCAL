@@ -9,4 +9,4 @@ if __name__ == '__main__':
     dataset_name = "scene_graphs"
     for query_str in query_strs:
         prepare_data_given_target_query(query_str, 0, 1, dataset_name, "Obj_clevrer", sampling_rate=None)
-        construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name), n_train=500)
+        construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}".format(dataset_name), n_train=500)
