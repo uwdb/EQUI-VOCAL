@@ -361,6 +361,319 @@ Datum Rubber(PG_FUNCTION_ARGS) {
     PG_RETURN_BOOL(strcmp(material_a, "rubber") == 0);
 }
 
+/*
+For Shibuya dataset
+*/
+PG_FUNCTION_INFO_V1(LeftPoly);
+
+Datum LeftPoly(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+
+    float polygon[4][2] = {{250, 272}, {0, 325}, {0, 540}, {495, 532}};
+    bool odd = false;
+    // int totalCrosses = 0; // this is just used for debugging
+    //For each edge (In this case for each point of the polygon and the previous one)
+    for (int i = 0, j = 3; i < 4; i++) { // Starting with the edge from the last to the first node
+        //If a line from the point into infinity crosses this edge
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1)) // One point needs to be above, one below our y coordinate
+                // ...and the edge doesn't cross our Y corrdinate before our x coordinate (but between our x coordinate and infinity)
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            // Invert odd
+            // System.out.println("Point crosses edge " + (j + 1));
+            // totalCrosses++;
+            odd = !odd;
+        }
+        //else {System.out.println("Point does not cross edge " + (j + 1));}
+        j = i;
+    }
+    // System.out.println("Total number of crossings: " + totalCrosses);
+    //If the number of crossings was odd, the point is in the polygon
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(RightPoly);
+
+Datum RightPoly(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+
+    float polygon[5][2] = {{615, 206}, {813, 285}, {960, 172}, {960, 0}, {615, 0}};
+    bool odd = false;
+    for (int i = 0, j = 4; i < 5; i++) {
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1))
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            odd = !odd;
+        }
+        j = i;
+    }
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(TopPoly);
+
+Datum TopPoly(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+
+    float polygon[4][2] = {{590, 205}, {341, 105}, {191, 123}, {273, 273}};
+
+    bool odd = false;
+    for (int i = 0, j = 3; i < 4; i++) {
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1))
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            odd = !odd;
+        }
+        j = i;
+    }
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(BottomPoly);
+
+Datum BottomPoly(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+
+    float polygon[5][2] = {{821, 322}, {525, 472}, {525, 540}, {960, 540}, {960, 322}};
+
+    bool odd = false;
+    for (int i = 0, j = 4; i < 5; i++) {
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1))
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            odd = !odd;
+        }
+        j = i;
+    }
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(Eastward4);
+
+Datum Eastward4(PG_FUNCTION_ARGS) {
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = y2 - 10;
+
+    float polygon[8][2] = {{0, 330}, {330, 362}, {789, 369}, {960, 355}, {960, 372}, {803, 391}, {351, 389}, {0, 351}};
+
+    // float polygon[6][2] = {{0, 330}, {330, 362}, {675, 371}, {703, 394}, {351, 389}, {0, 351}};
+
+    bool odd = false;
+    for (int i = 0, j = 7; i < 8; i++) {
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1))
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            odd = !odd;
+        }
+        j = i;
+    }
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(Eastward3);
+
+Datum Eastward3(PG_FUNCTION_ARGS) {
+    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = y2 - 10;
+
+    float polygon[9][2] = {{0, 351}, {351, 389}, {803, 391}, {960, 372}, {960, 394}, {838, 413}, {424, 422}, {153, 395}, {0, 370}};
+
+    // float polygon[7][2] = {{0, 351}, {351, 389}, {703, 394}, {736, 422}, {424, 422}, {153, 395}, {0, 370}};
+
+    bool odd = false;
+    for (int i = 0, j = 8; i < 9; i++) {
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1))
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            odd = !odd;
+        }
+        j = i;
+    }
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(Eastward2);
+
+Datum Eastward2(PG_FUNCTION_ARGS) {
+    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = y2 - 10;
+
+    float polygon[10][2] = {{0, 370}, {153, 395}, {424, 422}, {838, 413}, {960, 394}, {960, 420}, {763, 451}, {414, 460}, {97, 420}, {0, 397}};
+
+    // float polygon[8][2] = {{0, 370}, {153, 395}, {424, 422}, {736, 422}, {763, 451}, {414, 460}, {97, 420}, {0, 397}};
+
+    bool odd = false;
+    for (int i = 0, j = 9; i < 10; i++) {
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1))
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            odd = !odd;
+        }
+        j = i;
+    }
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(Westward2);
+
+Datum Westward2(PG_FUNCTION_ARGS) {
+    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = y2 - 4;
+
+    float polygon[4][2] = {{0, 262}, {709, 213}, {708, 242}, {0, 288}};
+
+    // float polygon[4][2] = {{0, 262}, {455, 228}, {464, 255}, {0, 288}};
+
+    bool odd = false;
+    for (int i = 0, j = 3; i < 4; i++) {
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1))
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            odd = !odd;
+        }
+        j = i;
+    }
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(Southward1Upper);
+
+Datum Southward1Upper(PG_FUNCTION_ARGS) {
+    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    float x1 = PG_GETARG_FLOAT8(0);
+    float y1 = PG_GETARG_FLOAT8(1);
+    float x2 = PG_GETARG_FLOAT8(2);
+    float y2 = PG_GETARG_FLOAT8(3);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = y2;
+
+    float polygon[4][2] = {{384, 113}, {414, 115}, {565, 223}, {543, 224}};
+
+    bool odd = false;
+    for (int i = 0, j = 3; i < 4; i++) {
+        if (((polygon[i][1] > cy1) != (polygon[j][1] > cy1))
+                && (cx1 < (polygon[j][0] - polygon[i][0]) * (cy1 - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+            odd = !odd;
+        }
+        j = i;
+    }
+    PG_RETURN_BOOL(odd);
+}
+
+PG_FUNCTION_INFO_V1(Stopped);
+
+Datum Stopped(PG_FUNCTION_ARGS) {
+    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    float theta = PG_GETARG_FLOAT8(0);
+    float x1 = PG_GETARG_FLOAT8(1);
+    float y1 = PG_GETARG_FLOAT8(2);
+    float x2 = PG_GETARG_FLOAT8(3);
+    float y2 = PG_GETARG_FLOAT8(4);
+    float v_x = PG_GETARG_FLOAT8(5);
+    float v_y = PG_GETARG_FLOAT8(6);
+    float a_x = PG_GETARG_FLOAT8(7);
+    float a_y = PG_GETARG_FLOAT8(8);
+
+    float v_magnitude = sqrt(v_x * v_x + v_y * v_y);
+
+    PG_RETURN_BOOL(v_magnitude < theta);
+}
+
+PG_FUNCTION_INFO_V1(HighAccel);
+
+Datum HighAccel(PG_FUNCTION_ARGS) {
+    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    float theta = PG_GETARG_FLOAT8(0);
+    float x1 = PG_GETARG_FLOAT8(1);
+    float y1 = PG_GETARG_FLOAT8(2);
+    float x2 = PG_GETARG_FLOAT8(3);
+    float y2 = PG_GETARG_FLOAT8(4);
+    float v_x = PG_GETARG_FLOAT8(5);
+    float v_y = PG_GETARG_FLOAT8(6);
+    float a_x = PG_GETARG_FLOAT8(7);
+    float a_y = PG_GETARG_FLOAT8(8);
+
+    float a_magnitude = sqrt(a_x * a_x + a_y * a_y);
+
+    PG_RETURN_BOOL(a_magnitude > theta);
+}
+
+PG_FUNCTION_INFO_V1(DistanceSmall);
+
+Datum DistanceSmall(PG_FUNCTION_ARGS) {
+    float theta = PG_GETARG_FLOAT8(0);
+    float x1 = PG_GETARG_FLOAT8(1);
+    float y1 = PG_GETARG_FLOAT8(2);
+    float x2 = PG_GETARG_FLOAT8(3);
+    float y2 = PG_GETARG_FLOAT8(4);
+    float x3 = PG_GETARG_FLOAT8(9);
+    float y3 = PG_GETARG_FLOAT8(10);
+    float x4 = PG_GETARG_FLOAT8(11);
+    float y4 = PG_GETARG_FLOAT8(12);
+
+    float cx1 = (x1 + x2) / 2;
+    float cy1 = (y1 + y2) / 2;
+    float cx2 = (x3 + x4) / 2;
+    float cy2 = (y3 + y4) / 2;
+
+    float distance = sqrt(pow(cx1 - cx2, 2.0) + pow(cy1 - cy2, 2.0));
+
+    PG_RETURN_BOOL(distance < theta);
+}
+
+PG_FUNCTION_INFO_V1(Faster);
+
+Datum Faster(PG_FUNCTION_ARGS) {
+    float theta = PG_GETARG_FLOAT8(0);
+    float v_x = PG_GETARG_FLOAT8(5);
+    float v_y = PG_GETARG_FLOAT8(6);
+    float v_x2 = PG_GETARG_FLOAT8(13);
+    float v_y2 = PG_GETARG_FLOAT8(14);
+
+    PG_RETURN_BOOL((v_x * v_x + v_y * v_y) / (v_x2 * v_x2 + v_y2 * v_y2) >= theta);
+}
+
 // compile:
+// location of virtualenv: /mmfs1/gscratch/balazinska/enhaoz/env/
 // cc -I /mmfs1/gscratch/balazinska/enhaoz/env/include/server/ -fpic -c functors.c
 // cc -shared -o functors.so functors.o

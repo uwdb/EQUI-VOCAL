@@ -22,8 +22,8 @@ import argparse
 
 m = multiprocessing.Manager()
 lock = m.Lock()
-memoize_sequence = [LRU(10000) for _ in range(10080)]
-memoize_scene_graph = [LRU(10000) for _ in range(10080)]
+memoize_sequence = [LRU(10000) for _ in range(72159)]
+memoize_scene_graph = [LRU(10000) for _ in range(72159)]
 
 def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, depth, max_duration, nvars, predicate_list, attr_predicate_list, max_workers, dataset_name, nattr_pred, port):
     """
@@ -37,7 +37,7 @@ def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, dep
                     queries.append(res)
                     print("Generated {} queries".format(len(queries)))
     # write queries to csv file
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/queries.csv".format(dataset_name), "w") as csvfile:
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}/queries.csv".format(dataset_name), "w") as csvfile:
         writer = csv.writer(csvfile)
         # write header
         writer.writerow(["query", "npos", "nneg", "ratio"])
@@ -117,7 +117,7 @@ def generate_one_query(npred, depth, max_duration, nvars, predicate_list, attr_p
     return prepare_data_given_target_query(query, ratio_lower_bound, ratio_upper_bound, dataset_name, inputs_table_name, port)
 
 
-def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_bound, dataset_name, inputs_table_name, port, sampling_rate=None):
+def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_bound, dataset_name, inputs_table_name, port=5432, sampling_rate=None):
     """
     Given the target query (in string format), generate inputs.json and labels.json files containing
     inputs.json.
@@ -133,11 +133,16 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
     elif inputs_table_name == "Obj_trajectories":
         is_trajectory = True
         input_vids = 10080
+    elif inputs_table_name == "Obj_shibuya":
+        is_trajectory = False
+        input_vids = 1801
+    elif inputs_table_name == "Obj_warsaw":
+        is_trajectory = True
+        input_vids = 72159
     else:
         raise ValueError("Unknown inputs_table_name: {}".format(inputs_table_name))
     _start = time.time()
     result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
-
     print("Time to execute query: {}".format(time.time() - _start))
 
     lock.acquire()
@@ -163,15 +168,15 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
         print("Query {} doesn't have enough negative examples".format(program_str))
         return None
 
-    if not os.path.exists("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name)):
-        os.makedirs("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}".format(dataset_name), exist_ok=True)
-    with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/{}_labels.json".format(dataset_name, program_str), 'w') as f:
+    if not os.path.exists("/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}".format(dataset_name)):
+        os.makedirs("/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}".format(dataset_name), exist_ok=True)
+    with open("/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}/{}_labels.json".format(dataset_name, program_str), 'w') as f:
         f.write(json.dumps(labels))
     return program_str, sum(labels), len(labels) - sum(labels), sum(labels) / (len(labels) - sum(labels))
 
 def prepare_noisy_data(fn_error_rate, fp_error_rate, dataset_name):
-    source_folder_name = os.path.join("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs", dataset_name)
-    target_folder_name = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}-fn_error_rate_{}-fp_error_rate_{}".format(dataset_name, fn_error_rate, fp_error_rate)
+    source_folder_name = os.path.join("/gscratch/balazinska/enhaoz/complex_event_video/inputs", dataset_name)
+    target_folder_name = "/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}-fn_error_rate_{}-fp_error_rate_{}".format(dataset_name, fn_error_rate, fp_error_rate)
     if not os.path.exists(target_folder_name):
         os.makedirs(target_folder_name, exist_ok=True)
 
@@ -256,7 +261,7 @@ def prepare_data_postgres(port):
         {"name": "Material", "parameters": ["metal", "rubber"], "nargs": 1}
     ]
     generate_queries(n_queries=40, ratio_lower_bound=0.05, ratio_upper_bound=0.1, npred=5, depth=3, max_duration=1, nvars=3, predicate_list=predicate_list, attr_predicate_list=attr_predicate_list, max_workers=4, dataset_name="synthetic_scene_graph_without_duration-npred_5-nattr_pred_2-40", nattr_pred=2, port=port)
-    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/synthetic_scene_graph_without_duration-npred_5-nattr_pred_2-40", n_train=500)
+    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/inputs/synthetic_scene_graph_without_duration-npred_5-nattr_pred_2-40", n_train=500)
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
