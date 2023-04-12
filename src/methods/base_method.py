@@ -65,14 +65,14 @@ class BaseMethod:
         """
         Pick the next segment to be labeled, using the Model Picker algorithm.
         """
-        true_labels = np.array(self.labels)
-        n_instances = len(true_labels)
+        n_instances = len(self.inputs)
         prediction_matrix = []
         _start = time.time()
 
         query_list = [query_graph.program for query_graph, _ in self.candidate_queries[:self.pool_size]]
-        print("query pool", [rewrite_program_postgres(query) for query in query_list])
+        print("query pool", [rewrite_program_postgres(query, self.rewrite_variables) for query in query_list])
         unlabeled_index = np.setdiff1d(np.arange(n_instances), self.labeled_index, assume_unique=True)
+        # unlabeled_index = np.setdiff1d(unlabeled_index, self.filtered_index, assume_unique=True)
 
         # If more than self.n_sampled_videos videos, sample self.n_sampled_videos videos
         if len(unlabeled_index) > self.n_sampled_videos:
@@ -92,6 +92,12 @@ class BaseMethod:
         prediction_matrix = np.array(prediction_matrix).transpose()
         print("constructing prediction matrix", time.time()-_start)
         print("prediction_matrix size", prediction_matrix.shape)
+
+        # If a video segment is predicted as negative by all queries, future queries will not be able to predict it as positive, so we can filter it out safely.
+        # for i in range(len(self.sampled_index)):
+        #     if np.sum(prediction_matrix[i, :]) == 0:
+        #         self.filtered_index.append(self.sampled_index[i])
+        # print("# filtered video segments", len(self.filtered_index))
 
         # Use F1-scores as weights
         posterior_t = [score for _, score in self.candidate_queries[:self.pool_size]]
