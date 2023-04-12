@@ -11,6 +11,7 @@ import random
 from functools import cmp_to_key
 import psycopg2 as psycopg
 import uuid
+import threading
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -18,7 +19,7 @@ def using(point=""):
 
 class VOCALPostgres(BaseMethod):
 
-    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg, test_inputs=None, test_labels=None):
+    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg, n_sampled_videos=100, test_inputs=None, test_labels=None):
         self.dataset_name = dataset_name
         self.inputs = inputs
         self.labels = labels
@@ -38,7 +39,7 @@ class VOCALPostgres(BaseMethod):
         self.strategy = strategy
         self.max_vars = max_vars
         self.lru_capacity = lru_capacity
-        self.n_sampled_videos = 100
+        self.n_sampled_videos = n_sampled_videos
         self.reg_lambda = reg_lambda
         self.active_learning = self.pick_next_segment_model_picker_postgres
         self.get_query_score = self.compute_query_score_postgres
@@ -72,9 +73,16 @@ class VOCALPostgres(BaseMethod):
         self.answers = []
         self.n_queries_explored = 0
         self.n_prediction_count = 0
+        self.dsn = "dbname=equi_app user=zhangenhao host=127.0.0.1 port={}".format(port)
         _start = time.time()
+        local = threading.local()
         if self.multithread > 1:
-            self.executor = ThreadPoolExecutor(max_workers=self.multithread)
+            self.executor = ThreadPoolExecutor(
+                max_workers=self.multithread,
+                initializer=self.init_pool,
+                initargs=(local,),
+            )
+            # self.executor = ThreadPoolExecutor()
             self.m = multiprocessing.Manager()
             self.lock = self.m.Lock()
         elif self.multithread == 1:
@@ -86,7 +94,8 @@ class VOCALPostgres(BaseMethod):
         self.output_log = []
 
         _start = time.time()
-        self.dsn = "dbname=equi_app user=zhangenhao host=127.0.0.1 port={}".format(port)
+        # self.dsn = "dbname=myinner_db user=enhaoz host=127.0.0.1 port=5433"
+
         print("dsn", self.dsn)
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:
@@ -120,19 +129,6 @@ class VOCALPostgres(BaseMethod):
                         """.format(self.inputs_table_name), [filtered_vids])
 
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_{t} ON {t} (vid);".format(t=self.inputs_table_name))
-                # Create predicate functions (if not exists)
-                for predicate in self.predicate_list:
-                    args = ", ".join(["text, text, text, double precision, double precision, double precision, double precision"] * predicate["nargs"])
-                    if predicate["parameters"]:
-                        if isinstance(predicate["parameters"][0], str):
-                            args = "text, " + args
-                        else:
-                            args = "double precision, " + args
-                    cur.execute("""
-                    CREATE OR REPLACE FUNCTION {name}({args}) RETURNS boolean AS
-                    '/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', '{name}'
-                    LANGUAGE C STRICT;
-                    """.format(name=predicate["name"], args=args))
                 conn.commit()
         print("Time to create inputs table: {}".format(time.time() - _start))
 
@@ -143,6 +139,9 @@ class VOCALPostgres(BaseMethod):
             return 1
         else:
             return random.randint(0, 1) * 2 - 1
+
+    def init_pool(self, local):
+        local.conn = psycopg.connect(self.dsn)
 
     def run(self, init_labeled_index):
         self._start_total_time = time.time()
