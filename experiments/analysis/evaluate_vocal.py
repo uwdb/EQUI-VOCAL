@@ -97,7 +97,7 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
             if task_name == "trajectory":
                 log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_1-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(budget))
             elif task_name == "warsaw":
-                log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_1-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_4-lru_None-lambda_0.001".format(budget))
+                log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_15-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_4-lru_None-lambda_0.01".format(budget))
             elif task_name == "budget":
                 log_dir = os.path.join(output_dir, dataset_name, method, "nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_1000-budget_{}-thread_4-lru_None-lambda_0.001".format(budget))
             elif task_name == "num_init":
