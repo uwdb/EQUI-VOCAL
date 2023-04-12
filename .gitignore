@@ -19,6 +19,8 @@ inputs/without_duration-sampling_rate_4/PATSQL/
 outputs/*
 *.ipynb_checkpoints/
 easy-install.pth
+*.o
+*.so
 
 # Un-ignore the following
 !inputs/synthetic_scene_graph_easy/
