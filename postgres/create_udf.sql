@@ -101,3 +101,57 @@ LANGUAGE C STRICT;
 CREATE OR REPLACE FUNCTION Rubber(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
 '/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'Rubber'
 LANGUAGE C STRICT;
+
+-- For Shibuya dataset
+CREATE OR REPLACE FUNCTION LeftPoly(double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'LeftPoly'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION RightPoly(double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'RightPoly'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION TopPoly(double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'TopPoly'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION BottomPoly(double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'BottomPoly'
+LANGUAGE C STRICT;
+
+-- For Warsaw dataset
+CREATE OR REPLACE FUNCTION Eastward4(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'Eastward4'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION Eastward3(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'Eastward3'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION Eastward2(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'Eastward2'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION Westward2(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'Westward2'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION Southward1Upper(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'Southward1Upper'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION Stopped(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'Stopped'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION HighAccel(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'HighAccel'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION DistanceSmall(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'DistanceSmall'
+LANGUAGE C STRICT;
+
+CREATE OR REPLACE FUNCTION Faster(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
+'/gscratch/balazinska/enhaoz/complex_event_video/postgres/functors', 'Faster'
+LANGUAGE C STRICT;

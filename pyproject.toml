@@ -4,3 +4,10 @@ requires = [
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "equi_vocal"
+version = "0.2"
+
+[tool.setuptools.packages]
+find = {}  # Scan the project directory with the default parameters

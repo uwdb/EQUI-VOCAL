@@ -4,6 +4,8 @@ import copy
 import numpy as np
 import functools
 import src.utils as utils
+from shapely.geometry import Point
+from shapely.geometry.polygon import Polygon
 
 # (predicate), conjunction, sequencing, Kleene star, finite k iteration
 # Omit nested Kleene star operators, as well as Kleene star around sequencing.
@@ -398,6 +400,395 @@ class LeftOf(DirectionPredicate):
     def execute(self, input, label, memoize, new_memoize):
         return super().execute("LeftOf", input, label, memoize, new_memoize)
 
+############### Warsaw Predicate ################
+
+class InLanePredicate(Predicate):
+    has_theta = False
+
+    def __init__(self, lane_name):
+        super().__init__(lane_name)
+
+    def execute(self, lane_name, input, label, memoize, new_memoize):
+        which_object = 0 if lane_name[0] == 'A' else 1
+        lane_name = lane_name[1:]
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if in_lane(input[which_object][i], lane_name):
+                result[i, i + 1] = np.inf
+
+        new_memoize[subquery_str] = result
+
+        return result, new_memoize
+
+class AEastward4(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("AEastward4")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("AEastward4", input, label, memoize, new_memoize)
+
+class AEastward3(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("AEastward3")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("AEastward3", input, label, memoize, new_memoize)
+
+class AEastward2(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("AEastward2")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("AEastward2", input, label, memoize, new_memoize)
+
+class AWestward2(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("AWestward2")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("AWestward2", input, label, memoize, new_memoize)
+
+class ASouthward1Upper(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("ASouthward1Upper")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("ASouthward1Upper", input, label, memoize, new_memoize)
+
+class BEastward4(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("BEastward4")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("BEastward4", input, label, memoize, new_memoize)
+
+class BEastward3(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("BEastward3")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("BEastward3", input, label, memoize, new_memoize)
+
+class BEastward2(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("BEastward2")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("BEastward2", input, label, memoize, new_memoize)
+
+class BWestward2(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("BWestward2")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("BWestward2", input, label, memoize, new_memoize)
+
+class BSouthward1Upper(InLanePredicate):
+    has_theta=False
+
+    def __init__(self):
+        super().__init__("BSouthward1Upper")
+
+    def execute(self, input, label, memoize, new_memoize):
+        return super().execute("BSouthward1Upper", input, label, memoize, new_memoize)
+
+class AStopped(Predicate):
+    has_theta=True
+
+    def __init__(self, theta=-2, step=0.5, with_hole=False):
+        self.theta = theta
+        self.step = step
+        self.with_hole = with_hole
+        super().__init__("AStopped")
+
+    def init_value_range(self):
+        return [-1, -3]
+
+    def execute_with_hole(self, input, label, memoize, new_memoize):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if input[0][i][4] is not None and input[0][i][5] is not None:
+                result[i, i + 1] = -1 * math.sqrt(input[0][i][4] ** 2 + input[0][i][5] ** 2)
+        new_memoize[subquery_str] = result
+        return result, new_memoize
+
+    def execute(self, input, label, memoize, new_memoize):
+        if self.with_hole:
+            return self.execute_with_hole(input, label, memoize, new_memoize)
+
+        assert len(input) == 2
+
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if input[0][i][4] is not None and input[0][i][5] is not None and -1 * math.sqrt(input[0][i][4] ** 2 + input[0][i][5] ** 2) >= self.theta:
+                result[i, i + 1] = np.inf
+
+        new_memoize[subquery_str] = result
+
+        return result, new_memoize
+
+class BStopped(Predicate):
+    has_theta=True
+
+    def __init__(self, theta=-2, step=0.5, with_hole=False):
+        self.theta = theta
+        self.step = step
+        self.with_hole = with_hole
+        super().__init__("BStopped")
+
+    def init_value_range(self):
+        return [-1, -3]
+
+    def execute_with_hole(self, input, label, memoize, new_memoize):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[1]) + 1, len(input[1]) + 1), -np.inf)
+        for i in range(len(input[1])):
+            if input[1][i][4] is not None and input[1][i][5] is not None:
+                result[i, i + 1] = -1 * math.sqrt(input[1][i][4] ** 2 + input[1][i][5] ** 2)
+        new_memoize[subquery_str] = result
+        return result, new_memoize
+
+    def execute(self, input, label, memoize, new_memoize):
+        if self.with_hole:
+            return self.execute_with_hole(input, label, memoize, new_memoize)
+
+        assert len(input) == 2
+
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[1]) + 1, len(input[1]) + 1), -np.inf)
+        for i in range(len(input[1])):
+            if input[1][i][4] is not None and input[1][i][5] is not None and -1 * math.sqrt(input[1][i][4] ** 2 + input[1][i][5] ** 2) >= self.theta:
+                result[i, i + 1] = np.inf
+
+        new_memoize[subquery_str] = result
+
+        return result, new_memoize
+
+class AHighAccel(Predicate):
+    has_theta=True
+
+    def __init__(self, theta=2, step=0.5, with_hole=False):
+        self.theta = theta
+        self.step = step
+        self.with_hole = with_hole
+        super().__init__("AHighAccel")
+
+    def init_value_range(self):
+        return [1, 3]
+
+    def execute_with_hole(self, input, label, memoize, new_memoize):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if input[0][i][6] is not None and input[0][i][7] is not None:
+                result[i, i + 1] = math.sqrt(input[0][i][6] ** 2 + input[0][i][7] ** 2)
+        new_memoize[subquery_str] = result
+        return result, new_memoize
+
+    def execute(self, input, label, memoize, new_memoize):
+        if self.with_hole:
+            return self.execute_with_hole(input, label, memoize, new_memoize)
+
+        assert len(input) == 2
+
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if input[0][i][6] is not None and input[0][i][7] is not None and math.sqrt(input[0][i][6] ** 2 + input[0][i][7] ** 2) >= self.theta:
+                result[i, i + 1] = np.inf
+
+        new_memoize[subquery_str] = result
+
+        return result, new_memoize
+
+class BHighAccel(Predicate):
+    has_theta=True
+
+    def __init__(self, theta=2, step=0.5, with_hole=False):
+        self.theta = theta
+        self.step = step
+        self.with_hole = with_hole
+        super().__init__("BHighAccel")
+
+    def init_value_range(self):
+        return [1, 3]
+
+    def execute_with_hole(self, input, label, memoize, new_memoize):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[1]) + 1, len(input[1]) + 1), -np.inf)
+        for i in range(len(input[1])):
+            if input[1][i][6] is not None and input[1][i][7] is not None:
+                result[i, i + 1] = math.sqrt(input[1][i][6] ** 2 + input[1][i][7] ** 2)
+        new_memoize[subquery_str] = result
+        return result, new_memoize
+
+    def execute(self, input, label, memoize, new_memoize):
+        if self.with_hole:
+            return self.execute_with_hole(input, label, memoize, new_memoize)
+
+        assert len(input) == 2
+
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[1]) + 1, len(input[1]) + 1), -np.inf)
+        for i in range(len(input[1])):
+            if input[1][i][6] is not None and input[1][i][7] is not None and math.sqrt(input[1][i][6] ** 2 + input[1][i][7] ** 2) >= self.theta:
+                result[i, i + 1] = np.inf
+
+        new_memoize[subquery_str] = result
+
+        return result, new_memoize
+
+class DistanceSmall(Predicate):
+    has_theta=True
+
+    def __init__(self, theta=-100, step=50, with_hole=False):
+        self.theta = theta
+        self.step = step
+        self.with_hole = with_hole
+        super().__init__("DistanceSmall")
+
+    def init_value_range(self):
+        return [-50, -200]
+
+    def execute_with_hole(self, input, label, memoize, new_memoize):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if input[0][i][0] is not None and input[1][i][0] is not None:
+                result[i, i + 1] = -1 * obj_distance_warsaw(input[0][i], input[1][i])
+        new_memoize[subquery_str] = result
+        return result, new_memoize
+
+    def execute(self, input, label, memoize, new_memoize):
+        if self.with_hole:
+            return self.execute_with_hole(input, label, memoize, new_memoize)
+
+        assert len(input) == 2
+
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if input[0][i][0] is not None and input[1][i][0] is not None and -1 * obj_distance_warsaw(input[0][i], input[1][i]) >= self.theta:
+                result[i, i + 1] = np.inf
+
+        new_memoize[subquery_str] = result
+
+        return result, new_memoize
+
+class Faster(Predicate):
+    has_theta=True
+
+    def __init__(self, theta=1.5, step=0.5, with_hole=False):
+        self.theta = theta
+        self.step = step
+        self.with_hole = with_hole
+        super().__init__("Faster")
+
+    def init_value_range(self):
+        return [1, 3]
+
+    def execute_with_hole(self, input, label, memoize, new_memoize):
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if input[0][i][4] is not None and input[1][i][4] is not None:
+                result[i, i + 1] = speed_ratio(input[0][i], input[1][i])
+        new_memoize[subquery_str] = result
+        return result, new_memoize
+
+    def execute(self, input, label, memoize, new_memoize):
+        if self.with_hole:
+            return self.execute_with_hole(input, label, memoize, new_memoize)
+
+        assert len(input) == 2
+        subquery_str = utils.print_program(self)
+        if subquery_str in memoize:
+            return memoize[subquery_str], new_memoize
+        if subquery_str in new_memoize:
+            return new_memoize[subquery_str], new_memoize
+        result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
+        for i in range(len(input[0])):
+            if input[0][i][4] is not None and input[1][i][4] is not None and speed_ratio(input[0][i], input[1][i]) >= self.theta:
+                result[i, i + 1] = np.inf
+        new_memoize[subquery_str] = result
+
+        return result, new_memoize
 
 class TrueStar(Predicate):
     has_theta=False
@@ -474,6 +865,20 @@ def obj_distance(bbox1, bbox2):
     cy2 = (y3 + y4) / 2
     return math.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2) / ((x2 - x1 + x4 - x3) / 2)
 
+def obj_distance_warsaw(bbox1, bbox2):
+    x1, y1, x2, y2, _, _, _, _ = bbox1
+    x3, y3, x4, y4, _, _, _, _ = bbox2
+    cx1 = (x1 + x2) / 2
+    cy1 = (y1 + y2) / 2
+    cx2 = (x3 + x4) / 2
+    cy2 = (y3 + y4) / 2
+    return math.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2)
+
+def speed_ratio(bbox1, bbox2):
+    _, _, _, _, v_x, v_y, _, _ = bbox1
+    _, _, _, _, v_x2, v_y2, _, _ = bbox2
+    return (v_x * v_x + v_y * v_y) / (v_x2 * v_x2 + v_y2 * v_y2)
+
 def direction_relationship(bbox1, bbox2, direction):
     x1, y1, x2, y2 = bbox1
     x3, y3, x4, y4 = bbox2
@@ -504,6 +909,33 @@ def quadrant_relationship(bbox1, quadrant):
         return cy1 >= 0 and cy1 < 160
     elif quadrant == "BottomQuadrant":
         return cy1 >= 160 and cy1 <= 320
+    else:
+        raise ValueError("Invalid direction")
+
+def in_lane(bbox, lane_name):
+    if bbox is None:
+        return False
+    x1, y1, x2, y2, _, _, _, _ = bbox
+    eastward_4 = np.array([[0, 330], [330, 362], [789, 369], [960, 355], [960, 372], [803, 391], [351, 389], [0, 351]])
+    eastward_3 = np.array([[0, 351], [351, 389], [803, 391], [960, 372], [960, 394], [838, 413], [424, 422], [153, 395], [0, 370]])
+    eastward_2 = np.array([[0, 370], [153, 395], [424, 422], [838, 413], [960, 394], [960, 420], [763, 451], [414, 460], [97, 420], [0, 397]])
+    westward_2 = np.array([[0, 262], [709, 213], [708, 242], [0, 288]])
+    southward_1_upper = np.array([[384, 113], [414, 115], [565, 223], [543, 224]])
+    eastward_4_polygon = Polygon(eastward_4)
+    eastward_3_polygon = Polygon(eastward_3)
+    eastward_2_polygon = Polygon(eastward_2)
+    westward_2_polygon = Polygon(westward_2)
+    southward_1_upper_polygon = Polygon(southward_1_upper)
+    if lane_name == "eastward_4":
+        return eastward_4_polygon.contains(Point((x1 + x2) / 2, y2 - 10))
+    elif lane_name == "eastward_3":
+        return eastward_3_polygon.contains(Point((x1 + x2) / 2, y2 - 10))
+    elif lane_name == "eastward_2":
+        return eastward_2_polygon.contains(Point((x1 + x2) / 2, y2 - 10))
+    elif lane_name == "westward_2":
+        return westward_2_polygon.contains(Point((x1 + x2) / 2, y2 - 4))
+    elif lane_name == "southward_1_upper":
+        return southward_1_upper_polygon.contains(Point((x1 + x2) / 2, y2))
     else:
         raise ValueError("Invalid direction")
 

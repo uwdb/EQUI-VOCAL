@@ -6,7 +6,8 @@ from src.utils import print_program, rewrite_program_postgres, str_to_program_po
 
 class QueryGraph(object):
 
-    def __init__(self, max_npred, max_depth, max_nontrivial, max_trivial, max_duration, max_vars, predicate_list, is_trajectory, topdown_or_bottomup="bottomup"):
+    def __init__(self, dataset_name, max_npred, max_depth, max_nontrivial, max_trivial, max_duration, max_vars, predicate_list, is_trajectory, topdown_or_bottomup="bottomup"):
+        self.dataset_name = dataset_name
         self.max_npred = max_npred
         self.max_depth = max_depth
         self.max_duration = max_duration
@@ -344,7 +345,11 @@ class QueryGraph(object):
                     # Special case: for trajectory experiment only
                     if self.is_trajectory:
                         if nvars == 1:
-                            variables_list = [["o0"]]
+                            if self.dataset_name == "warsaw":
+                                variables_list = [["o0"], ["o1"]]
+                            else:
+                                # Special case: for CLEVRER trajectory experiment, single-varible predicates can only be applied to o0
+                                variables_list = [["o0"]]
                         elif nvars == 2:
                             variables_list = [["o0", "o1"]]
                     # Gneral case:
@@ -361,7 +366,7 @@ class QueryGraph(object):
                         new_query = copy.deepcopy(self)
                         new_query.program[scene_graph_idx]["scene_graph"].append({"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)})
                         new_query.npred += 1
-                        print("Action A: ", rewrite_program_postgres(new_query.program))
+                        print("Action A: ", rewrite_program_postgres(new_query.program, not self.is_trajectory))
                         all_children.append(new_query)
 
         # Action b: Sequence construction: add a new scene graph (which consists of one predicate) to the end of the sequence.
@@ -382,7 +387,11 @@ class QueryGraph(object):
                 # Special case: for trajectory experiment only
                 if self.is_trajectory:
                     if nvars == 1:
-                        variables_list = [["o0"]]
+                        if self.dataset_name == "warsaw":
+                            variables_list = [["o0"], ["o1"]]
+                        else:
+                            # Special case: for CLEVRER trajectory experiment, single-varible predicates can only be applied to o0
+                            variables_list = [["o0"]]
                     elif nvars == 2:
                         variables_list = [["o0", "o1"]]
                 # Gneral case:
@@ -396,7 +405,7 @@ class QueryGraph(object):
                         new_query.program.insert(insert_idx, new_scene_graph)
                         new_query.npred += 1
                         new_query.depth += 1
-                        print("Action B: ", rewrite_program_postgres(new_query.program))
+                        print("Action B: ", rewrite_program_postgres(new_query.program, not self.is_trajectory))
                         all_children.append(new_query)
 
         # Action c: Duration refinement: increase the duration of the a scene graph
@@ -408,7 +417,7 @@ class QueryGraph(object):
                     new_query.program[scene_graph_idx]["duration_constraint"] = self.duration_unit
                 else:
                     new_query.program[scene_graph_idx]["duration_constraint"] += self.duration_unit
-                print("Action C: ", rewrite_program_postgres(new_query.program))
+                print("Action C: ", rewrite_program_postgres(new_query.program, not self.is_trajectory))
                 all_children.append(new_query)
 
         # Remove duplicates
@@ -416,7 +425,7 @@ class QueryGraph(object):
         print("[all_children] before removing duplicates:", len(all_children))
         signatures = set()
         for query in all_children:
-            signature = rewrite_program_postgres(query.program)
+            signature = rewrite_program_postgres(query.program, not self.is_trajectory)
             if signature not in signatures:
                 query.program = str_to_program_postgres(signature)
                 all_children_removing_duplicates.append(query)

@@ -50,6 +50,8 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
     else:
         if task_name in ["trajectory"]:
             budgets = list(range(12, 21)) + list(range(25, 51, 5))
+        elif task_name == "warsaw":
+            budgets = [15, 20, 25, 30, 40, 50]
         elif task_name in ["lambda_trajectory"]:
             budgets = [20]
         elif task_name in ["lambda_scene_graph", "cpu"]:
@@ -65,14 +67,14 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
     if "run_id" in kwargs:
         run_id_list = [kwargs["run_id"]]
     else:
-        if task_name in ["trajectory"]:
+        if task_name in ["trajectory", "warsaw"]:
             run_id_list = list(range(20))
         elif task_name in ["num_init", "bw", "k", "lambda_scene_graph", "lambda_trajectory", "cpu", "budget"]:
             run_id_list = list(range(5))
         else:
             raise ValueError("Unknown task")
 
-    list_size = 10080
+    list_size = 72159
     memoize_scene_graph = [{} for _ in range(list_size)]
     memoize_sequence = [{} for _ in range(list_size)]
     # Read the test data
@@ -94,6 +96,8 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
         for budget in budgets:
             if task_name == "trajectory":
                 log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_1-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(budget))
+            elif task_name == "warsaw":
+                log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_15-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_4-lru_None-lambda_0.01".format(budget))
             elif task_name == "budget":
                 log_dir = os.path.join(output_dir, dataset_name, method, "nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_1000-budget_{}-thread_4-lru_None-lambda_0.001".format(budget))
             elif task_name == "num_init":
@@ -156,6 +160,9 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
                 elif "scene_graph" in dataset_name:
                     inputs_table_name = "Obj_clevrer"
                     is_trajectory = False
+                elif dataset_name == "warsaw":
+                    inputs_table_name = "Obj_warsaw"
+                    is_trajectory = True
                 else:
                     inputs_table_name = "Obj_trajectories"
                     is_trajectory = True
@@ -217,7 +224,12 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
             os.makedirs(os.path.join(exp_dir, "stats", method+"-lambda_{}-budget_{}".format(reg_lambda, budgets[0])), exist_ok=True)
         with open(os.path.join(exp_dir, "stats", method+"-lambda_{}-budget_{}".format(reg_lambda, budgets[0]), "{}-{}.json".format(query_str, run_id[0])), "w") as f:
             json.dump(out_dict, f)
-    elif task_name == "budget":
+    elif task_name in ["budget", "trajectory"]:
+        if not os.path.exists(os.path.join(exp_dir, "stats", method)):
+            os.makedirs(os.path.join(exp_dir, "stats", method), exist_ok=True)
+        with open(os.path.join(exp_dir, "stats", method, "{}.json".format(query_str)), "w") as f:
+            json.dump(out_dict, f)
+    elif task_name == "warsaw":
         if not os.path.exists(os.path.join(exp_dir, "stats", method)):
             os.makedirs(os.path.join(exp_dir, "stats", method), exist_ok=True)
         with open(os.path.join(exp_dir, "stats", method, "{}.json".format(query_str)), "w") as f:
@@ -265,19 +277,140 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
     # with open(os.path.join(exp_dir, "stats", method, "{}.json".format(query_str)), "w") as f:
     #     json.dump(out_dict, f)
 
+
+def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, method, query_str, sampling_rate, port, multithread):
+    def compute_f1_score(test_query):
+        test_program = str_to_program_postgres(test_query)
+        outputs, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, test_program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
+
+        if lock:
+            lock.acquire()
+        for i, memo_dict in enumerate(new_memoize_scene_graph):
+            for k, v in memo_dict.items():
+                memoize_scene_graph[i][k] = v
+        for i, memo_dict in enumerate(new_memoize_sequence):
+            for k, v in memo_dict.items():
+                memoize_sequence[i][k] = v
+        if lock:
+            lock.release()
+        preds = []
+        for input in input_vids:
+            if input in outputs:
+                preds.append(1)
+            else:
+                preds.append(0)
+        score = f1_score(labels, preds)
+        print(score)
+        return score
+
+    if multithread > 1:
+        executor = ThreadPoolExecutor(max_workers=multithread)
+        m = multiprocessing.Manager()
+        lock = m.Lock()
+    elif multithread == 1:
+        lock = None
+
+    list_size = 72159
+    memoize_scene_graph = [{} for _ in range(list_size)]
+    memoize_sequence = [{} for _ in range(list_size)]
+    # Read the test data
+    test_dir = os.path.join(input_dir, dataset_name, "test")
+    inputs_filename = query_str + "_inputs.json"
+    labels_filename = query_str + "_labels.json"
+    with open(os.path.join(test_dir, inputs_filename), 'r') as f:
+        input_vids = json.load(f)
+    with open(os.path.join(test_dir, labels_filename), 'r') as f:
+        labels = json.load(f)
+
+    log_dir = os.path.join(output_dir, dataset_name, method, config_name)
+    score_median_log = []
+    score_random_log = []
+    runtime_log = []
+    for run in range(20):
+        try:
+            with open(os.path.join(log_dir, "{}-{}.log".format(query_str, run)), 'r') as f:
+                lines = f.readlines()
+                lines = [line.rstrip() for line in lines]
+            step = 0
+            min_cost = 9999
+            max_score = 0
+            for line in lines:
+                if line == "[Step {}]".format(step):
+                    returned_queries = []
+                    continue
+                elif line.startswith("[Runtime so far]"):
+                    runtime = float(line.replace("[Runtime so far] ", ""))
+                    step += 1
+                    min_cost = 9999
+                    max_score = 0
+                elif line.startswith("[Final answers]"):
+                    break
+                else:
+                    print(line)
+                    test_query_str = line.split("'")[1]
+                    score = float(line.split("'")[2][1:-1])
+                    if score > max_score:
+                        max_score = score
+                        returned_queries = [test_query_str]
+                    elif score == max_score:
+                        returned_queries.append(test_query_str)
+            print("returned_queries", len(returned_queries))
+
+            dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
+            if dataset_name.startswith("collision"):
+                inputs_table_name = "Obj_collision"
+                is_trajectory = True
+            elif "scene_graph" in dataset_name:
+                inputs_table_name = "Obj_clevrer"
+                is_trajectory = False
+            elif dataset_name == "warsaw":
+                inputs_table_name = "Obj_warsaw"
+                is_trajectory = True
+            else:
+                inputs_table_name = "Obj_trajectories"
+                is_trajectory = True
+
+            f1_scores = []
+            if multithread > 1:
+                f1_scores = []
+                for result in executor.map(compute_f1_score, returned_queries):
+                    f1_scores.append(result)
+            else:
+                for test_query in returned_queries:
+                    score = compute_f1_score(test_query)
+                    f1_scores.append(score)
+            median_f1 = np.median(f1_scores)
+            score_random = np.random.choice(f1_scores)
+            print("Median F1: ", median_f1)
+            print("Random F1: ", score_random)
+            score_median_log.append(median_f1)
+            score_random_log.append(score_random)
+            runtime_log.append(runtime)
+        except Exception as e:
+            print(e)
+            score_median_log.append(-1)
+            score_random_log.append(-1)
+            runtime_log.append(-1)
+    out_dict = {"score_median": score_median_log, "score_random": score_random_log, "runtime": runtime_log}
+    if not os.path.exists(os.path.join(output_dir, dataset_name, "stats", method, config_name)):
+        os.makedirs(os.path.join(output_dir, dataset_name, "stats", method, config_name), exist_ok=True)
+    with open(os.path.join(output_dir, dataset_name, "stats", method, config_name, "{}.json".format(query_str)), "w") as f:
+        json.dump(out_dict, f)
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset_name", type=str, help='Dataset to evaluate.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten'])
+    ap.add_argument("--dataset_name", type=str, help='Dataset to evaluate.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'user_study_queries_scene_graph', 'warsaw', 'synthetic_scene_graph_hard_v2'])
+    ap.add_argument("--config_name", type=str, default="", help='Config directory name.')
     ap.add_argument("--query_str", type=str, help='Target query to evalaute, written in the compact notation.')
-    ap.add_argument("--method", type=str, help='Query synthesis method.', choices=['vocal_postgres_no_active_learning-topk', 'vocal_postgres-topk'])
+    ap.add_argument("--method", type=str, help='Query synthesis method.')
     ap.add_argument("--port", type=int, default=5432, help='Port on which Postgres is to listen.')
     ap.add_argument("--multithread", type=int, default=1, help='Number of CPUs to use.')
     ap.add_argument("--budget", type=int, help='Labeling budget.')
-    ap.add_argument("--task_name", type=str, help='Task name, e.g., the name of the tested hyperparameter.', choices=['trajectory', 'budget', 'bw', 'k', 'num_init', 'cpu', 'reg_lambda'])
+    ap.add_argument("--task_name", type=str, default='no_params', help='Task name, e.g., the name of the tested hyperparameter.', choices=['trajectory', 'budget', 'bw', 'k', 'num_init', 'cpu', 'reg_lambda', 'no_params', 'warsaw'])
     ap.add_argument("--value", type=int, help='Value of the tested hyperparameter. If specified, evaluate on the single value; otherwise, evaluate on all values tested in our experiment.')
     ap.add_argument("--run_id", type=int, help='Run ID.')
-    ap.add_argument('--input_dir', type=str, default="../../inputs", help='Input directory.')
-    ap.add_argument('--output_dir', type=str, default="../../outputs", help='Output directory.')
+    ap.add_argument('--input_dir', type=str, default="/gscratch/balazinska/enhaoz/complex_event_video/inputs", help='Input directory.')
+    ap.add_argument('--output_dir', type=str, default="/gscratch/balazinska/enhaoz/complex_event_video/outputs", help='Output directory.')
 
     args = ap.parse_args()
     dataset_name = args.dataset_name
@@ -291,6 +424,7 @@ if __name__ == "__main__":
     task_name = args.task_name
     input_dir = args.input_dir
     output_dir = args.output_dir
+    config_name = args.config_name
 
     if "sampling_rate" in dataset_name:
         splits = dataset_name.split("-")
@@ -304,14 +438,18 @@ if __name__ == "__main__":
 
     #### trajectory ####
     if task_name == "trajectory":
-        evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "budget", None)
+        evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "trajectory", None)
+
+    #### warsaw ####
+    if task_name == "warsaw":
+        evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "warsaw", None)
 
     #### vary budget ####
-    if task_name == "budget":
+    elif task_name == "budget":
         evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "budget", None)
 
     #### vary bw ####
-    if task_name == "bw":
+    elif task_name == "bw":
         if value:
             bw_values = [value]
         else:
@@ -320,7 +458,7 @@ if __name__ == "__main__":
             evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "bw", bw)
 
     #### vary k ####
-    if task_name == "k":
+    elif task_name == "k":
         if value:
             k_values = [value]
         else:
@@ -329,7 +467,7 @@ if __name__ == "__main__":
             evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "k", k_value)
 
     #### vary num_init ####
-    if task_name == "num_init":
+    elif task_name == "num_init":
         if value:
             init_examples = [value]
         else:
@@ -338,7 +476,7 @@ if __name__ == "__main__":
             evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "num_init", init)
 
     #### vary cpu ####
-    if task_name == "cpu":
+    elif task_name == "cpu":
         if value:
             cpu_values = [value]
         else:
@@ -347,7 +485,7 @@ if __name__ == "__main__":
             evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "cpu", cpu_value)
 
     #### vary reg_lambda_scene_graph ####
-    if task_name == "reg_lambda" and "scene_graph" in dataset_name:
+    elif task_name == "reg_lambda" and "scene_graph" in dataset_name:
         if value:
             reg_lambdas = [value]
         else:
@@ -356,10 +494,14 @@ if __name__ == "__main__":
             evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "lambda_scene_graph", reg_lambda)
 
     ### vary reg_lambda_trajectory ####
-    if task_name == "reg_lambda" and not "scene_graph" in dataset_name:
+    elif task_name == "reg_lambda" and not "scene_graph" in dataset_name:
         if value:
             reg_lambdas = [value]
         else:
             reg_lambdas = [0.0, 0.001, 0.01]
         for reg_lambda in reg_lambdas:
             evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, "lambda_trajectory", reg_lambda, budget=budget, run_id=run_id)
+
+    ### None of the above. Evaluate every trial separately ####
+    else:
+        evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, method, query_str, sampling_rate, port, multithread)
