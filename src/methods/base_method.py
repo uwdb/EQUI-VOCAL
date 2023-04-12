@@ -17,11 +17,11 @@ def using(point=""):
 
 # np.random.seed(0)
 class BaseMethod:
-    def compute_query_score_postgres(self, current_query):
+    def compute_query_score_postgres(self, local, current_query):
         # NOTE: sufficinet to lock only when writing to the memoize_all_inputs? Updating dict/list in python is atomic operation, so no conflicts for write, but reading might get old values (which is fine for us).
         input_vids = self.inputs[self.labeled_index].tolist()
         y_pred = []
-        result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(self.dsn, current_query, self.memoize_scene_graph_all_inputs, self.memoize_sequence_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
+        result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(local.conn, current_query, self.memoize_scene_graph_all_inputs, self.memoize_sequence_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
         if self.lock:
             self.lock.acquire()
         for i, memo_dict in enumerate(new_memoize_scene_graph):
