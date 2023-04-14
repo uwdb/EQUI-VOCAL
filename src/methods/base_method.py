@@ -17,19 +17,22 @@ def using(point=""):
 
 # np.random.seed(0)
 class BaseMethod:
-    def compute_query_score_postgres(self, local, current_query):
+    def get_multiple_query_scores(self, candidate_queries, conn):
+        scores = []
+        for query, _ in candidate_queries:
+            scores.append(self.get_query_score(query.program, conn))
+        return scores
+
+    def compute_query_score_postgres(self, current_query, conn):
         # NOTE: sufficinet to lock only when writing to the memoize_all_inputs? Updating dict/list in python is atomic operation, so no conflicts for write, but reading might get old values (which is fine for us).
         input_vids = self.inputs[self.labeled_index].tolist()
         y_pred = []
-        result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(local.conn, current_query, self.memoize_scene_graph_all_inputs, self.memoize_sequence_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
+        result, new_memo = postgres_execute_cache_sequence(conn, current_query, self.memo, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
         if self.lock:
             self.lock.acquire()
-        for i, memo_dict in enumerate(new_memoize_scene_graph):
+        for i, memo_dict in enumerate(new_memo):
             for k, v in memo_dict.items():
-                self.memoize_scene_graph_all_inputs[i][k] = v
-        for i, memo_dict in enumerate(new_memoize_sequence):
-            for k, v in memo_dict.items():
-                self.memoize_sequence_all_inputs[i][k] = v
+                self.memo[i][k] = v
         if self.lock:
             self.lock.release()
         for i in input_vids:
@@ -81,14 +84,10 @@ class BaseMethod:
             self.sampled_index = unlabeled_index
 
         self.n_prediction_count += len(query_list) * len(self.sampled_index)
-        if self.multithread > 1:
+        thread_queries = self.chunk_list(query_list, self.num_threads)
+        for result in self.executor.map(self.execute_over_all_inputs_postgres, thread_queries, self.connections):
+            prediction_matrix.extend(result)
 
-            for pred_per_query in self.executor.map(self.execute_over_all_inputs_postgres, query_list):
-                prediction_matrix.append(pred_per_query)
-        else:
-            for query in query_list:
-                pred_per_query = self.execute_over_all_inputs_postgres(query)
-                prediction_matrix.append(pred_per_query)
         prediction_matrix = np.array(prediction_matrix).transpose()
         print("constructing prediction matrix", time.time()-_start)
         print("prediction_matrix size", prediction_matrix.shape)
@@ -129,26 +128,26 @@ class BaseMethod:
 
         return [random_index]
 
-    def execute_over_all_inputs_postgres(self, query, is_test=False):
+    def execute_over_all_inputs_postgres(self, queries, conn, is_test=False):
         if is_test:
             input_vids = self.test_inputs.tolist()
         else:
             input_vids = self.inputs[self.sampled_index].tolist()
-        pred_per_query = []
-        result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(self.dsn, query, self.memoize_scene_graph_all_inputs, self.memoize_sequence_all_inputs, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
-        if self.lock:
-            self.lock.acquire()
-        for i, memo_dict in enumerate(new_memoize_scene_graph):
-            for k, v in memo_dict.items():
-                self.memoize_scene_graph_all_inputs[i][k] = v
-        for i, memo_dict in enumerate(new_memoize_sequence):
-            for k, v in memo_dict.items():
-                self.memoize_sequence_all_inputs[i][k] = v
-        if self.lock:
-            self.lock.release()
-        for i in input_vids:
-            if i in result:
-                pred_per_query.append(1)
-            else:
-                pred_per_query.append(0)
-        return pred_per_query
+        pred_per_query_list = []
+        for query in queries:
+            pred_per_query = []
+            result, new_memo = postgres_execute_cache_sequence(conn, query, self.memo, self.inputs_table_name, input_vids, is_trajectory=self.is_trajectory, sampling_rate=self.sampling_rate)
+            if self.lock:
+                self.lock.acquire()
+            for i, memo_dict in enumerate(new_memo):
+                for k, v in memo_dict.items():
+                    self.memo[i][k] = v
+            if self.lock:
+                self.lock.release()
+            for i in input_vids:
+                if i in result:
+                    pred_per_query.append(1)
+                else:
+                    pred_per_query.append(0)
+            pred_per_query_list.append(pred_per_query)
+        return pred_per_query_list
