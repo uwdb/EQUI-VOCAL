@@ -86,6 +86,22 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     output_log = algorithm.run(init_labeled_index)
     return output_log
 
+def test_algorithm_demo_precompute(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
+    algorithm = test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
+
+    with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
+        inputs = json.load(f)
+    with open(os.path.join(input_dir, "{}/train/{}_labels.json".format(dataset_name, query_str)), 'r') as f:
+        labels = json.load(f)
+    inputs = np.asarray(inputs) # input video ids
+
+    init_labeled_index = algorithm.labeled_index.copy()
+    init_vids = inputs[init_labeled_index]
+    log = algorithm.demo_main()
+    print("init vids", init_vids)
+    print("log", log)
+    return log
+
 def test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
 
     with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
@@ -123,7 +139,7 @@ def test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npr
         algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg, test_inputs=test_inputs, test_labels=test_labels)
     elif method == "vocal_postgres_no_active_learning":
         algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    algorithm.interactive_run_init(init_labeled_index)
+    algorithm.run_init(init_labeled_index)
     return algorithm
 
 def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict, input_dir):
