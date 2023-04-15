@@ -953,11 +953,9 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
     else:
         is_traffic = False
 
-    store_cache_time = 0
     temp_views = []
 
     with conn.cursor() as cur:
-        _start_prepare_cache = time.time()
         new_memo = [{} for _ in range(len(memo))]
 
         output_vids = []
@@ -983,9 +981,7 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
                 elif i == len(signatures) - 1: # The full query predicates it as positive
                     cached_output_vids.append(vid)
 
-        prepare_cache_time = time.time() - _start_prepare_cache
         # select input videos
-        _start_create_temp_table = time.time()
         if isinstance(input_vids, int):
             if sampling_rate:
                 cur.execute("CREATE TEMPORARY TABLE Obj_filtered ON COMMIT DROP AS SELECT oid, vid, fid / {} as fid, {} FROM {} WHERE vid < {} AND fid % {} = 0;".format(sampling_rate, "x1, y1, x2, y2, vx, vy, ax, ay" if is_traffic else "x1, y1, x2, y2, shape, color, material", inputs_table_name, input_vids, sampling_rate))
@@ -1002,7 +998,6 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
         encountered_variables_prev_graphs = []
         encountered_variables_current_graph = []
         for graph_idx, dict in enumerate(current_query):
-            _start = time.time()
             # Generate scene graph:
             scene_graph = dict["scene_graph"]
             duration_constraint = dict["duration_constraint"]
@@ -1012,7 +1007,6 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
                         encountered_variables_current_graph.append(v)
 
             # Execute for unseen videos
-            _start_execute = time.time()
             encountered_variables_current_graph = sorted(encountered_variables_current_graph, key=lambda x: int(x[1:]))
             tables = ", ".join(["Obj_filtered as {}".format(v) for v in encountered_variables_current_graph])
             where_clauses = []
@@ -1052,7 +1046,6 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
             # print("execute for unseen videos: ", time.time() - _start_execute)
             # print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
 
-            _start_filtered = time.time()
             if graph_idx > 0:
                 obj_union = copy.deepcopy(encountered_variables_prev_graphs)
                 obj_union_fields = []
@@ -1069,11 +1062,6 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
                         obj_union_fields.append("t1.{}_oid".format(v))
                 obj_union_fields = ", ".join(obj_union_fields)
                 obj_intersection_fields = " and ".join(obj_intersection_fields)
-                # where_clauses = "t0.vid = ANY(%s)"
-                # if current_seq == "g0_seq_view":
-                #     where_clauses += " and t0.vid = t1.vid and t0.fid2 < t1.fid1"
-                # else:
-                #     where_clauses += " and t0.vid = t1.vid and t0.fid < t1.fid1"
                 sql_string = """
                 CREATE TEMPORARY VIEW g{graph_idx}_filtered AS (
                     SELECT t0.vid, t1.fid, {obj_union_fields}
@@ -1086,13 +1074,10 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
                 temp_views.append("g{}_filtered".format(graph_idx))
             else:
                 obj_union = encountered_variables_current_graph
-            # print("filtered: ", time.time() - _start_filtered)
 
             # Generate scene graph sequence:
-            _start_windowed = time.time()
             table_name = "g{}_filtered".format(graph_idx) if graph_idx > 0 else "g{}".format(graph_idx)
             obj_union_fields = ", ".join(["{}_oid".format(v) for v in obj_union])
-            _start = time.time()
             sql_string = """
                 CREATE TEMPORARY VIEW g{graph_idx}_windowed AS (
                 SELECT vid, fid, {obj_union_fields},
@@ -1105,7 +1090,6 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
             temp_views.append("g{}_windowed".format(graph_idx))
             # print("windowed: ", time.time() - _start_windowed)
 
-            _start_contiguous = time.time()
             sql_string = """
                 CREATE TEMPORARY VIEW g{graph_idx}_contiguous AS (
                 SELECT vid, {obj_union_fields}, min(fid_offset) AS fid
@@ -1120,23 +1104,14 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
             cur.execute("SELECT DISTINCT vid FROM g{}_contiguous".format(graph_idx))
             res = cur.fetchall()
             output_vids = [row[0] for row in res]
-
-            _start_store = time.time()
             # Store new cached results
             for input_vid in filtered_vids:
                 if input_vid in output_vids:
                     new_memo[input_vid][signatures[graph_idx]] = 1
                 else:
                     new_memo[input_vid][signatures[graph_idx]] = 0
-            store_cache_time += time.time() - _start_store
-
-            # print("contiguous: ", time.time() - _start_contiguous)
             encountered_variables_prev_graphs = obj_union
             encountered_variables_current_graph = []
-        # cur.execute("SELECT DISTINCT vid FROM g{}_contiguous".format(len(current_query) - 1))
-        # # print("SELECT DISTINCT vid FROM g{}_contiguous".format(len(current_query) - 1))
-        # res = cur.fetchall()
-        # output_vids.extend([row[0] for row in res])
         output_vids.extend(cached_output_vids)
 
         # Drop views
