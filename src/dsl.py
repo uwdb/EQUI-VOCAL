@@ -537,7 +537,7 @@ class AStopped(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if input[0][i][4] is not None and input[0][i][5] is not None:
+            if input[0][i][4] is not np.nan and input[0][i][5] is not np.nan:
                 result[i, i + 1] = -1 * math.sqrt(input[0][i][4] ** 2 + input[0][i][5] ** 2)
         new_memoize[subquery_str] = result
         return result, new_memoize
@@ -555,7 +555,7 @@ class AStopped(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if input[0][i][4] is not None and input[0][i][5] is not None and -1 * math.sqrt(input[0][i][4] ** 2 + input[0][i][5] ** 2) >= self.theta:
+            if input[0][i][4] is not np.nan and input[0][i][5] is not np.nan and -1 * math.sqrt(input[0][i][4] ** 2 + input[0][i][5] ** 2) >= self.theta:
                 result[i, i + 1] = np.inf
 
         new_memoize[subquery_str] = result
@@ -583,7 +583,7 @@ class BStopped(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[1]) + 1, len(input[1]) + 1), -np.inf)
         for i in range(len(input[1])):
-            if input[1][i][4] is not None and input[1][i][5] is not None:
+            if input[1][i][4] is not np.nan and input[1][i][5] is not np.nan:
                 result[i, i + 1] = -1 * math.sqrt(input[1][i][4] ** 2 + input[1][i][5] ** 2)
         new_memoize[subquery_str] = result
         return result, new_memoize
@@ -601,7 +601,7 @@ class BStopped(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[1]) + 1, len(input[1]) + 1), -np.inf)
         for i in range(len(input[1])):
-            if input[1][i][4] is not None and input[1][i][5] is not None and -1 * math.sqrt(input[1][i][4] ** 2 + input[1][i][5] ** 2) >= self.theta:
+            if input[1][i][4] is not np.nan and input[1][i][5] is not np.nan and -1 * math.sqrt(input[1][i][4] ** 2 + input[1][i][5] ** 2) >= self.theta:
                 result[i, i + 1] = np.inf
 
         new_memoize[subquery_str] = result
@@ -629,7 +629,7 @@ class AHighAccel(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if input[0][i][6] is not None and input[0][i][7] is not None:
+            if input[0][i][6] is not np.nan and input[0][i][7] is not np.nan:
                 result[i, i + 1] = math.sqrt(input[0][i][6] ** 2 + input[0][i][7] ** 2)
         new_memoize[subquery_str] = result
         return result, new_memoize
@@ -647,7 +647,7 @@ class AHighAccel(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if input[0][i][6] is not None and input[0][i][7] is not None and math.sqrt(input[0][i][6] ** 2 + input[0][i][7] ** 2) >= self.theta:
+            if input[0][i][6] is not np.nan and input[0][i][7] is not np.nan and math.sqrt(input[0][i][6] ** 2 + input[0][i][7] ** 2) >= self.theta:
                 result[i, i + 1] = np.inf
 
         new_memoize[subquery_str] = result
@@ -675,7 +675,7 @@ class BHighAccel(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[1]) + 1, len(input[1]) + 1), -np.inf)
         for i in range(len(input[1])):
-            if input[1][i][6] is not None and input[1][i][7] is not None:
+            if input[1][i][6] is not np.nan and input[1][i][7] is not np.nan:
                 result[i, i + 1] = math.sqrt(input[1][i][6] ** 2 + input[1][i][7] ** 2)
         new_memoize[subquery_str] = result
         return result, new_memoize
@@ -693,7 +693,7 @@ class BHighAccel(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[1]) + 1, len(input[1]) + 1), -np.inf)
         for i in range(len(input[1])):
-            if input[1][i][6] is not None and input[1][i][7] is not None and math.sqrt(input[1][i][6] ** 2 + input[1][i][7] ** 2) >= self.theta:
+            if input[1][i][6] is not np.nan and input[1][i][7] is not np.nan and math.sqrt(input[1][i][6] ** 2 + input[1][i][7] ** 2) >= self.theta:
                 result[i, i + 1] = np.inf
 
         new_memoize[subquery_str] = result
@@ -721,7 +721,7 @@ class DistanceSmall(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if input[0][i][0] is not None and input[1][i][0] is not None:
+            if input[0][i][0] is not np.nan and input[1][i][0] is not np.nan:
                 result[i, i + 1] = -1 * obj_distance_warsaw(input[0][i], input[1][i])
         new_memoize[subquery_str] = result
         return result, new_memoize
@@ -739,7 +739,7 @@ class DistanceSmall(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if input[0][i][0] is not None and input[1][i][0] is not None and -1 * obj_distance_warsaw(input[0][i], input[1][i]) >= self.theta:
+            if input[0][i][0] is not np.nan and input[1][i][0] is not np.nan and -1 * obj_distance_warsaw(input[0][i], input[1][i]) >= self.theta:
                 result[i, i + 1] = np.inf
 
         new_memoize[subquery_str] = result
@@ -767,7 +767,7 @@ class Faster(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if input[0][i][4] is not None and input[1][i][4] is not None:
+            if input[0][i][4] is not np.nan and input[1][i][4] is not np.nan:
                 result[i, i + 1] = speed_ratio(input[0][i], input[1][i])
         new_memoize[subquery_str] = result
         return result, new_memoize
@@ -784,7 +784,7 @@ class Faster(Predicate):
             return new_memoize[subquery_str], new_memoize
         result = np.full((len(input[0]) + 1, len(input[0]) + 1), -np.inf)
         for i in range(len(input[0])):
-            if input[0][i][4] is not None and input[1][i][4] is not None and speed_ratio(input[0][i], input[1][i]) >= self.theta:
+            if input[0][i][4] is not np.nan and input[1][i][4] is not np.nan and speed_ratio(input[0][i], input[1][i]) >= self.theta:
                 result[i, i + 1] = np.inf
         new_memoize[subquery_str] = result
 
@@ -877,7 +877,7 @@ def obj_distance_warsaw(bbox1, bbox2):
 def speed_ratio(bbox1, bbox2):
     _, _, _, _, v_x, v_y, _, _ = bbox1
     _, _, _, _, v_x2, v_y2, _, _ = bbox2
-    return (v_x * v_x + v_y * v_y) / (v_x2 * v_x2 + v_y2 * v_y2)
+    return (v_x * v_x + v_y * v_y) / (v_x2 * v_x2 + v_y2 * v_y2 + 1e-6)
 
 def direction_relationship(bbox1, bbox2, direction):
     x1, y1, x2, y2 = bbox1
@@ -913,9 +913,9 @@ def quadrant_relationship(bbox1, quadrant):
         raise ValueError("Invalid direction")
 
 def in_lane(bbox, lane_name):
-    if bbox is None:
-        return False
     x1, y1, x2, y2, _, _, _, _ = bbox
+    if x1 == np.nan or y1 == np.nan or x2 == np.nan or y2 == np.nan:
+        return False
     eastward_4 = np.array([[0, 330], [330, 362], [789, 369], [960, 355], [960, 372], [803, 391], [351, 389], [0, 351]])
     eastward_3 = np.array([[0, 351], [351, 389], [803, 391], [960, 372], [960, 394], [838, 413], [424, 422], [153, 395], [0, 370]])
     eastward_2 = np.array([[0, 370], [153, 395], [424, 422], [838, 413], [960, 394], [960, 420], [763, 451], [414, 460], [97, 420], [0, 397]])
@@ -926,15 +926,15 @@ def in_lane(bbox, lane_name):
     eastward_2_polygon = Polygon(eastward_2)
     westward_2_polygon = Polygon(westward_2)
     southward_1_upper_polygon = Polygon(southward_1_upper)
-    if lane_name == "eastward_4":
+    if lane_name == "Eastward4":
         return eastward_4_polygon.contains(Point((x1 + x2) / 2, y2 - 10))
-    elif lane_name == "eastward_3":
+    elif lane_name == "Eastward3":
         return eastward_3_polygon.contains(Point((x1 + x2) / 2, y2 - 10))
-    elif lane_name == "eastward_2":
+    elif lane_name == "Eastward2":
         return eastward_2_polygon.contains(Point((x1 + x2) / 2, y2 - 10))
-    elif lane_name == "westward_2":
+    elif lane_name == "Westward2":
         return westward_2_polygon.contains(Point((x1 + x2) / 2, y2 - 4))
-    elif lane_name == "southward_1_upper":
+    elif lane_name == "Southward1Upper":
         return southward_1_upper_polygon.contains(Point((x1 + x2) / 2, y2))
     else:
         raise ValueError("Invalid direction")

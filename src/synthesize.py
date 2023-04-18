@@ -51,12 +51,12 @@ def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivia
         method = QUIVROriginal
     else:
         method = QUIVROriginalNoKleene
-    algorithm = method(inputs, labels, predicate_dict, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, lru_capacity)
+    algorithm = method(dataset_name, inputs, labels, predicate_dict, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, lru_capacity)
     output_log = algorithm.run(init_labeled_index)
 
     return output_log
 
-def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
+def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
 
     with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
         inputs = json.load(f)
@@ -80,14 +80,14 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
     print(init_labeled_index)
     if method == "vocal_postgres":
-        algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
+        algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
     elif method == "vocal_postgres_no_active_learning":
-        algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
+        algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
     output_log = algorithm.run(init_labeled_index)
     return output_log
 
-def test_algorithm_demo_precompute(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
-    algorithm = test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
+def test_algorithm_demo_precompute(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
+    algorithm = test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
 
     with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
         inputs = json.load(f)
@@ -102,7 +102,7 @@ def test_algorithm_demo_precompute(method, dataset_name, n_init_pos, n_init_neg,
     print("log", log)
     return log
 
-def test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
+def test_algorithm_interactive(init_labeled_index, method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
 
     with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
         inputs = json.load(f)
@@ -123,7 +123,6 @@ def test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npr
     test_inputs = np.asarray(test_inputs)[:100]
     test_labels = np.asarray(test_labels)[:100]
 
-
     if "sampling_rate" in dataset_name:
         splits = dataset_name.split("-")
         for split in splits:
@@ -133,12 +132,12 @@ def test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npr
     else:
         sampling_rate = None
     print("sampling_rate", sampling_rate)
-    init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
+    # init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
     print(init_labeled_index)
     if method == "vocal_postgres":
-        algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg, test_inputs=test_inputs, test_labels=test_labels)
+        algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg, test_inputs=test_inputs, test_labels=test_labels)
     elif method == "vocal_postgres_no_active_learning":
-        algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
+        algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
     algorithm.run_init(init_labeled_index)
     return algorithm
 
@@ -173,6 +172,7 @@ if __name__ == '__main__':
     ap.add_argument('--max_duration', type=int, default=1, help='Maximum number of the duration constraint.')
     ap.add_argument('--beam_width', type=int, default=32, help='Beam width.')
     ap.add_argument('--pool_size', type=int, default=100, help='Number of queries sampled during example selection.')
+    ap.add_argument('--n_sampled_videos', type=int, default=100, help='Number of videos sampled during example selection.')
     ap.add_argument('--k', type=int, default=100, help='Number of queries in the final answer.')
     ap.add_argument('--budget', type=int, default=100, help='Labeling budget.')
     ap.add_argument('--multithread', type=int, default=1, help='Number of CPUs to use.')
@@ -199,6 +199,7 @@ if __name__ == '__main__':
     max_duration = args.max_duration
     beam_width = args.beam_width
     pool_size = args.pool_size
+    n_sampled_videos = args.n_sampled_videos
     k = args.k
     # samples_per_iter = args.samples_per_iter
     budget = args.budget
@@ -223,7 +224,7 @@ if __name__ == '__main__':
         config_name = "nip_{}-nin_{}-npred_{}-n_nontrivial_{}-n_trivial_{}-depth_{}-max_d_{}-thread_{}-lru_{}".format(n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, multithread, lru_capacity)
     elif method_str.startswith("vocal_postgres"):
         method_name = "{}-{}".format(method_str, strategy)
-        config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-nvars_{}-bw_{}-pool_size_{}-k_{}-budget_{}-thread_{}-lru_{}-lambda_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, max_vars, beam_width, pool_size, k, budget, multithread, lru_capacity, reg_lambda)
+        config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-nvars_{}-bw_{}-pool_size_{}-n_sampled_videos_{}-k_{}-budget_{}-thread_{}-lru_{}-lambda_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, max_vars, beam_width, pool_size, n_sampled_videos, k, budget, multithread, lru_capacity, reg_lambda)
 
     log_dirname = os.path.join(output_dir, dataset_name, method_name, config_name)
     log_filename = "{}-{}".format(query_str, run_id)
@@ -307,7 +308,7 @@ if __name__ == '__main__':
     elif method_str == "exhaustive":
         test_exhaustive(n_init_pos, n_init_neg, npred, depth, max_duration, multithread, predicate_dict, input_dir)
     elif method_str in ['vocal_postgres', 'vocal_postgres_no_active_learning']:
-        output_log = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
+        output_log = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
 
     if output_to_file:
         with open(os.path.join(log_dirname, "{}.log".format(log_filename)), 'w') as f:
