@@ -16,7 +16,8 @@ def using(point=""):
 
 class QUIVROriginal:
 
-    def __init__(self, inputs, labels, predicate_list, max_npred, max_nontrivial, max_trivial, max_depth, max_duration, budget, multithread, lru_capacity):
+    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_nontrivial, max_trivial, max_depth, max_duration, budget, multithread, lru_capacity):
+        self.dataset_name = dataset_name
         self.inputs = np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
         self.predicate_list = predicate_list
@@ -167,7 +168,7 @@ class QUIVROriginal:
         _start_total_time_zero_step = time.time()
 
         # Initialize program graph
-        query_graph = QueryGraph(self.max_npred, self.max_depth, self.max_nontrivial, self.max_trivial, self.max_duration, 2, self.predicate_list, True, topdown_or_bottomup='topdown')
+        query_graph = QueryGraph(self.dataset_name, self.max_npred, self.max_depth, self.max_nontrivial, self.max_trivial, self.max_duration, 2, self.predicate_list, True, topdown_or_bottomup='topdown')
 
         queue = deque()
         queue.append(query_graph)

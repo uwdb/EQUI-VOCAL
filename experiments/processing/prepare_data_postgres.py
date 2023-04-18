@@ -22,8 +22,7 @@ import argparse
 
 m = multiprocessing.Manager()
 lock = m.Lock()
-memoize_sequence = [LRU(10000) for _ in range(72159)]
-memoize_scene_graph = [LRU(10000) for _ in range(72159)]
+memo = [LRU(10000) for _ in range(72159)]
 
 def generate_queries(n_queries, ratio_lower_bound, ratio_upper_bound, npred, depth, max_duration, nvars, predicate_list, attr_predicate_list, max_workers, dataset_name, nattr_pred, port):
     """
@@ -126,7 +125,7 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
     """
     program = str_to_program_postgres(program_str)
     dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
-
+    conn = psycopg.connect(dsn)
     if inputs_table_name == "Obj_clevrer":
         is_trajectory = False
         input_vids = 10000
@@ -142,16 +141,13 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
     else:
         raise ValueError("Unknown inputs_table_name: {}".format(inputs_table_name))
     _start = time.time()
-    result, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
+    result, new_memo = postgres_execute_cache_sequence(conn, program, memo, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
     print("Time to execute query: {}".format(time.time() - _start))
 
     lock.acquire()
-    for i, memo_dict in enumerate(new_memoize_scene_graph):
+    for i, memo_dict in enumerate(new_memo):
         for k, v in memo_dict.items():
-            memoize_scene_graph[i][k] = v
-    for i, memo_dict in enumerate(new_memoize_sequence):
-        for k, v in memo_dict.items():
-            memoize_sequence[i][k] = v
+            memo[i][k] = v
     lock.release()
     labels = []
     for i in range(input_vids):

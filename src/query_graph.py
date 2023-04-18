@@ -20,7 +20,11 @@ class QueryGraph(object):
             self.program = dsl.StartOperator()
         else:
             raise ValueError("Unknown algorithm:", topdown_or_bottomup)
-        self.duration_unit = 5
+        if dataset_name.startswith("user_study"):
+            self.duration_unit = 25
+        else:
+            self.duration_unit = 5
+
         self.depth = 0
         self.npred = 0 # npred = n_trivial + n_nontrivial
         self.n_trivial = 0 # number of <true>* predicates

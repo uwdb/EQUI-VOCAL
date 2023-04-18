@@ -1,4 +1,5 @@
 import psycopg2 as psycopg
+from psycopg2 import pool
 import os
 import json
 import numpy as np
@@ -6,7 +7,7 @@ import pandas as pd
 from sklearn.metrics import f1_score
 from lru import LRU
 import time
-from src.utils import str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching, complexity_cost
+from src.utils import str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching
 import math
 import argparse
 import multiprocessing
@@ -15,16 +16,14 @@ from concurrent.futures import ThreadPoolExecutor
 def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, task_name, value, **kwargs):
     def compute_f1_score(test_query):
         test_program = str_to_program_postgres(test_query)
-        outputs, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, test_program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
-
+        conn = connections.getconn()
+        outputs, new_memo = postgres_execute_cache_sequence(conn, test_program, memo, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
+        connections.putconn(conn)
         if lock:
             lock.acquire()
-        for i, memo_dict in enumerate(new_memoize_scene_graph):
+        for i, memo_dict in enumerate(new_memo):
             for k, v in memo_dict.items():
-                memoize_scene_graph[i][k] = v
-        for i, memo_dict in enumerate(new_memoize_sequence):
-            for k, v in memo_dict.items():
-                memoize_sequence[i][k] = v
+                memo[i][k] = v
         if lock:
             lock.release()
         preds = []
@@ -37,6 +36,8 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
         print(score)
         return score
 
+    dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
+    connections = psycopg.pool.ThreadedConnectionPool(1, multithread, dsn)
     if multithread > 1:
         executor = ThreadPoolExecutor(max_workers=multithread)
         m = multiprocessing.Manager()
@@ -75,8 +76,7 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
             raise ValueError("Unknown task")
 
     list_size = 72159
-    memoize_scene_graph = [{} for _ in range(list_size)]
-    memoize_sequence = [{} for _ in range(list_size)]
+    memo = [{} for _ in range(list_size)]
     # Read the test data
     test_dir = os.path.join(input_dir, dataset_name, "test")
     inputs_filename = query_str + "_inputs.json"
@@ -97,7 +97,7 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
             if task_name == "trajectory":
                 log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_1-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(budget))
             elif task_name == "warsaw":
-                log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_15-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_4-lru_None-lambda_0.01".format(budget))
+                log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_1-nvars_2-bw_10-pool_size_100-n_sampled_videos_500-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(budget))
             elif task_name == "budget":
                 log_dir = os.path.join(output_dir, dataset_name, method, "nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_1000-budget_{}-thread_4-lru_None-lambda_0.001".format(budget))
             elif task_name == "num_init":
@@ -153,7 +153,6 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
                 print("returned_queries", len(returned_queries))
                 print("run: {}, budget: {}".format(run, budget))
 
-                dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
                 if dataset_name.startswith("collision"):
                     inputs_table_name = "Obj_collision"
                     is_trajectory = True
@@ -230,9 +229,9 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
         with open(os.path.join(exp_dir, "stats", method, "{}.json".format(query_str)), "w") as f:
             json.dump(out_dict, f)
     elif task_name == "warsaw":
-        if not os.path.exists(os.path.join(exp_dir, "stats", method)):
-            os.makedirs(os.path.join(exp_dir, "stats", method), exist_ok=True)
-        with open(os.path.join(exp_dir, "stats", method, "{}.json".format(query_str)), "w") as f:
+        if not os.path.exists(os.path.join(exp_dir, "stats", method + "-max_d_1-n_sampled_videos_500")):
+            os.makedirs(os.path.join(exp_dir, "stats", method + "-max_d_1-n_sampled_videos_500"), exist_ok=True)
+        with open(os.path.join(exp_dir, "stats", method + "-max_d_1-n_sampled_videos_500", "{}.json".format(query_str)), "w") as f:
             json.dump(out_dict, f)
 
     #### vary init ####
@@ -281,16 +280,15 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
 def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, method, query_str, sampling_rate, port, multithread):
     def compute_f1_score(test_query):
         test_program = str_to_program_postgres(test_query)
-        outputs, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, test_program, memoize_scene_graph, memoize_sequence, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
+        conn = connections.getconn()
+        outputs, new_memo = postgres_execute_cache_sequence(conn, test_program, memo, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
+        connections.putconn(conn)
 
         if lock:
             lock.acquire()
-        for i, memo_dict in enumerate(new_memoize_scene_graph):
+        for i, memo_dict in enumerate(new_memo):
             for k, v in memo_dict.items():
-                memoize_scene_graph[i][k] = v
-        for i, memo_dict in enumerate(new_memoize_sequence):
-            for k, v in memo_dict.items():
-                memoize_sequence[i][k] = v
+                memo[i][k] = v
         if lock:
             lock.release()
         preds = []
@@ -303,6 +301,9 @@ def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, m
         print(score)
         return score
 
+    dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
+    connections = psycopg.pool.ThreadedConnectionPool(1, multithread, dsn)
+
     if multithread > 1:
         executor = ThreadPoolExecutor(max_workers=multithread)
         m = multiprocessing.Manager()
@@ -311,8 +312,7 @@ def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, m
         lock = None
 
     list_size = 72159
-    memoize_scene_graph = [{} for _ in range(list_size)]
-    memoize_sequence = [{} for _ in range(list_size)]
+    memo = [{} for _ in range(list_size)]
     # Read the test data
     test_dir = os.path.join(input_dir, dataset_name, "test")
     inputs_filename = query_str + "_inputs.json"
@@ -356,7 +356,6 @@ def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, m
                         returned_queries.append(test_query_str)
             print("returned_queries", len(returned_queries))
 
-            dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
             if dataset_name.startswith("collision"):
                 inputs_table_name = "Obj_collision"
                 is_trajectory = True

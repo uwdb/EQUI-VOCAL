@@ -471,6 +471,10 @@ Datum BottomPoly(PG_FUNCTION_ARGS) {
 PG_FUNCTION_INFO_V1(Eastward4);
 
 Datum Eastward4(PG_FUNCTION_ARGS) {
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2) || PG_ARGISNULL(3)) {
+        PG_RETURN_BOOL(false);
+    }
+
     float x1 = PG_GETARG_FLOAT8(0);
     float y1 = PG_GETARG_FLOAT8(1);
     float x2 = PG_GETARG_FLOAT8(2);
@@ -497,7 +501,9 @@ Datum Eastward4(PG_FUNCTION_ARGS) {
 PG_FUNCTION_INFO_V1(Eastward3);
 
 Datum Eastward3(PG_FUNCTION_ARGS) {
-    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2) || PG_ARGISNULL(3)) {
+        PG_RETURN_BOOL(false);
+    }
     float x1 = PG_GETARG_FLOAT8(0);
     float y1 = PG_GETARG_FLOAT8(1);
     float x2 = PG_GETARG_FLOAT8(2);
@@ -524,7 +530,9 @@ Datum Eastward3(PG_FUNCTION_ARGS) {
 PG_FUNCTION_INFO_V1(Eastward2);
 
 Datum Eastward2(PG_FUNCTION_ARGS) {
-    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2) || PG_ARGISNULL(3)) {
+        PG_RETURN_BOOL(false);
+    }
     float x1 = PG_GETARG_FLOAT8(0);
     float y1 = PG_GETARG_FLOAT8(1);
     float x2 = PG_GETARG_FLOAT8(2);
@@ -551,7 +559,9 @@ Datum Eastward2(PG_FUNCTION_ARGS) {
 PG_FUNCTION_INFO_V1(Westward2);
 
 Datum Westward2(PG_FUNCTION_ARGS) {
-    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2) || PG_ARGISNULL(3)) {
+        PG_RETURN_BOOL(false);
+    }
     float x1 = PG_GETARG_FLOAT8(0);
     float y1 = PG_GETARG_FLOAT8(1);
     float x2 = PG_GETARG_FLOAT8(2);
@@ -578,7 +588,9 @@ Datum Westward2(PG_FUNCTION_ARGS) {
 PG_FUNCTION_INFO_V1(Southward1Upper);
 
 Datum Southward1Upper(PG_FUNCTION_ARGS) {
-    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2) || PG_ARGISNULL(3)) {
+        PG_RETURN_BOOL(false);
+    }
     float x1 = PG_GETARG_FLOAT8(0);
     float y1 = PG_GETARG_FLOAT8(1);
     float x2 = PG_GETARG_FLOAT8(2);
@@ -603,44 +615,39 @@ Datum Southward1Upper(PG_FUNCTION_ARGS) {
 PG_FUNCTION_INFO_V1(Stopped);
 
 Datum Stopped(PG_FUNCTION_ARGS) {
-    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    if (PG_ARGISNULL(5) || PG_ARGISNULL(6)) {
+        PG_RETURN_BOOL(false);
+    }
     float theta = PG_GETARG_FLOAT8(0);
-    float x1 = PG_GETARG_FLOAT8(1);
-    float y1 = PG_GETARG_FLOAT8(2);
-    float x2 = PG_GETARG_FLOAT8(3);
-    float y2 = PG_GETARG_FLOAT8(4);
     float v_x = PG_GETARG_FLOAT8(5);
     float v_y = PG_GETARG_FLOAT8(6);
-    float a_x = PG_GETARG_FLOAT8(7);
-    float a_y = PG_GETARG_FLOAT8(8);
 
     float v_magnitude = sqrt(v_x * v_x + v_y * v_y);
 
-    PG_RETURN_BOOL(v_magnitude < theta);
+    PG_RETURN_BOOL(v_magnitude <= theta);
 }
 
 PG_FUNCTION_INFO_V1(HighAccel);
 
 Datum HighAccel(PG_FUNCTION_ARGS) {
-    // IF (PG_ARGISNULL (0)) PG_RETURN_NULL ();
+    if (PG_ARGISNULL(7) || PG_ARGISNULL(8)) {
+        PG_RETURN_BOOL(false);
+    }
     float theta = PG_GETARG_FLOAT8(0);
-    float x1 = PG_GETARG_FLOAT8(1);
-    float y1 = PG_GETARG_FLOAT8(2);
-    float x2 = PG_GETARG_FLOAT8(3);
-    float y2 = PG_GETARG_FLOAT8(4);
-    float v_x = PG_GETARG_FLOAT8(5);
-    float v_y = PG_GETARG_FLOAT8(6);
     float a_x = PG_GETARG_FLOAT8(7);
     float a_y = PG_GETARG_FLOAT8(8);
 
     float a_magnitude = sqrt(a_x * a_x + a_y * a_y);
 
-    PG_RETURN_BOOL(a_magnitude > theta);
+    PG_RETURN_BOOL(a_magnitude >= theta);
 }
 
 PG_FUNCTION_INFO_V1(DistanceSmall);
 
 Datum DistanceSmall(PG_FUNCTION_ARGS) {
+    if (PG_ARGISNULL(1) || PG_ARGISNULL(2) || PG_ARGISNULL(3) || PG_ARGISNULL(4) || PG_ARGISNULL(9) || PG_ARGISNULL(10) || PG_ARGISNULL(11) || PG_ARGISNULL(12)) {
+        PG_RETURN_BOOL(false);
+    }
     float theta = PG_GETARG_FLOAT8(0);
     float x1 = PG_GETARG_FLOAT8(1);
     float y1 = PG_GETARG_FLOAT8(2);
@@ -658,12 +665,15 @@ Datum DistanceSmall(PG_FUNCTION_ARGS) {
 
     float distance = sqrt(pow(cx1 - cx2, 2.0) + pow(cy1 - cy2, 2.0));
 
-    PG_RETURN_BOOL(distance < theta);
+    PG_RETURN_BOOL(distance <= theta);
 }
 
 PG_FUNCTION_INFO_V1(Faster);
 
 Datum Faster(PG_FUNCTION_ARGS) {
+    if (PG_ARGISNULL(5) || PG_ARGISNULL(6) || PG_ARGISNULL(13) || PG_ARGISNULL(14)) {
+        PG_RETURN_BOOL(false);
+    }
     float theta = PG_GETARG_FLOAT8(0);
     float v_x = PG_GETARG_FLOAT8(5);
     float v_y = PG_GETARG_FLOAT8(6);
@@ -675,5 +685,5 @@ Datum Faster(PG_FUNCTION_ARGS) {
 
 // compile:
 // location of virtualenv: /mmfs1/gscratch/balazinska/enhaoz/env/
-// cc -I /mmfs1/gscratch/balazinska/enhaoz/env/include/server/ -fpic -c functors.c
+// cc -I /opt/miniconda/env/include/server/ -fpic -c functors.c
 // cc -shared -o functors.so functors.o

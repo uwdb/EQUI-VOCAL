@@ -10,6 +10,7 @@ import resource
 import random
 from functools import cmp_to_key
 import psycopg2 as psycopg
+from psycopg2 import pool
 import uuid
 import threading
 
@@ -19,7 +20,7 @@ def using(point=""):
 
 class VOCALPostgres(BaseMethod):
 
-    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg, n_sampled_videos=100, test_inputs=None, test_labels=None):
+    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg, test_inputs=None, test_labels=None):
         self.dataset_name = dataset_name
         self.inputs = inputs
         self.labels = labels
@@ -45,7 +46,10 @@ class VOCALPostgres(BaseMethod):
         self.get_query_score = self.compute_query_score_postgres
         self.n_init_pos = n_init_pos
         self.n_init_neg = n_init_neg
-        self.duration_unit = 5
+        if self.dataset_name.startswith("user_study"):
+            self.duration_unit = 25
+        else:
+            self.duration_unit = 5
         self.label_count_per_iter = 0 # Used for live demo task: the number of labels collected in the current iteration so far
         # self.filtered_index = [] # Create an empty list to store the indices of the videos that have been filtered out during the active learning process
 
@@ -89,7 +93,8 @@ class VOCALPostgres(BaseMethod):
         # Initialize the pools
         self.dsn = "dbname=myinner_db user=enhaoz host=127.0.0.1 port={}".format(port)
         # TODO: set the isolation level to read committed?
-        self.connections = [psycopg.connect(self.dsn) for _ in range(self.num_threads)]
+        # self.connections = [psycopg.connect(self.dsn) for _ in range(self.num_threads)]
+        self.connections = psycopg.pool.ThreadedConnectionPool(1, self.num_threads, self.dsn)
         self.executor = ThreadPoolExecutor(max_workers=self.num_threads)
         print("process pool init time:", time.time() - _start)
 
@@ -98,7 +103,8 @@ class VOCALPostgres(BaseMethod):
         _start = time.time()
 
         print("dsn", self.dsn)
-        with self.connections[0].cursor() as cur:
+        conn = self.connections.getconn()
+        with conn.cursor() as cur:
             filtered_vids = inputs.tolist()
             if test_inputs is not None:
                 filtered_vids += test_inputs.tolist()
@@ -137,7 +143,8 @@ class VOCALPostgres(BaseMethod):
                     """.format(self.inputs_table_name), [filtered_vids])
 
             cur.execute("CREATE INDEX IF NOT EXISTS idx_{t} ON {t} (vid);".format(t=self.inputs_table_name))
-            self.connections[0].commit()
+            conn.commit()
+        self.connections.putconn(conn)
         print("Time to create inputs table: {}".format(time.time() - _start))
 
     @staticmethod
@@ -197,12 +204,14 @@ class VOCALPostgres(BaseMethod):
         self.output_log.append(using("profile"))
 
         # Drop input table
-        with self.connections[0].cursor() as cur:
+        conn = self.connections.getconn()
+        with conn.cursor() as cur:
             cur.execute("DROP TABLE {};".format(self.inputs_table_name))
+            conn.commit()
+        self.connections.putconn(conn)
 
         # Close the connections and the executor
-        for connection in self.connections:
-            connection.close()
+        self.connections.closeall()
         self.executor.shutdown()
 
         return self.output_log
@@ -251,10 +260,9 @@ class VOCALPostgres(BaseMethod):
                         query_graph.depth = 1
                         new_candidate_queries.append([query_graph, -1])
                 # Assign queries to the threads
-                thread_queries = self.chunk_list(new_candidate_queries, self.num_threads)
                 updated_scores = []
-                for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                    updated_scores.extend(result)
+                for result in self.executor.map(self.get_query_score, [query.program for query, _ in new_candidate_queries]):
+                    updated_scores.append(result)
                 for i in range(len(new_candidate_queries)):
                     new_candidate_queries[i][1] = updated_scores[i]
                     print("initialization", rewrite_program_postgres(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
@@ -290,10 +298,9 @@ class VOCALPostgres(BaseMethod):
                 # Compute scores
                 self.n_prediction_count += len(self.labeled_index) * len(self.candidate_queries)
                 candidate_queries_greater_than_zero = []
-                thread_queries = self.chunk_list(self.candidate_queries, self.num_threads)
                 updated_scores = []
-                for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                    updated_scores.extend(result)
+                for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                    updated_scores.append(result)
                 for i in range(len(self.candidate_queries)):
                     if updated_scores[i] > 0:
                         candidate_queries_greater_than_zero.append([self.candidate_queries[i][0], updated_scores[i]])
@@ -339,10 +346,9 @@ class VOCALPostgres(BaseMethod):
                     # assert(len(self.labeled_index) == len(set(self.labeled_index)))
                     # Update scores
                     self.n_prediction_count += len(new_labeled_index) * len(self.candidate_queries)
-                    thread_queries = self.chunk_list(self.candidate_queries, self.num_threads)
                     updated_scores = []
-                    for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                        updated_scores.extend(result)
+                    for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                        updated_scores.append(result)
                     for i in range(len(self.candidate_queries)):
                         self.candidate_queries[i][1] = updated_scores[i]
                     print("test segment_selection_time_per_iter time:", time.time() - _start_segment_selection_time_per_iter)
@@ -373,10 +379,9 @@ class VOCALPostgres(BaseMethod):
             # Retain the top k queries with the highest scores as answers
             _start_retain_top_k_queries_time = time.time()
             self.n_prediction_count += len(self.answers) * len(self.labeled_index)
-            thread_queries = self.chunk_list(self.answers, self.num_threads)
             updated_scores = []
-            for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                updated_scores.extend(result)
+            for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.answers]):
+                updated_scores.append(result)
             for i in range(len(self.answers)):
                 self.answers[i][1] = updated_scores[i]
             self.answers = sorted(self.answers, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)
@@ -444,10 +449,9 @@ class VOCALPostgres(BaseMethod):
                         query_graph.depth = 1
                         new_candidate_queries.append([query_graph, -1])
                 # Assign queries to the threads
-                thread_queries = self.chunk_list(new_candidate_queries, self.num_threads)
                 updated_scores = []
-                for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                    updated_scores.extend(result)
+                for result in self.executor.map(self.get_query_score, [query.program for query, _ in new_candidate_queries]):
+                    updated_scores.append(result)
                 for i in range(len(new_candidate_queries)):
                     new_candidate_queries[i][1] = updated_scores[i]
                     print("initialization", rewrite_program_postgres(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
@@ -483,10 +487,9 @@ class VOCALPostgres(BaseMethod):
                 # Compute scores
                 self.n_prediction_count += len(self.labeled_index) * len(self.candidate_queries)
                 candidate_queries_greater_than_zero = []
-                thread_queries = self.chunk_list(self.candidate_queries, self.num_threads)
                 updated_scores = []
-                for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                    updated_scores.extend(result)
+                for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                    updated_scores.append(result)
                 for i in range(len(self.candidate_queries)):
                     if updated_scores[i] > 0:
                         candidate_queries_greater_than_zero.append([self.candidate_queries[i][0], updated_scores[i]])
@@ -541,10 +544,9 @@ class VOCALPostgres(BaseMethod):
                     # assert(len(self.labeled_index) == len(set(self.labeled_index)))
                     # Update scores
                     self.n_prediction_count += len(new_labeled_index) * len(self.candidate_queries)
-                    thread_queries = self.chunk_list(self.candidate_queries, self.num_threads)
                     updated_scores = []
-                    for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                        updated_scores.extend(result)
+                    for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                        updated_scores.append(result)
                     for i in range(len(self.candidate_queries)):
                         self.candidate_queries[i][1] = updated_scores[i]
                     print("test segment_selection_time_per_iter time:", time.time() - _start_segment_selection_time_per_iter)
@@ -575,10 +577,9 @@ class VOCALPostgres(BaseMethod):
             # Retain the top k queries with the highest scores as answers
             _start_retain_top_k_queries_time = time.time()
             self.n_prediction_count += len(self.answers) * len(self.labeled_index)
-            thread_queries = self.chunk_list(self.answers, self.num_threads)
             updated_scores = []
-            for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                updated_scores.extend(result)
+            for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.answers]):
+                updated_scores.append(result)
             for i in range(len(self.answers)):
                 self.answers[i][1] = updated_scores[i]
             self.answers = sorted(self.answers, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)
@@ -601,9 +602,9 @@ class VOCALPostgres(BaseMethod):
             log_dict["best_query"] = rewrite_program_postgres(self.best_query_after_each_iter[0][0].program, self.rewrite_variables)
             log_dict["best_score"] = self.best_query_after_each_iter[0][1].item()
             # Prediction
-            pred_per_query = self.execute_over_all_inputs_postgres([self.best_query_after_each_iter[0][0].program], self.connections[0], is_test=True)
-            print("predicted_labels_test", pred_per_query[0])
-            log_dict["predicted_labels_test"] = pred_per_query[0]
+            pred_per_query = self.execute_over_all_inputs_postgres(self.best_query_after_each_iter[0][0].program, is_test=True)
+            print("predicted_labels_test", pred_per_query)
+            log_dict["predicted_labels_test"] = pred_per_query
             log.append(log_dict)
         return log
 
@@ -643,10 +644,9 @@ class VOCALPostgres(BaseMethod):
             log_dict["current_nneg"] = (len(self.labels[self.labeled_index]) - sum(self.labels[self.labeled_index])).item()
             # Update scores
             self.n_prediction_count += len(self.new_labeled_index) * len(self.candidate_queries)
-            thread_queries = self.chunk_list(self.candidate_queries, self.num_threads)
             updated_scores = []
-            for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                updated_scores.extend(result)
+            for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                updated_scores.append(result)
             for i in range(len(self.candidate_queries)):
                 self.candidate_queries[i][1] = updated_scores[i]
 
@@ -675,10 +675,9 @@ class VOCALPostgres(BaseMethod):
             # Retain the top k queries with the highest scores as answers
             _start_retain_top_k_queries_time = time.time()
             self.n_prediction_count += len(self.answers) * len(self.labeled_index)
-            thread_queries = self.chunk_list(self.answers, self.num_threads)
             updated_scores = []
-            for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                updated_scores.extend(result)
+            for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.answers]):
+                updated_scores.append(result)
             for i in range(len(self.answers)):
                 self.answers[i][1] = updated_scores[i]
             self.answers = sorted(self.answers, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)
@@ -701,9 +700,9 @@ class VOCALPostgres(BaseMethod):
             log_dict["best_query"] = rewrite_program_postgres(self.best_query_after_each_iter[0][0].program, self.rewrite_variables)
             log_dict["best_score"] = self.best_query_after_each_iter[0][1].item()
             # Prediction
-            pred_per_query = self.execute_over_all_inputs_postgres([self.best_query_after_each_iter[0][0].program], self.connections[0], is_test=True)
-            print("predicted_labels_test", pred_per_query[0])
-            log_dict["predicted_labels_test"] = pred_per_query[0]
+            pred_per_query = self.execute_over_all_inputs_postgres(self.best_query_after_each_iter[0][0].program, is_test=True)
+            print("predicted_labels_test", pred_per_query)
+            log_dict["predicted_labels_test"] = pred_per_query
         if len(self.candidate_queries) or self.iteration == 0:
             log_dict["state"] = "label_first"
             log_dict["iteration"] = self.iteration
@@ -749,10 +748,9 @@ class VOCALPostgres(BaseMethod):
                         query_graph.depth = 1
                         new_candidate_queries.append([query_graph, -1])
                 # Assign queries to the threads
-                thread_queries = self.chunk_list(new_candidate_queries, self.num_threads)
                 updated_scores = []
-                for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                    updated_scores.extend(result)
+                for result in self.executor.map(self.get_query_score, [query.program for query, _ in new_candidate_queries]):
+                    updated_scores.append(result)
                 for i in range(len(new_candidate_queries)):
                     new_candidate_queries[i][1] = updated_scores[i]
                     print("initialization", rewrite_program_postgres(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
@@ -788,10 +786,9 @@ class VOCALPostgres(BaseMethod):
                 # Compute scores
                 self.n_prediction_count += len(self.labeled_index) * len(self.candidate_queries)
                 candidate_queries_greater_than_zero = []
-                thread_queries = self.chunk_list(self.candidate_queries, self.num_threads)
                 updated_scores = []
-                for result in self.executor.map(self.get_multiple_query_scores, thread_queries, self.connections):
-                    updated_scores.extend(result)
+                for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                    updated_scores.append(result)
                 for i in range(len(self.candidate_queries)):
                     if updated_scores[i] > 0:
                         candidate_queries_greater_than_zero.append([self.candidate_queries[i][0], updated_scores[i]])

@@ -113,7 +113,7 @@ def relation_to_trajectories():
     result['new_vid'] = range(len(result))
     print(result)
     # result.to_csv('/gscratch/balazinska/enhaoz/complex_event_video/postgres/warsaw_trajectories.csv', index=False)
-    # select r.new_vid as vid, t.fid - r.offset as fid, 0 as oid, t.x1, t.y1, t.x2, t.y2
+    # select r.new_vid as vid, t.fid - r.fs as fid, 0 as oid, t.x1, t.y1, t.x2, t.y2
     # from result r, t
     # where r.vid = t.vid and r.oid1 = t.oid and r.fs <= t.fid and r.fe >= t.fid
 
@@ -171,6 +171,8 @@ def postgres_trajectories_to_quivr_trajectories():
     # iterate over the rows of the DataFrame
     for index, row in df.iterrows():
         if row['vid'] != current_vid:
+            if current_oid == 1:
+                trajectory_pair[1].append([np.nan] * 8)
             output.append(trajectory_pair)
             trajectory_pair = [[],[]]
             current_vid += 1
@@ -185,6 +187,8 @@ def postgres_trajectories_to_quivr_trajectories():
         current_oid = (current_oid + 1) % 2
         if current_oid == 0:
             current_fid += 1
+    if current_oid == 1:
+        trajectory_pair[1].append([np.nan] * 8)
     output.append(trajectory_pair)
     # write the output to a json file
     with open('/gscratch/balazinska/enhaoz/complex_event_video/inputs/warsaw_trajectory_pairs.json', 'w') as f:
@@ -198,16 +202,16 @@ def prepare_warsaw_queries():
             {'scene_graph': [{'predicate': 'Westward2', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Westward2', 'parameter': None, 'variables': ['o1']}], 'duration_constraint': 1},
         ],
         [
-            {'scene_graph': [{'predicate': 'Eastward4', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward3', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Faster', 'parameter': 1.5, 'variables': ['o0', 'o1']}], 'duration_constraint': 10},
+            {'scene_graph': [{'predicate': 'Eastward4', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward3', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Faster', 'parameter': 1.5, 'variables': ['o0', 'o1']}], 'duration_constraint': 5},
         ],
         [
-            {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Faster', 'parameter': 1.5, 'variables': ['o0', 'o1']}], 'duration_constraint': 10},
+            {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Faster', 'parameter': 1.5, 'variables': ['o0', 'o1']}], 'duration_constraint': 5},
         ],
         [
-            {'scene_graph': [{'predicate': 'Eastward4', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward3', 'parameter': None, 'variables': ['o1']}, {'predicate': 'DistanceSmall', 'parameter': 100, 'variables': ['o0', 'o1']}], 'duration_constraint': 10},
+            {'scene_graph': [{'predicate': 'Eastward4', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward3', 'parameter': None, 'variables': ['o1']}, {'predicate': 'DistanceSmall', 'parameter': 100, 'variables': ['o0', 'o1']}], 'duration_constraint': 5},
         ],
         [
-            {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}, {'predicate': 'DistanceSmall', 'parameter': 100, 'variables': ['o0', 'o1']}], 'duration_constraint': 10},
+            {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}, {'predicate': 'DistanceSmall', 'parameter': 100, 'variables': ['o0', 'o1']}], 'duration_constraint': 5},
         ],
         [
             {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward3', 'parameter': None, 'variables': ['o1']}, {'predicate': 'DistanceSmall', 'parameter': 100, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
@@ -219,12 +223,12 @@ def prepare_warsaw_queries():
             {'scene_graph': [{'predicate': 'Eastward2', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}, {'predicate': 'DistanceSmall', 'parameter': 100, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
         ],
         [
-            {'scene_graph': [{'predicate': 'Eastward4', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}], 'duration_constraint': 5},
-            {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}], 'duration_constraint': 5},
+            {'scene_graph': [{'predicate': 'Eastward4', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}], 'duration_constraint': 1},
+            {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o0']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o1']}], 'duration_constraint': 1},
         ],
         [
-            {'scene_graph': [{'predicate': 'Eastward4', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o0']}], 'duration_constraint': 5},
-            {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o0']}], 'duration_constraint': 5},
+            {'scene_graph': [{'predicate': 'Eastward4', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o0']}], 'duration_constraint': 1},
+            {'scene_graph': [{'predicate': 'Eastward3', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Eastward2', 'parameter': None, 'variables': ['o0']}], 'duration_constraint': 1},
         ],
         [
             {'scene_graph': [{'predicate': 'Eastward2', 'parameter': None, 'variables': ['o0']}, {'predicate': 'HighAccel', 'parameter': 2, 'variables': ['o0']}], 'duration_constraint': 1},

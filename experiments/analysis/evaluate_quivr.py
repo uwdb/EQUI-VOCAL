@@ -9,9 +9,9 @@ from lru import LRU
 import argparse
 
 def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
-    output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/{}".format(dataset_name, method)
+    output_dir = "/gscratch/balazinska/enhaoz/complex_event_video/outputs/{}/{}".format(dataset_name, method)
 
-    test_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/{}/test".format(dataset_name)
+    test_dir = "/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}/test".format(dataset_name)
     inputs_filename = query_str + "_inputs.json"
     labels_filename = query_str + "_labels.json"
     # n_examples = int(filename[11:-12])
@@ -20,29 +20,33 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
     with open(os.path.join(test_dir, labels_filename), 'r') as f:
         labels = json.load(f)
     if dataset_name.startswith("collision"):
-        with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/collision.json", 'r') as f:
+        with open("/gscratch/balazinska/enhaoz/complex_event_video/inputs/collision.json", 'r') as f:
+            trajectories = json.load(f)
+    elif dataset_name == "warsaw":
+        with open("/gscratch/balazinska/enhaoz/complex_event_video/inputs/warsaw_trajectory_pairs.json", 'r') as f:
             trajectories = json.load(f)
     else:
-        with open("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/trajectory_pairs.json", 'r') as f:
+        with open("/gscratch/balazinska/enhaoz/complex_event_video/inputs/trajectory_pairs.json", 'r') as f:
             trajectories = json.load(f)
     trajectories = np.asarray(trajectories, dtype=object)
-    labels = np.asarray(labels)
+    labels = np.asarray(labels, dtype=object)
     inputs = trajectories[inputs]
 
     # Down-sample the trajectory once every sampling_rate frames
-    inputs_downsampled = []
-    for input in inputs:
-        inputs_downsampled.append([input[0][::sampling_rate], input[1][::sampling_rate]])
-    inputs = inputs_downsampled
-    inputs = np.asarray(inputs, dtype=object)
+    if sampling_rate:
+        inputs_downsampled = []
+        for input in inputs:
+            inputs_downsampled.append([input[0][::sampling_rate], input[1][::sampling_rate]])
+        inputs = inputs_downsampled
+        inputs = np.asarray(inputs, dtype=object)
 
-    # If more than 500 trajectories, randomly sample 500 trajectories for evaluation
-    # if len(inputs) > 500:
-    #     sampled_idx = np.random.choice(len(inputs), 500, replace=False)
-    #     inputs = inputs[sampled_idx]
-    #     labels = labels[sampled_idx]
+    # If more than 5000 trajectories, randomly sample 5000 trajectories for evaluation
+    if len(inputs) > 5000:
+        sampled_idx = np.random.choice(len(inputs), 5000, replace=False)
+        inputs = inputs[sampled_idx]
+        labels = labels[sampled_idx]
 
-    memoize_all_inputs = [LRU(10000) for _ in range(len(inputs))]
+    memoize_all_inputs = [{} for _ in range(len(inputs))]
 
     score_median_log_per_run = []
     score_random_log_per_run = []
@@ -76,9 +80,10 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
             step += 1
             min_npred = 9999
             min_depth = 9999
-            # If more than 1000 queries are returned, we sample 1000 queries
-            if len(returned_queries) > 1000:
-                returned_queries = np.random.choice(returned_queries, 1000, replace=False)
+            # If more than 1000 queries are returned, we sample 1000 queries (for clevrer trajectories)
+            # If more than 10 queries are returned, we sample 10 queries (for warsaw trajectories)
+            if len(returned_queries) > 10:
+                returned_queries = np.random.choice(returned_queries, 10, replace=False)
         else:
             program = str_to_program(line)
             depth, num_nontrivial_predicates, num_trivial_predicates = get_depth_and_npred(program)
@@ -123,13 +128,13 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
         score_median_log_per_run.append(median_f1)
         score_random_log_per_run.append(score_random)
         runtime_log_per_run.append(runtime)
-    for _ in range(39-len(returned_queries_all_steps)):
+    for _ in range(39-len(returned_queries_all_steps)): # labeling budget between 12 to 50
         score_median_log_per_run.append(score_median_log_per_run[-1])
         score_random_log_per_run.append(score_random_log_per_run[-1])
         runtime_log_per_run.append(runtime_log_per_run[-1])
 
     out_dict = {"score_median": score_median_log_per_run, "score_random": score_random_log_per_run, "runtime": runtime_log_per_run}
-    exp_dir = "/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/outputs/{}/".format(dataset_name)
+    exp_dir = "/gscratch/balazinska/enhaoz/complex_event_video/outputs/{}/".format(dataset_name)
     if not os.path.exists(os.path.join(exp_dir, "stats", method)):
         os.makedirs(os.path.join(exp_dir, "stats", method), exist_ok=True)
     with open(os.path.join(exp_dir, "stats", method, "{}-{}.json".format(query_str, run)), "w") as f:
