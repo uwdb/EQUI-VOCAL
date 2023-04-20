@@ -697,8 +697,8 @@ class VOCALPostgres(BaseMethod):
                 self.output_log.append((rewrite_program_postgres(query.program, self.rewrite_variables), score))
             self.output_log.append("[Runtime so far] {}".format(time.time() - self._start_total_time))
             self.iteration += 1
-            log_dict["best_query"] = rewrite_program_postgres(self.best_query_after_each_iter[0][0].program, self.rewrite_variables)
-            log_dict["best_score"] = self.best_query_after_each_iter[0][1].item()
+            log_dict["best_query_list"] = [rewrite_program_postgres(query.program, self.rewrite_variables) for query, _ in self.best_query_after_each_iter]
+            log_dict["best_score_list"] = [score.item() for _, score in self.best_query_after_each_iter]
             # Prediction
             pred_per_query = self.execute_over_all_inputs_postgres(self.best_query_after_each_iter[0][0].program, is_test=True)
             print("predicted_labels_test", pred_per_query)
