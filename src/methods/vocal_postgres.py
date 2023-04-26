@@ -13,6 +13,7 @@ import psycopg2 as psycopg
 from psycopg2 import pool
 import uuid
 import threading
+import copy
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -164,7 +165,8 @@ class VOCALPostgres(BaseMethod):
     def run_init(self, init_labeled_index):
         self._start_total_time = time.time()
         self.init_nlabels = len(init_labeled_index)
-        self.labeled_index = init_labeled_index
+        # Deep copy
+        self.labeled_index = copy.deepcopy(init_labeled_index)
 
         if self.is_trajectory:
             if self.dataset_name.startswith("collision"):
