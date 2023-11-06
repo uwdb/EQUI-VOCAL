@@ -23,6 +23,7 @@ easy-install.pth
 *.so
 
 # Un-ignore the following
+!LICENSE.txt
 !inputs/synthetic_scene_graph_easy/
 !inputs/synthetic_scene_graph_medium/
 !inputs/synthetic_scene_graph_hard/
@@ -31,3 +32,5 @@ easy-install.pth
 !inputs/without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03/
 !inputs/trajectories_handwritten/
 !inputs/trajectories_duration/
+!inputs/user_study_queries_scene_graph/
+!inputs/warsaw/
