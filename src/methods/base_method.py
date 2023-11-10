@@ -5,7 +5,7 @@ import numpy as np
 import time
 from scipy import stats
 from concurrent.futures import ThreadPoolExecutor
-from src.utils import print_program, rewrite_program, str_to_program, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching, rewrite_program_postgres, str_to_program_postgres
+from src.utils import print_program, rewrite_program, dsl_to_program_quivr, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching, program_to_dsl, dsl_to_program
 import itertools
 from sklearn.utils import resample
 import pandas as pd
@@ -81,7 +81,7 @@ class BaseMethod:
         _start = time.time()
 
         query_list = [query_graph.program for query_graph, _ in self.candidate_queries[:self.pool_size]]
-        print("query pool", [rewrite_program_postgres(query, self.rewrite_variables) for query in query_list])
+        print("query pool", [program_to_dsl(query, self.rewrite_variables) for query in query_list])
         unlabeled_index = np.setdiff1d(np.arange(n_instances), self.labeled_index, assume_unique=True)
         # unlabeled_index = np.setdiff1d(unlabeled_index, self.filtered_index, assume_unique=True)
 

@@ -1,6 +1,6 @@
 import os
 import time
-from utils import rewrite_program_postgres, postgres_execute_cache_sequence, str_to_program_postgres, complexity_cost
+from utils import program_to_dsl, postgres_execute_cache_sequence, dsl_to_program, complexity_cost
 from sklearn.metrics import f1_score
 from itertools import chain, combinations
 import argparse
@@ -10,7 +10,7 @@ import json
 
 if __name__ == '__main__':
     def compute_f1_score(test_program):
-        test_query_str = rewrite_program_postgres(test_program)
+        test_query_str = program_to_dsl(test_program)
         outputs, new_memoize_scene_graph, new_memoize_sequence = postgres_execute_cache_sequence(dsn, test_program, memoize_scene_graph, memoize_sequence, "Obj_clevrer", input_vids, is_trajectory=False, sampling_rate=None)
 
         if lock:
@@ -68,7 +68,7 @@ if __name__ == '__main__':
 
     # Generate all ancestors of the target query
     query_program_list = []
-    target_query = str_to_program_postgres(query_str)
+    target_query = dsl_to_program(query_str)
     # target_query = [{'scene_graph': [{'predicate': 'Far', 'parameter': 3.0, 'variables': ['o0', 'o1']}, {'predicate': 'RightQuadrant', 'parameter': None, 'variables': ['o1']}], 'duration_constraint': 15}, {'scene_graph': [{'predicate': 'FrontOf', 'parameter': None, 'variables': ['o0', 'o1']}, {'predicate': 'Near', 'parameter': 1.0, 'variables': ['o0', 'o1']}], 'duration_constraint': 1}, {'scene_graph': [{'predicate': 'Far', 'parameter': 3.0, 'variables': ['o0', 'o1']}, {'predicate': 'RightQuadrant', 'parameter': None, 'variables': ['o1']}], 'duration_constraint': 5}]
     print("target query str:", query_str)
     print("target query program:", target_query)
@@ -104,15 +104,15 @@ if __name__ == '__main__':
     query_program_list_removing_duplicates = []
     signatures = set()
     for program in query_program_list:
-        signature = rewrite_program_postgres(program)
+        signature = program_to_dsl(program)
         if signature not in signatures:
-            query_program_list_removing_duplicates.append(str_to_program_postgres(signature))
+            query_program_list_removing_duplicates.append(dsl_to_program(signature))
             signatures.add(signature)
     query_program_list = query_program_list_removing_duplicates
     print("number of queries:", len(query_program_list))
     for query_program in query_program_list:
         print(query_program)
-        print(rewrite_program_postgres(query_program))
+        print(program_to_dsl(query_program))
 
     # compute f1 score
     dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
@@ -140,5 +140,5 @@ if __name__ == '__main__':
     with open(os.path.join(log_dirname, log_filename), 'w') as f:
         for iter_depth, score, query_program in results:
             f.write("{}\n".format(iter_depth))
-            f.write("{}\n".format(rewrite_program_postgres(query_program)))
+            f.write("{}\n".format(program_to_dsl(query_program)))
             f.write("{}\n".format(score))

@@ -1,6 +1,6 @@
 from symbol import parameters
 import pytest
-from quivr.utils import rewrite_program_postgres, postgres_execute, str_to_program, quivr_str_to_postgres_program, str_to_program_postgres, postgres_execute_no_caching, postgres_execute_cache_sequence, using
+from quivr.utils import program_to_dsl, postgres_execute, dsl_to_program_quivr, quivr_str_to_postgres_program, dsl_to_program, postgres_execute_no_caching, postgres_execute_cache_sequence, using
 import csv
 import pandas as pd
 import psycopg
@@ -30,7 +30,7 @@ def test_rare_event_queries():
         quivr_outputs = []
         for i in range(len(inputs)):
             input = inputs[i]
-            quivr_program = str_to_program(quivr_str)
+            quivr_program = dsl_to_program_quivr(quivr_str)
             result, _ = quivr_program.execute(input, -1, {}, {})
             if result[0, len(input[0])] > 0:
                 quivr_outputs.append(i)
@@ -60,7 +60,7 @@ def test_rare_event_queries_with_cache():
         for i in range(len(inputs)):
             input = inputs[i]
             memo = memoize_quivr[i]
-            quivr_program = str_to_program(quivr_str)
+            quivr_program = dsl_to_program_quivr(quivr_str)
             result, new_memoize_quivr = quivr_program.execute(input, -1, memo, {})
             memoize_quivr[i].update(new_memoize_quivr)
             if result[0, len(input[0])] > 0:
@@ -72,7 +72,7 @@ def test_rare_event_queries_with_cache():
 def test_scalability(size, port):
     dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
     query_str = "Duration(LeftOf(o0, o1), 5); Conjunction(Conjunction(Conjunction(Conjunction(Behind(o0, o2), Cyan(o2)), FrontOf(o0, o1)), RightQuadrant(o2)), Sphere(o2)); Duration(RightQuadrant(o2), 3)"
-    current_query = str_to_program_postgres(query_str)
+    current_query = dsl_to_program(query_str)
     memoize_scene_graph = [LRU(10000) for _ in range(10000)]
     memoize_sequence = [LRU(10000) for _ in range(10000)]
     inputs_table_name = "Obj_clevrer"
