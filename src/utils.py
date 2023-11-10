@@ -47,7 +47,7 @@ def print_program(program, as_dict_key=False):
         return program.name + "(" + joined_names + ")"
 
 # convert a str back to an executable program; this is an inverse of print_program()
-def str_to_program(program_str):
+def dsl_to_program_quivr(program_str):
     if program_str.startswith("PredicateHole"):
         return dsl.PredicateHole()
     elif program_str.startswith("ParameterHole"):
@@ -139,8 +139,8 @@ def str_to_program(program_str):
             program_init = getattr(dsl, "KleeneOperator")
         elif functionclass == "Duration":
             program_init = getattr(dsl, "DurationOperator")
-            return program_init(str_to_program(submodule_list[0]), int(submodule_list[1]))
-        submodule_list = [str_to_program(submodule) for submodule in submodule_list]
+            return program_init(dsl_to_program_quivr(submodule_list[0]), int(submodule_list[1]))
+        submodule_list = [dsl_to_program_quivr(submodule) for submodule in submodule_list]
         return program_init(*submodule_list)
 
 def get_depth_and_npred(program):
@@ -405,7 +405,7 @@ def postgres_execute(dsn, current_query, memoize_scene_graph, memoize_sequence, 
                 cached_df_seq_per_query = [pd.DataFrame()]
 
                 # sequence cache
-                seq_signature = rewrite_program_postgres(current_query[:len(current_query)-i], not is_trajectory)
+                seq_signature = program_to_dsl(current_query[:len(current_query)-i], not is_trajectory)
                 cached_vids_per_query = set()
                 next_remaining_vids = set()
                 for vid in remaining_vids:
@@ -535,7 +535,7 @@ def postgres_execute(dsn, current_query, memoize_scene_graph, memoize_sequence, 
                 # print("Time for graph {}: {}".format(graph_idx, time.time() - _start))
 
                 # Read cached results
-                # signature = rewrite_program_postgres(current_query[:graph_idx+1], not is_trajectory)
+                # signature = program_to_dsl(current_query[:graph_idx+1], not is_trajectory)
                 cached_results = cached_df_seq_deque.pop()
                 delta_input_vids.extend(cached_vids_deque.pop())
 
@@ -713,7 +713,7 @@ def postgres_execute_cache_sequence_using_temp_tables(conn, current_query, memoi
             cached_df_seq_per_query = [pd.DataFrame()]
 
             # sequence cache
-            seq_signature = rewrite_program_postgres(current_query[:len(current_query)-i], not is_trajectory)
+            seq_signature = program_to_dsl(current_query[:len(current_query)-i], not is_trajectory)
             cached_vids_per_query = set()
             next_remaining_vids = set()
             for vid in remaining_vids:
@@ -960,7 +960,7 @@ def postgres_execute_cache_sequence(conn, current_query, memo, inputs_table_name
 
         signatures = []
         for i in range(len(current_query)):
-            seq_signature = rewrite_program_postgres(current_query[:(i+1)], not is_trajectory)
+            seq_signature = program_to_dsl(current_query[:(i+1)], not is_trajectory)
             signatures.append(seq_signature)
 
         filtered_vids = []
@@ -1273,28 +1273,27 @@ def postgres_execute_no_caching(dsn, current_query, memo, inputs_table_name, inp
     return output_vids, new_memo
 
 
-def rewrite_program_postgres(orig_program, rewrite_variables=True):
+def program_to_dsl(orig_program, rewrite_variables=True):
     """
     Input:
     program: query in the dictionary format
-    Output: query in string format, which is ordered properly (uniquely).
+    Output: query in dsl string format, which is ordered properly (uniquely).
     NOTE: For trajectories, we don't rewrite the variables, since we expect the query to indicate which objects the predicate is referring to, as assumed in the Quivr paper.
     """
     def print_scene_graph(predicate_list):
         if len(predicate_list) == 1:
-            if predicate_list[0]["parameter"]:
-                predicate_name = "{}_{}".format(predicate_list[0]["predicate"], predicate_list[0]["parameter"])
-            else:
-                predicate_name = predicate_list[0]["predicate"]
-            predicate_variables = ", ".join(predicate_list[0]["variables"])
+            return print_scene_graph_helper(predicate_list)
+        else:
+            return "({})".format(print_scene_graph_helper(predicate_list))
+
+    def print_scene_graph_helper(predicate_list):
+        predicate = predicate_list[-1]
+        predicate_name = f"{predicate['predicate']}_{predicate.get('parameter')}" if predicate.get('parameter') else predicate['predicate']
+        predicate_variables = ", ".join(predicate["variables"])
+        if len(predicate_list) == 1:
             return "{}({})".format(predicate_name, predicate_variables)
         else:
-            if predicate_list[-1]["parameter"]:
-                predicate_name = "{}_{}".format(predicate_list[-1]["predicate"], predicate_list[-1]["parameter"])
-            else:
-                predicate_name = predicate_list[-1]["predicate"]
-            predicate_variables = ", ".join(predicate_list[-1]["variables"])
-            return "Conjunction({}, {}({}))".format(print_scene_graph(predicate_list[:-1]), predicate_name, predicate_variables)
+            return "{}, {}({})".format(print_scene_graph_helper(predicate_list[:-1]), predicate_name, predicate_variables)
 
     def print_query(scene_graphs):
         if len(scene_graphs) == 1:
@@ -1338,8 +1337,27 @@ def rewrite_program_postgres(orig_program, rewrite_variables=True):
     return query
 
 
-def str_to_program_postgres(program_str):
-    def parse_submodules(scene_graph_str):
+def dsl_to_program(dsl_str):
+    """
+    Converts a DSL string into a program.
+
+    Args:
+        dsl_str (str): The DSL string to be converted.
+
+    Returns:
+        list: A list of scene graphs, where each scene graph is a dictionary containing a list of predicates and a duration constraint.
+    """
+
+    def parse_duration(scene_graph_str):
+        """
+        Parses the duration of a scene graph.
+
+        Args:
+            scene_graph_str (str): The scene graph string to be parsed.
+
+        Returns:
+            list: A list of submodules.
+        """
         idx = scene_graph_str.find("(")
         idx_r = scene_graph_str.rfind(")")
         submodules = scene_graph_str[idx+1:idx_r]
@@ -1358,13 +1376,39 @@ def str_to_program_postgres(program_str):
         return submodule_list
 
     def parse_conjunction(scene_graph_str):
-        if scene_graph_str.startswith("Conjunction"):
-            submodule_list = parse_submodules(scene_graph_str)
-            return [*parse_conjunction(submodule_list[0]), *parse_conjunction(submodule_list[1])]
-        else:
-            return [parse_predicate(scene_graph_str)]
+        """
+        Parses the conjunction of a scene graph.
+
+        Args:
+            scene_graph_str (str): The scene graph string to be parsed.
+
+        Returns:
+            list: A list of predicates.
+        """
+        predicate_list = []
+        idx = 0
+        counter = 0
+        for i, char in enumerate(scene_graph_str):
+            if char == "(":
+                counter += 1
+            elif char == ")":
+                counter -= 1
+            elif char == "," and counter == 0:
+                predicate_list.append(scene_graph_str[idx:i].strip())
+                idx = i+1
+        predicate_list.append(scene_graph_str[idx:].strip())
+        return [parse_predicate(predicate) for predicate in predicate_list]
 
     def parse_predicate(predicate_str):
+        """
+        Parses a predicate.
+
+        Args:
+            predicate_str (str): The predicate string to be parsed.
+
+        Returns:
+            dict: A dictionary containing the predicate name, parameter (if any), and variables.
+        """
         dict = {}
         # Near_0.95(o0, o1)
         idx = predicate_str.find("(")
@@ -1383,14 +1427,18 @@ def str_to_program_postgres(program_str):
         dict["variables"] = predicate_variables.split(", ")
         return dict
 
-    scene_graphs_str = program_str.split("; ")
+    scene_graph_str_list = dsl_str.split("; ")
     program = []
-    for scene_graph_str in scene_graphs_str:
+    for scene_graph_str in scene_graph_str_list:
         duration_constraint = 1
         if scene_graph_str.startswith("Duration"):
-            submodule_list = parse_submodules(scene_graph_str)
+            submodule_list = parse_duration(scene_graph_str)
             duration_constraint = int(submodule_list[-1])
             scene_graph_str = submodule_list[0]
+        # remove the outermost parentheses if any
+        if scene_graph_str.startswith("(") and scene_graph_str.endswith(")"):
+            scene_graph_str = scene_graph_str[1:-1]
+        print(scene_graph_str)
         scene_graph = {"scene_graph": parse_conjunction(scene_graph_str), "duration_constraint": duration_constraint}
         program.append(scene_graph)
     return program
@@ -1561,7 +1609,139 @@ def quivr_str_to_postgres_program(quivr_str):
             scene_graph[0]["duration_constraint"] = int(submodule_list[1])
             return scene_graph
 
+def program_to_dsl_old(orig_program, rewrite_variables=True):
+    """
+    [deprecated]
+    Input:
+    program: query in the dictionary format
+    Output: query in string format, which is ordered properly (uniquely).
+    NOTE: For trajectories, we don't rewrite the variables, since we expect the query to indicate which objects the predicate is referring to, as assumed in the Quivr paper.
+    """
+    def print_scene_graph(predicate_list):
+        if len(predicate_list) == 1:
+            if predicate_list[0]["parameter"]:
+                predicate_name = "{}_{}".format(predicate_list[0]["predicate"], predicate_list[0]["parameter"])
+            else:
+                predicate_name = predicate_list[0]["predicate"]
+            predicate_variables = ", ".join(predicate_list[0]["variables"])
+            return "{}({})".format(predicate_name, predicate_variables)
+        else:
+            if predicate_list[-1]["parameter"]:
+                predicate_name = "{}_{}".format(predicate_list[-1]["predicate"], predicate_list[-1]["parameter"])
+            else:
+                predicate_name = predicate_list[-1]["predicate"]
+            predicate_variables = ", ".join(predicate_list[-1]["variables"])
+            return "Conjunction({}, {}({}))".format(print_scene_graph(predicate_list[:-1]), predicate_name, predicate_variables)
+
+    def print_query(scene_graphs):
+        if len(scene_graphs) == 1:
+            return scene_graphs[0]
+        else:
+            return "{}; {}".format(print_query(scene_graphs[:-1]), scene_graphs[-1])
+
+    program = copy.deepcopy(orig_program)
+    # Rewrite the program
+    encountered_variables = []
+    for dict in program:
+        scene_graph = dict["scene_graph"]
+        scene_graph = sorted(scene_graph, key=lambda x: x["predicate"] + " ".join(x["variables"]))
+        if rewrite_variables:
+            # Rewrite variables
+            for i, p in enumerate(scene_graph):
+                rewritten_variables = []
+                for v in p["variables"]:
+                    if v not in encountered_variables:
+                        encountered_variables.append(v)
+                        rewritten_variables.append("o" + str(len(encountered_variables) - 1))
+                    else:
+                        rewritten_variables.append("o" + str(encountered_variables.index(v)))
+                # Sort rewritten variables
+                # NOTE: Why do we want to sort?
+                # We assume that the order of variables in a predicate does not matter
+                rewritten_variables = sorted(rewritten_variables)
+                scene_graph[i]["variables"] = rewritten_variables
+        dict["scene_graph"] = scene_graph
+
+    scene_graphs = []
+    for dict in program:
+        scene_graph = dict["scene_graph"]
+        duration_constraint = int(dict["duration_constraint"])
+        scene_graph_str = print_scene_graph(scene_graph)
+        if duration_constraint > 1:
+            scene_graph_str = "Duration({}, {})".format(scene_graph_str, duration_constraint)
+        scene_graphs.append(scene_graph_str)
+
+    query = print_query(scene_graphs)
+    return query
+
+
+def dsl_to_program_old(program_str):
+    """
+    [deprecated]
+    """
+    def parse_submodules(scene_graph_str):
+        idx = scene_graph_str.find("(")
+        idx_r = scene_graph_str.rfind(")")
+        submodules = scene_graph_str[idx+1:idx_r]
+        counter = 0
+        submodule_list = []
+        submodule_start = 0
+        for i, char in enumerate(submodules):
+            if char == "," and counter == 0:
+                submodule_list.append(submodules[submodule_start:i])
+                submodule_start = i+2
+            elif char == "(":
+                counter += 1
+            elif char == ")":
+                counter -= 1
+        submodule_list.append(submodules[submodule_start:])
+        return submodule_list
+
+    def parse_conjunction(scene_graph_str):
+        if scene_graph_str.startswith("Conjunction"):
+            submodule_list = parse_submodules(scene_graph_str)
+            return [*parse_conjunction(submodule_list[0]), *parse_conjunction(submodule_list[1])]
+        else:
+            return [parse_predicate(scene_graph_str)]
+
+    def parse_predicate(predicate_str):
+        dict = {}
+        # Near_0.95(o0, o1)
+        idx = predicate_str.find("(")
+        idx_r = predicate_str.rfind(")")
+        predicate_name = predicate_str[:idx].split("_")
+        dict["predicate"] = predicate_name[0]
+        if len(predicate_name) > 1:
+            try:
+                dict["parameter"] = float(predicate_name[1])
+            except:
+                dict["parameter"] = predicate_name[1]
+        else:
+            dict["parameter"] = None
+        # dict["parameter"] = float(predicate_name[1]) if len(predicate_name) > 1 else None
+        predicate_variables = predicate_str[idx+1:idx_r]
+        dict["variables"] = predicate_variables.split(", ")
+        return dict
+
+    scene_graphs_str = program_str.split("; ")
+    program = []
+    for scene_graph_str in scene_graphs_str:
+        duration_constraint = 1
+        if scene_graph_str.startswith("Duration"):
+            submodule_list = parse_submodules(scene_graph_str)
+            duration_constraint = int(submodule_list[-1])
+            scene_graph_str = submodule_list[0]
+        scene_graph = {"scene_graph": parse_conjunction(scene_graph_str), "duration_constraint": duration_constraint}
+        program.append(scene_graph)
+    return program
+
 if __name__ == '__main__':
+    target_query = "Duration((Color_red(o0), Far_3(o0, o1), Shape_cylinder(o1)), 25); (Near_1(o0, o1), RightQuadrant(o2), TopQuadrant(o2))"
+    target_program = dsl_to_program(target_query)
+    print(target_program)
+    print(program_to_dsl(target_program))
+    exit()
+
     dsn = "dbname=myinner_db user=enhaoz host=localhost"
     conn = psycopg.connect(dsn)
 
@@ -1581,7 +1761,7 @@ if __name__ == '__main__':
     with open(os.path.join(test_dir, labels_filename), 'r') as f:
         labels = json.load(f)
     test_query = "Eastward4(o0); Eastward3(o0); Eastward2(o1)"
-    test_program = str_to_program_postgres(test_query)
+    test_program = dsl_to_program(test_query)
     print(test_program)
     outputs, new_memo = postgres_execute_cache_sequence(conn, test_program, memo, inputs_table_name, input_vids, is_trajectory, sampling_rate=None)
     preds = []

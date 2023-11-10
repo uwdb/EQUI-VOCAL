@@ -4,7 +4,7 @@ import itertools
 import shutil
 import numpy as np
 import os
-from src.utils import rewrite_program_postgres, str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence
+from src.utils import program_to_dsl, dsl_to_program, postgres_execute, postgres_execute_cache_sequence
 import csv
 from itertools import repeat
 from concurrent.futures import ThreadPoolExecutor
@@ -246,7 +246,7 @@ def prepare_warsaw_queries():
 
     dataset_name = "warsaw"
     for query_program in query_programs:
-        query_str = rewrite_program_postgres(query_program, False)
+        query_str = program_to_dsl(query_program, False)
         print(query_str)
         prepare_data_given_target_query(query_str, 0, 1, dataset_name, "Obj_warsaw", sampling_rate=None)
         construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}".format(dataset_name), n_train=37500)

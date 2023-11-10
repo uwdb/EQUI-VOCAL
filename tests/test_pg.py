@@ -1,4 +1,4 @@
-from utils import rewrite_program_postgres, str_to_program_postgres, complexity_cost
+from utils import program_to_dsl, dsl_to_program, complexity_cost
 import dsl
 import copy
 import time
@@ -78,7 +78,7 @@ def postgres_execute_cache_sequence(job_id):
                 cached_df_seq_per_query = [pd.DataFrame()]
 
                 # sequence cache
-                seq_signature = rewrite_program_postgres(current_query[:len(current_query)-i])
+                seq_signature = program_to_dsl(current_query[:len(current_query)-i])
                 cached_vids_per_query = set()
                 next_remaining_vids = set()
                 for vid in remaining_vids:

@@ -14,7 +14,7 @@ import itertools
 import shutil
 import numpy as np
 import os
-from src.utils import rewrite_program_postgres, str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence
+from src.utils import program_to_dsl, dsl_to_program, postgres_execute, postgres_execute_cache_sequence
 import csv
 from itertools import repeat
 from concurrent.futures import ThreadPoolExecutor

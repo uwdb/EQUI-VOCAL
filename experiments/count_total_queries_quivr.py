@@ -1,7 +1,7 @@
 import csv
 import os
 from methods.exhaustive_search import ExhaustiveSearch
-from utils import print_program, rewrite_program_postgres, str_to_program
+from utils import print_program, program_to_dsl, dsl_to_program_quivr
 from methods.quivr_exact import QUIVR
 from methods.quivr_original import QUIVROriginal
 from methods.quivr_original_no_kleene import QUIVROriginalNoKleene

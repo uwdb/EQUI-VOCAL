@@ -4,7 +4,7 @@ import itertools
 import shutil
 import numpy as np
 import os
-from src.utils import rewrite_program_postgres, str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence
+from src.utils import program_to_dsl, dsl_to_program, postgres_execute, postgres_execute_cache_sequence
 import csv
 from itertools import repeat
 from concurrent.futures import ThreadPoolExecutor
@@ -109,8 +109,8 @@ def generate_one_query(npred, depth, max_duration, nvars, predicate_list, attr_p
             scene_graph_str = "Duration({}, {})".format(scene_graph_str, duration_per_scene_graph[i])
         scene_graphs.append(scene_graph_str)
     query = "; ".join(scene_graphs)
-    program = str_to_program_postgres(query)
-    query = rewrite_program_postgres(program)
+    program = dsl_to_program(query)
+    query = program_to_dsl(program)
     print(query)
     inputs_table_name = "Obj_clevrer"
     return prepare_data_given_target_query(query, ratio_lower_bound, ratio_upper_bound, dataset_name, inputs_table_name, port)
@@ -123,7 +123,7 @@ def prepare_data_given_target_query(program_str, ratio_lower_bound, ratio_upper_
 
     ratio: minimum ratio of positive examples to negative examples
     """
-    program = str_to_program_postgres(program_str)
+    program = dsl_to_program(program_str)
     dsn = "dbname=myinner_db user=enhaoz host=localhost port={}".format(port)
     conn = psycopg.connect(dsn)
     if inputs_table_name == "Obj_clevrer":
