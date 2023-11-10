@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score
-from src.utils import str_to_program, get_depth_and_npred
+from src.utils import dsl_to_program_quivr, get_depth_and_npred
 from lru import LRU
 import argparse
 
@@ -87,7 +87,7 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
                 returned_queries = np.random.choice(returned_queries, 10, replace=False)
             returned_queries_all_steps.append(returned_queries)
         else:
-            program = str_to_program(line)
+            program = dsl_to_program_quivr(line)
             depth, num_nontrivial_predicates, num_trivial_predicates = get_depth_and_npred(program)
             npred = num_nontrivial_predicates + num_trivial_predicates
             # print(line, depth, npred)
@@ -115,7 +115,7 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
                 input = inputs[i]
                 pred_per_input = []
                 for query in returned_queries:
-                    program = str_to_program(query)
+                    program = dsl_to_program_quivr(query)
                     memoize = memoize_all_inputs[i]
                     result, new_memoize = program.execute(input, -1, memoize, {})
                     memoize_all_inputs[i].update(new_memoize)

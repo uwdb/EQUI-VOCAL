@@ -347,7 +347,7 @@ if __name__ == '__main__':
             raise NotImplementedError
     elif dataset_name.startswith("without_duration"):
         query_strs = [
-            "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))",
+            "(BottomQuadrant(o0), Near_1.0(o0, o1))",
             "Conjunction(FrontOf(o0, o1), TopQuadrant(o0))",
             "Near_1(o0, o1); Far_3(o0, o1)",
             "Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))",

@@ -2,7 +2,7 @@ import copy
 import itertools
 from collections import deque
 import src.dsl as dsl
-from src.utils import print_program, rewrite_program_postgres, str_to_program_postgres, get_depth_and_npred
+from src.utils import print_program, program_to_dsl, dsl_to_program, get_depth_and_npred
 
 class QueryGraph(object):
 
@@ -236,13 +236,14 @@ class QueryGraph(object):
 
     def get_all_children_bu(self):
         """
+        [Not used] Bottom-up expansion
         Example query:
             q = True*; p11 ^ ... ^ p1i ^ d1; True*; p21 ^ ... ^ p2j ^ d2; True*
             (Base case, one scene graph: True*; p11 ^ ... ^ p1i ^ d1; True*)
         Verbose form:
             q = Seq(Seq(Seq(Seq(True*, Duration(Conj(Conj(p13, p12), p11), theta1)), True*), Duration(Conj(Conj(p23, p22), p21), theta2)), True*)
 
-        Output: a list of all possible children of the current query graph. Each child is rewriten into the ordered format to avoid duplicates.
+        Output: a list of all possible expanded queries of the current query graph. Each child is rewriten into the ordered format to avoid duplicates.
         """
         all_children = []
         # Action a: Scene graph construction: add a predicate to existing scene graph (i.e., the last scene graph in the sequence).
@@ -326,11 +327,10 @@ class QueryGraph(object):
     def get_all_children_unrestricted_postgres(self):
         """
         predicate_list = [{"name": "Near", "parameters": [-1.05], "nargs": 2}, {...}, ...]
-        Output: a list of all possible children of the current query graph. Each child is rewriten into the ordered format to avoid duplicates.
+        Output: a list of all possible expanded queries of the current query graph. Each child is rewriten into the ordered format to avoid duplicates.
         """
         all_children = []
-        # Action a: Scene graph construction: add a predicate to existing scene graph (i.e., the last scene graph in the sequence).
-        # Require: the last scene graph must not have duration constraint.
+        # Action a: Scene graph construction: Add a predicate to an existing region graph
         if self.npred + 1 <= self.max_npred:
             pred_instances = []
             for pred in self.predicate_list:
@@ -370,10 +370,10 @@ class QueryGraph(object):
                         new_query = copy.deepcopy(self)
                         new_query.program[scene_graph_idx]["scene_graph"].append({"predicate": pred_instance["name"], "parameter": pred_instance["parameter"], "variables": list(variables)})
                         new_query.npred += 1
-                        print("Action A: ", rewrite_program_postgres(new_query.program, not self.is_trajectory))
+                        print("Action A: ", program_to_dsl(new_query.program, not self.is_trajectory))
                         all_children.append(new_query)
 
-        # Action b: Sequence construction: add a new scene graph (which consists of one predicate) to the end of the sequence.
+        # Action b: Sequence construction: insert a new region graph consisting of one predicate into any position of the existing sequence of region graphs
         # 1. q' = Seq(Seq(q, p31), True*)
         if self.npred + 1 <= self.max_npred and self.depth + 1 <= self.max_depth:
             pred_instances = []
@@ -409,10 +409,10 @@ class QueryGraph(object):
                         new_query.program.insert(insert_idx, new_scene_graph)
                         new_query.npred += 1
                         new_query.depth += 1
-                        print("Action B: ", rewrite_program_postgres(new_query.program, not self.is_trajectory))
+                        print("Action B: ", program_to_dsl(new_query.program, not self.is_trajectory))
                         all_children.append(new_query)
 
-        # Action c: Duration refinement: increase the duration of the a scene graph
+        # Action c: Duration refinement: increase the duration of a scene graph
         for scene_graph_idx, dict in enumerate(self.program):
             scene_graph = dict["scene_graph"]
             if dict["duration_constraint"] < self.max_duration:
@@ -421,7 +421,7 @@ class QueryGraph(object):
                     new_query.program[scene_graph_idx]["duration_constraint"] = self.duration_unit
                 else:
                     new_query.program[scene_graph_idx]["duration_constraint"] += self.duration_unit
-                print("Action C: ", rewrite_program_postgres(new_query.program, not self.is_trajectory))
+                print("Action C: ", program_to_dsl(new_query.program, not self.is_trajectory))
                 all_children.append(new_query)
 
         # Remove duplicates
@@ -429,9 +429,9 @@ class QueryGraph(object):
         print("[all_children] before removing duplicates:", len(all_children))
         signatures = set()
         for query in all_children:
-            signature = rewrite_program_postgres(query.program, not self.is_trajectory)
+            signature = program_to_dsl(query.program, not self.is_trajectory)
             if signature not in signatures:
-                query.program = str_to_program_postgres(signature)
+                query.program = dsl_to_program(signature)
                 all_children_removing_duplicates.append(query)
                 signatures.add(signature)
         print("[all_children] after removing duplicates:", len(all_children_removing_duplicates))

@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.metrics import f1_score
 from lru import LRU
 import time
-from src.utils import str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching
+from src.utils import dsl_to_program, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching
 import math
 import argparse
 import multiprocessing
@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, task_name, value, **kwargs):
     def compute_f1_score(test_query):
-        test_program = str_to_program_postgres(test_query)
+        test_program = dsl_to_program(test_query)
         conn = connections.getconn()
         outputs, new_memo = postgres_execute_cache_sequence(conn, test_program, memo, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
         connections.putconn(conn)
@@ -282,7 +282,7 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
 
 def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, method, query_str, sampling_rate, port, multithread):
     def compute_f1_score(test_query):
-        test_program = str_to_program_postgres(test_query)
+        test_program = dsl_to_program(test_query)
         conn = connections.getconn()
         outputs, new_memo = postgres_execute_cache_sequence(conn, test_program, memo, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
         connections.putconn(conn)
