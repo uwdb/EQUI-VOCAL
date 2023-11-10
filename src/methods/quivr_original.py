@@ -9,6 +9,8 @@ import resource
 import random
 from lru import LRU
 from collections import deque
+import os
+from src.utils import str_to_program
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -18,7 +20,8 @@ class QUIVROriginal:
 
     def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_nontrivial, max_trivial, max_depth, max_duration, budget, multithread, lru_capacity):
         self.dataset_name = dataset_name
-        self.inputs = np.array(inputs, dtype=object)
+        self.inputs = [np.array(input, dtype=float) for input in inputs.tolist()]
+        # np.array(inputs, dtype=object)
         self.labels = np.array(labels, dtype=object)
         self.predicate_list = predicate_list
         self.max_npred = max_npred
@@ -84,11 +87,9 @@ class QUIVROriginal:
             else:
                 sampled_answer = answer
 
-            sampled_unlabeled_trajectories = []
-            for i in range(len(self.inputs)):
-                if i not in self.labeled_index:
-                    sampled_unlabeled_trajectories.append(i)
-            sampled_unlabeled_trajectories = random.sample(sampled_unlabeled_trajectories, 100)
+            sampled_unlabeled_trajectories = np.setdiff1d(np.arange(len(self.inputs)), self.labeled_index, assume_unique=True)
+            # sampled_unlabeled_trajectories = random.sample(sampled_unlabeled_trajectories, 100)
+            sampled_unlabeled_trajectories = np.random.choice(sampled_unlabeled_trajectories, 100, replace=False)
             _start_pick_next_sample = time.time()
             j_values = np.zeros(len(sampled_unlabeled_trajectories))
             # prediction_matrix = []
@@ -184,9 +185,7 @@ class QUIVROriginal:
             # IF: overapproximation doesn't match, prune Q
             _start_prune_partial_query = time.time()
             overapproximation_for_all_inputs = True
-            for i in range(len(self.inputs)):
-                if i not in self.labeled_index:
-                    continue
+            for i in self.labeled_index:
                 input = self.inputs[i]
                 label = self.labels[i]
                 # NOTE: additional pruning?
@@ -223,9 +222,7 @@ class QUIVROriginal:
         _start = time.time()
         for candidate_query in self.consistent_queries:
             matched = True
-            for i in range(len(self.inputs)):
-                if i not in self.labeled_index:
-                    continue
+            for i in self.labeled_index:
                 input = self.inputs[i]
                 label = self.labels[i]
 
@@ -282,9 +279,7 @@ class QUIVROriginal:
         theta_lb = value_range[0]
         theta_ub = value_range[1]
         # for i, (input, label) in enumerate(zip(self.inputs[self.labeled_index], self.labels[self.labeled_index])):
-        for i in range(len(self.inputs)):
-            if i not in self.labeled_index:
-                continue
+        for i in self.labeled_index:
             input = self.inputs[i]
             label = self.labels[i]
             memoize = self.memoize_all_inputs[i]
@@ -394,3 +389,129 @@ class QUIVROriginal:
                 else:
                     #add submodules
                     queue.append(functionclass)
+
+    def active_learning_stage(self, init_labeled_index, log_dirname, log_filename):
+        _start_time = time.time()
+        init_nlabels = len(init_labeled_index)
+        self.labeled_index = init_labeled_index
+        if self.lru_capacity:
+            self.memoize_all_inputs = [LRU(self.lru_capacity) for _ in range(len(self.inputs))] # For each (input, label) pair, memoize the results of all sub-queries encountered during synthesis.
+        else:
+            self.memoize_all_inputs = [{} for _ in range(len(self.inputs))]
+        # Read the 0-step results and preprocess them.
+        with open(os.path.join(log_dirname, "{}.log".format(log_filename)), 'r') as f:
+            lines = f.readlines()
+            lines = [line.rstrip() for line in lines]
+        answer = []
+        for line in lines:
+            if line.startswith("Start"): # A query
+                program = str_to_program(line)
+                answer.append(program)
+            elif line.startswith("[Count candidate queries]"):
+                self.count_candidate_queries = int(line.replace("[Count candidate queries] ", ""))
+            elif line.startswith("[Count predictions]"):
+                self.count_predictions = int(line.replace("[Count predictions] ", ""))
+            elif line.startswith("[Runtime so far]"):
+                _start_total_time = time.time() - float(line.replace("[Runtime so far] ", ""))
+                zero_step_time = float(line.replace("[Runtime so far] ", ""))
+        self.output_log.append("[Step 0]")
+        for query in answer:
+            print("answer", print_program(query))
+            self.output_log.append(print_program(query))
+        print("[# queries]: {}".format(len(answer)))
+        self.output_log.append("[# queries]: {}".format(len(answer)))
+        print("[Runtime so far] {}".format(zero_step_time))
+        self.output_log.append("[Runtime so far] {}".format(zero_step_time))
+        print("[Memory footprint] {}".format(using("profile")))
+        self.output_log.append("[Memory footprint] {}".format(using("profile")))
+        print("[Count candidate queries] {}".format(self.count_candidate_queries))
+        self.output_log.append("[Count candidate queries] {}".format(self.count_candidate_queries))
+        print("[Count predictions] {}".format(self.count_predictions))
+        self.output_log.append("[Count predictions] {}".format(self.count_predictions))
+
+        # Sampling-based active learning: sample 100 queries and 100 unlabeled trajecotries.
+        while len(self.labeled_index) < self.budget and len(answer) > 0:
+            print("[Step {}]".format(len(self.labeled_index) - init_nlabels + 1))
+            self.output_log.append("[Step {}]".format(len(self.labeled_index) - init_nlabels + 1))
+
+            if len(answer) > 100:
+                sampled_answer = random.sample(answer, 100)
+            else:
+                sampled_answer = answer
+
+            sampled_unlabeled_trajectories = np.setdiff1d(np.arange(len(self.inputs)), self.labeled_index, assume_unique=True)
+            # sampled_unlabeled_trajectories = random.sample(sampled_unlabeled_trajectories, 100)
+            sampled_unlabeled_trajectories = np.random.choice(sampled_unlabeled_trajectories, 100, replace=False)
+            _start_pick_next_sample = time.time()
+            j_values = np.zeros(len(sampled_unlabeled_trajectories))
+            # prediction_matrix = []
+            for i in range(len(sampled_unlabeled_trajectories)):
+                input = self.inputs[i]
+                label = self.labels[i]
+                memoize = self.memoize_all_inputs[i]
+                pred_per_input = []
+                for query in sampled_answer:
+                    result, new_memoize = query.execute(input, -1, memoize, {})
+                    self.count_predictions += 1
+                    self.memoize_all_inputs[i].update(new_memoize)
+                    pred_per_input.append(int(result[0, len(input[0])] > 0))
+                # prediction_matrix.append(pred_per_input)
+                hist, bin_edges = np.histogram(pred_per_input, bins=2)
+                prob_i = hist/np.sum(hist)
+                j_values[i] = np.sum(prob_i * (1 - prob_i))
+            next_idx = np.argmax(j_values)
+            self.sample_selection_time += time.time() - _start_pick_next_sample
+            if j_values[next_idx] == 0:
+                for query in answer:
+                    print("answer", print_program(query))
+                    self.output_log.append(print_program(query))
+                print("[# queries]: {}".format(len(answer)))
+                self.output_log.append("[# queries]: {}".format(len(answer)))
+                print("[Runtime so far] {}".format(time.time() - _start_total_time))
+                self.output_log.append("[Runtime so far] {}".format(time.time() - _start_total_time))
+                print("[Memory footprint] {}".format(using("profile")))
+                self.output_log.append("[Memory footprint] {}".format(using("profile")))
+                print("No more uncertainty")
+                self.output_log.append("No more uncertainty")
+                break
+            self.labeled_index.append(next_idx)
+            print("# labeled segments", len(self.labeled_index))
+            print("# positive: {}, # negative: {}".format(sum(self.labels[self.labeled_index]), len(self.labels[self.labeled_index]) - sum(self.labels[self.labeled_index])))
+            # Prune inconsistent queries
+            _start_prune_inconsistent_queries_active_learing = time.time()
+            updated_answer = []
+            input = self.inputs[next_idx]
+            label = self.labels[next_idx]
+            memoize = self.memoize_all_inputs[next_idx]
+            for query in answer:
+                result, new_memoize = query.execute(input, -1, memoize, {})
+                self.count_predictions += 1
+                self.memoize_all_inputs[next_idx].update(new_memoize)
+                if (result[0, len(input[0])] > 0) == label:
+                    updated_answer.append(query)
+            answer = updated_answer
+            print("Number of queries after pruning inconsistent queries:", len(answer))
+            for query in answer:
+                print("answer", print_program(query))
+                self.output_log.append(print_program(query))
+            self.prune_inconsistent_queries_active_learing_time += time.time() - _start_prune_inconsistent_queries_active_learing
+            print("[# queries]: {}".format(len(answer)))
+            self.output_log.append("[# queries]: {}".format(len(answer)))
+            print("[Runtime so far] {}".format(time.time() - _start_total_time))
+            self.output_log.append("[Runtime so far] {}".format(time.time() - _start_total_time))
+            print("[Memory footprint] {}".format(using("profile")))
+            self.output_log.append("[Memory footprint] {}".format(using("profile")))
+            print("[Count candidate queries] {}".format(self.count_candidate_queries))
+            self.output_log.append("[Count candidate queries] {}".format(self.count_candidate_queries))
+            print("[Count predictions] {}".format(self.count_predictions))
+            self.output_log.append("[Count predictions] {}".format(self.count_predictions))
+
+        total_time = time.time() - _start_total_time
+        total_time_log = "[Runtime] enumerate all possible answers time: {}, prune partial query time: {}, prune parameter values time: {}, find children time: {}, other time: {}, zero steps total time: {}, sample selection time: {}, pruning in active learning time: {}, total time: {}".format(self.enumerate_all_possible_answers_time, self.prune_partial_query_time, self.prune_parameter_values_time, self.find_children_time, self.other_time, self.zero_step_total_time, self.sample_selection_time, self.prune_inconsistent_queries_active_learing_time, total_time)
+        print(total_time_log)
+        self.output_log.append(total_time_log)
+        print("[Count candidate queries] {}".format(self.count_candidate_queries))
+        self.output_log.append("[Count candidate queries] {}".format(self.count_candidate_queries))
+        print("[Count predictions] {}".format(self.count_predictions))
+        self.output_log.append("[Count predictions] {}".format(self.count_predictions))
+        return self.output_log

@@ -40,6 +40,7 @@ def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivia
         for input in inputs:
             inputs_downsampled.append([input[0][::sampling_rate], input[1][::sampling_rate]])
         inputs = inputs_downsampled
+        inputs = np.asarray(inputs, dtype=object)
     pos_idx = np.where(labels == 1)[0]
     neg_idx = np.where(labels == 0)[0]
     print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
@@ -56,7 +57,77 @@ def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivia
 
     return output_log
 
+def test_quivr_original_active_learning(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, log_dirname, log_filename):
+    if dataset_name.startswith("collision"):
+        with open(os.path.join(input_dir, "collision.json"), 'r') as f:
+            trajectories = json.load(f)
+    elif dataset_name == "warsaw":
+        with open(os.path.join(input_dir, "warsaw_trajectory_pairs.json"), 'r') as f:
+            trajectories = json.load(f)
+    else:
+        with open(os.path.join(input_dir, "trajectory_pairs.json"), 'r') as f:
+            trajectories = json.load(f)
+    with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
+        inputs = json.load(f)
+    with open(os.path.join(input_dir, "{}/train/{}_labels.json".format(dataset_name, query_str)), 'r') as f:
+        labels = json.load(f)
+    trajectories = np.asarray(trajectories, dtype=object)
+    labels = np.asarray(labels, dtype=object)
+    inputs = trajectories[inputs]
+    if "sampling_rate" in dataset_name:
+        splits = dataset_name.split("-")
+        for split in splits:
+            if split.startswith("sampling_rate_"):
+                sampling_rate = int(split.replace("sampling_rate_", ""))
+                break
+        print("sampling_rate", sampling_rate)
+        # Down-sample the trajectory once every sampling_rate frames
+        inputs_downsampled = []
+        for input in inputs:
+            inputs_downsampled.append([input[0][::sampling_rate], input[1][::sampling_rate]])
+        inputs = inputs_downsampled
+        inputs = np.asarray(inputs, dtype=object)
+    pos_idx = np.where(labels == 1)[0]
+    neg_idx = np.where(labels == 0)[0]
+    print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
+
+    init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
+    print(init_labeled_index)
+
+    method = QUIVROriginal
+    algorithm = method(dataset_name, inputs, labels, predicate_dict, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, lru_capacity)
+    output_log = algorithm.active_learning_stage(init_labeled_index, log_dirname, log_filename)
+
+    return output_log
+
 def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
+
+    if dataset_name.startswith("user_study_queries_scene_graph"):
+        if dataset_name == "user_study_queries_scene_graph-simulated_user_error":
+            fn_error_rates = [0.061, 0.091, 0.286, 0.123, 0.133, 0.714]
+            fp_error_rates = [0.25, 0.169, 0.308, 0.065, 0.028, 0.029]
+            query_strs = [
+                "Conjunction(Conjunction(Color_red(o0), Far_3(o0, o1)), Shape_cylinder(o1)); Near_1(o0, o1)",
+                "Conjunction(Conjunction(Color_red(o0), Far_3(o0, o1)), Shape_cylinder(o1)); Conjunction(Conjunction(Near_1(o0, o1), RightQuadrant(o2)), TopQuadrant(o2))",
+                "Duration(Conjunction(Conjunction(Color_red(o0), Far_3(o0, o1)), Shape_cylinder(o1)), 25); Conjunction(Conjunction(Near_1(o0, o1), RightQuadrant(o2)), TopQuadrant(o2))",
+                "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0))",
+                "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0)); TopQuadrant(o1)",
+                "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0)); TopQuadrant(o1); Duration(Conjunction(BottomQuadrant(o2), RightQuadrant(o2)), 25)"
+            ]
+            query_idx = query_strs.index(query_str)
+            fn_error_rate = fn_error_rates[query_idx]
+            fp_error_rate = fp_error_rates[query_idx]
+            print("fn_error_rate", fn_error_rate, "fp_error_rate", fp_error_rate)
+        else: # 'user_study_queries_scene_graph-fn_error_rate_0.3-fp_error_rate_0.03',
+            fn_error_rate = None
+            fp_error_rate = None
+            splits = dataset_name.split("-")
+            for split in splits:
+                if split.startswith("fn_error_rate"):
+                    fn_error_rate = float(split.replace("fn_error_rate_", ""))
+                elif split.startswith("fp_error_rate"):
+                    fp_error_rate = float(split.replace("fp_error_rate_", ""))
+        dataset_name = "user_study_queries_scene_graph"
 
     with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
         inputs = json.load(f)
@@ -79,6 +150,20 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     print("sampling_rate", sampling_rate)
     init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
     print(init_labeled_index)
+
+    if dataset_name == "user_study_queries_scene_graph" and fn_error_rate:
+        fn_count = 0
+        fp_count = 0
+        # flip the label with probability error_rate
+        for i in range(len(labels)):
+            if i not in init_labeled_index and labels[i] and random.random() < fn_error_rate:
+                labels[i] = 0
+                fn_count += 1
+            elif i not in init_labeled_index and not labels[i] and random.random() < fp_error_rate:
+                labels[i] = 1
+                fp_count += 1
+        print("fn_count", fn_count, "fp_count", fp_count)
+
     if method == "vocal_postgres":
         algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
     elif method == "vocal_postgres_no_active_learning":
@@ -161,10 +246,12 @@ def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, mu
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--method', type=str, help='Query synthesis method.', choices=['vocal_postgres', 'vocal_postgres_no_active_learning', 'quivr_original', 'quivr_original_no_kleene'])
+    ap.add_argument('--method', type=str, help='Query synthesis method.', choices=['vocal_postgres', 'vocal_postgres_no_active_learning', 'quivr_original', 'quivr_original_no_kleene', "quivr_original_active_learning", "quivr_original_no_kleene_active_learning"])
     ap.add_argument('--n_init_pos', type=int, default=2, help='Number of initial positive examples provided by the user.')
     ap.add_argument('--n_init_neg', type=int, default=10, help='Number of initial negative examples provided by the user.')
-    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01', 'without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03', 'demo_queries_scene_graph', 'shibuya', 'warsaw','user_study_queries_scene_graph', 'synthetic_scene_graph_hard_v2'])
+    ap.add_argument('--dataset_name', type=str, help='Name of the dataset.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'without_duration-sampling_rate_4-fn_error_rate_0.1-fp_error_rate_0.01', 'without_duration-sampling_rate_4-fn_error_rate_0.3-fp_error_rate_0.03', 'demo_queries_scene_graph', 'shibuya', 'warsaw', 'user_study_queries_scene_graph-fn_error_rate_0.3-fp_error_rate_0.03', 'user_study_queries_scene_graph-fn_error_rate_0.5-fp_error_rate_0.05',
+    'user_study_queries_scene_graph-simulated_user_error',
+    'user_study_queries_scene_graph', 'synthetic_scene_graph_hard_v2'])
     ap.add_argument('--npred', type=int, default=5, help='Maximum number of predicates that the synthesized queries can have.')
     ap.add_argument('--n_nontrivial', type=int, help='Maximum number of non-trivial predicates that the synthesized queries can have. Used by Quivr.')
     ap.add_argument('--n_trivial', type=int, help='Maximum number of trivial predicates (i.e., <True>* predicate) that the synthesized queries can have. Used by Quivr.')
@@ -219,7 +306,7 @@ if __name__ == '__main__':
     # random.seed(time.time())
 
     # Define file directory and name
-    if method_str in ["quivr_original", "quivr_original_no_kleene"]:
+    if method_str in ["quivr_original", "quivr_original_no_kleene", "quivr_original_active_learning", "quivr_original_no_kleene_active_learning"]:
         method_name = method_str
         config_name = "nip_{}-nin_{}-npred_{}-n_nontrivial_{}-n_trivial_{}-depth_{}-max_d_{}-thread_{}-lru_{}".format(n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, multithread, lru_capacity)
     elif method_str.startswith("vocal_postgres"):
@@ -240,16 +327,16 @@ if __name__ == '__main__':
     if dataset_name.startswith("trajectories_handwritten") or dataset_name.startswith("trajectories_duration"):
         if method_str.startswith("vocal_postgres"):
             predicate_dict = [{"name": "Near", "parameters": [1], "nargs": 2}, {"name": "Far", "parameters": [3], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightOf", "parameters": None, "nargs": 2}, {"name": "FrontOf", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "LeftQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "BottomQuadrant", "parameters": None, "nargs": 1}]
-        elif method_str == "quivr_original":
+        elif method_str in ["quivr_original", "quivr_original_active_learning"]:
             predicate_dict = {dsl.Near: [-1], dsl.Far: [3], dsl.MinLength: None, dsl.LeftOf: None, dsl.RightOf: None, dsl.Behind: None, dsl.FrontOf: None, dsl.LeftQuadrant: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None, dsl.BottomQuadrant: None}
-        elif method_str == "quivr_original_no_kleene":
+        elif method_str in ["quivr_original_no_kleene", "quivr_original_no_kleene_active_learning"]:
             predicate_dict = {dsl.Near: [-1], dsl.Far: [3], dsl.LeftOf: None, dsl.RightOf: None, dsl.Behind: None, dsl.FrontOf: None, dsl.LeftQuadrant: None, dsl.RightQuadrant: None, dsl.TopQuadrant: None, dsl.BottomQuadrant: None}
     elif dataset_name == "warsaw":
         if method_str.startswith("vocal_postgres"):
             predicate_dict = [{"name": "Eastward4", "parameters": None, "nargs": 1}, {"name": "Eastward3", "parameters": None, "nargs": 1}, {"name": "Eastward2", "parameters": None, "nargs": 1}, {"name": "Westward2", "parameters": None, "nargs": 1}, {"name": "Southward1Upper", "parameters": None, "nargs": 1}, {"name": "Stopped", "parameters": [2], "nargs": 1}, {"name": "HighAccel", "parameters": [2], "nargs": 1}, {"name": "DistanceSmall", "parameters": [100], "nargs": 2}, {"name": "Faster", "parameters": [1.5], "nargs": 2}]
-        elif method_str == "quivr_original":
+        elif method_str in ["quivr_original", "quivr_original_active_learning"]:
             predicate_dict = {dsl.MinLength: None, dsl.AEastward4: None, dsl.AEastward3: None, dsl.AEastward2: None, dsl.AWestward2: None, dsl.ASouthward1Upper: None, dsl.AStopped: [-2], dsl.AHighAccel: [2], dsl.BEastward4: None, dsl.BEastward3: None, dsl.BEastward2: None, dsl.BWestward2: None, dsl.BSouthward1Upper: None, dsl.BStopped: [-2], dsl.BHighAccel: [2], dsl.DistanceSmall: [-100], dsl.Faster: [1.5]}
-        elif method_str == "quivr_original_no_kleene":
+        elif method_str in ["quivr_original_no_kleene", "quivr_original_no_kleene_active_learning"]:
             predicate_dict = {dsl.AEastward4: None, dsl.AEastward3: None, dsl.AEastward2: None, dsl.AWestward2: None, dsl.ASouthward1Upper: None, dsl.AStopped: [-2], dsl.AHighAccel: [2], dsl.BEastward4: None, dsl.BEastward3: None, dsl.BEastward2: None, dsl.BWestward2: None, dsl.BSouthward1Upper: None, dsl.BStopped: [-2], dsl.BHighAccel: [2], dsl.DistanceSmall: [-100], dsl.Faster: [1.5]}
         else:
             raise NotImplementedError
@@ -270,7 +357,7 @@ if __name__ == '__main__':
             "Conjunction(Far_3(o0, o1), LeftQuadrant(o0)); Conjunction(Near_1(o0, o1), LeftQuadrant(o0))",
             "Far_3(o0, o1); Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))"
             ]
-        if method_str in ["quivr_original", "quivr_original_no_kleene"]:
+        if method_str in ["quivr_original", "quivr_original_no_kleene", "quivr_original_active_learning", "quivr_original_no_kleene_active_learning"]:
             predicate_dicts = [
                 {dsl.Near: [-1], dsl.BottomQuadrant: None},
                 {dsl.FrontOf: None, dsl.TopQuadrant: None},
@@ -309,7 +396,8 @@ if __name__ == '__main__':
         test_exhaustive(n_init_pos, n_init_neg, npred, depth, max_duration, multithread, predicate_dict, input_dir)
     elif method_str in ['vocal_postgres', 'vocal_postgres_no_active_learning']:
         output_log = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
-
+    elif method_str in ["quivr_original_active_learning", "quivr_original_no_kleene_active_learning"]:
+        output_log = test_quivr_original_active_learning(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, os.path.join(output_dir, dataset_name, method_name.replace("_active_learning", "_zero_step"), config_name), log_filename)
     if output_to_file:
         with open(os.path.join(log_dirname, "{}.log".format(log_filename)), 'w') as f:
             for line in output_log:
