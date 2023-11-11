@@ -10,6 +10,7 @@ from src.methods.quivr_original_no_kleene import QUIVROriginalNoKleene
 from src.methods.vocal_postgres import VOCALPostgres
 from src.methods.vocal_postgres_no_active_learning import VOCALPostgresNoActiveLearning
 import src.dsl as dsl
+import time
 
 def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, with_kleene):
     if dataset_name.startswith("collision"):
@@ -87,22 +88,52 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
     return output_log
 
 def test_algorithm_demo_precompute(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
-    algorithm = test_algorithm_interactive(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
-
     with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
         inputs = json.load(f)
     with open(os.path.join(input_dir, "{}/train/{}_labels.json".format(dataset_name, query_str)), 'r') as f:
         labels = json.load(f)
     inputs = np.asarray(inputs) # input video ids
+    labels = np.asarray(labels)
+    pos_idx = np.where(labels == 1)[0]
+    neg_idx = np.where(labels == 0)[0]
+    print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
 
-    init_labeled_index = algorithm.labeled_index.copy()
+    # Test dataset for interactive demo
+    with open(os.path.join(input_dir, "{}/test/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
+        test_inputs = json.load(f)
+    with open(os.path.join(input_dir, "{}/test/{}_labels.json".format(dataset_name, query_str)), 'r') as f:
+        test_labels = json.load(f)
+    # Sample 100 test videos for interactive demo
+    test_inputs = np.asarray(test_inputs)[:100]
+    test_labels = np.asarray(test_labels)[:100]
+
+    if "sampling_rate" in dataset_name:
+        splits = dataset_name.split("-")
+        for split in splits:
+            if split.startswith("sampling_rate_"):
+                sampling_rate = int(split.replace("sampling_rate_", ""))
+                break
+    else:
+        sampling_rate = None
+    print("sampling_rate", sampling_rate)
+
+    # use a random seed
+    random.seed(time.time())
+    init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
+
     init_vids = inputs[init_labeled_index]
-    log = algorithm.demo_main()
-    print("init vids", init_vids)
-    print("log", log)
-    return log
+    print("init_vids", init_vids)
+    if method == "vocal_postgres":
+        algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg, test_inputs=test_inputs, test_labels=test_labels)
+    elif method == "vocal_postgres_no_active_learning":
+        algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
 
-def test_algorithm_interactive(init_labeled_index, method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
+    algorithm.run_init(init_labeled_index)
+
+    log = algorithm.demo_main()
+    return init_vids, log
+
+def test_algorithm_interactive(init_labeled_index, user_labels, method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
 
     with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
         inputs = json.load(f)
@@ -138,7 +169,7 @@ def test_algorithm_interactive(init_labeled_index, method, dataset_name, n_init_
         algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg, test_inputs=test_inputs, test_labels=test_labels)
     elif method == "vocal_postgres_no_active_learning":
         algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
-    algorithm.run_init(init_labeled_index)
+    algorithm.run_init(init_labeled_index, user_labels)
     return algorithm
 
 def test_exhaustive(n_labeled_pos, n_labeled_neg, npred, depth, max_duration, multithread, predicate_dict, input_dir):
