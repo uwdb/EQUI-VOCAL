@@ -1,41 +1,41 @@
 query,npos,nneg,ratio
-"Conjunction(BottomQuadrant(o0), RightOf(o0, o1)); Conjunction(Conjunction(Behind(o1, o2), Material_metal(o1)), Shape_cylinder(o2)); Conjunction(LeftOf(o0, o1), Near_1.0(o0, o2))",645,9355,0.0689470871191876
-"Conjunction(Conjunction(Color_yellow(o0), FrontOf(o1, o2)), RightQuadrant(o1)); BottomQuadrant(o1); Conjunction(Conjunction(LeftQuadrant(o2), Material_metal(o0)), TopQuadrant(o1))",699,9301,0.07515320933232986
-"Conjunction(Color_brown(o0), LeftOf(o0, o1)); Conjunction(Conjunction(BottomQuadrant(o0), RightOf(o0, o2)), Shape_sphere(o2)); Conjunction(BottomQuadrant(o1), RightOf(o1, o2))",543,9457,0.0574177857671566
-"BottomQuadrant(o0); Conjunction(Conjunction(BottomQuadrant(o1), FrontOf(o0, o2)), Material_metal(o2)); Conjunction(Conjunction(Color_purple(o2), RightQuadrant(o1)), TopQuadrant(o0))",568,9432,0.06022052586938083
-"Conjunction(Conjunction(Color_blue(o0), Far_3.0(o0, o1)), RightOf(o0, o2)); Conjunction(Conjunction(BottomQuadrant(o0), FrontOf(o1, o2)), Material_rubber(o0)); TopQuadrant(o1)",764,9236,0.08271979211779991
-"Conjunction(Near_1.0(o0, o1), RightOf(o1, o2)); Conjunction(Conjunction(Conjunction(BottomQuadrant(o1), Color_yellow(o1)), Material_metal(o2)), RightOf(o0, o2)); Near_1.0(o0, o1)",633,9367,0.06757766627522152
-"Conjunction(Conjunction(Conjunction(Behind(o0, o1), LeftOf(o0, o2)), Near_1.0(o0, o2)), Shape_sphere(o0)); Conjunction(Material_rubber(o2), Near_1.0(o0, o1)); LeftOf(o0, o1)",783,9217,0.08495171964847564
-"Conjunction(BottomQuadrant(o0), LeftOf(o1, o2)); Conjunction(Conjunction(FrontOf(o1, o2), Material_rubber(o0)), RightOf(o0, o1)); Conjunction(Color_gray(o0), Far_3.0(o0, o1))",834,9166,0.09098843552258346
-"Conjunction(Conjunction(Conjunction(LeftOf(o0, o1), Material_metal(o1)), Near_1.0(o0, o2)), Shape_cube(o2)); Conjunction(LeftOf(o0, o1), RightQuadrant(o0)); LeftOf(o1, o2)",976,9024,0.10815602836879433
-"Conjunction(Conjunction(Far_3.0(o0, o1), FrontOf(o0, o1)), Shape_sphere(o1)); Near_1.0(o0, o1); Conjunction(Conjunction(Color_red(o0), FrontOf(o1, o2)), RightOf(o0, o2))",543,9457,0.0574177857671566
-"Conjunction(Conjunction(BottomQuadrant(o0), Material_metal(o1)), RightOf(o0, o2)); Conjunction(FrontOf(o1, o2), LeftOf(o0, o2)); Conjunction(Color_cyan(o1), LeftQuadrant(o0))",528,9472,0.05574324324324324
-"Conjunction(BottomQuadrant(o0), FrontOf(o0, o1)); Conjunction(Conjunction(Material_metal(o2), RightOf(o0, o2)), Shape_cube(o0)); Conjunction(Behind(o0, o1), LeftOf(o0, o1))",856,9144,0.09361329833770779
-"Conjunction(Conjunction(LeftQuadrant(o0), RightOf(o0, o1)), Shape_cylinder(o2)); Conjunction(Color_yellow(o2), Far_3.0(o1, o2)); Conjunction(RightQuadrant(o0), TopQuadrant(o2))",635,9365,0.06780565936999466
-"Conjunction(LeftOf(o0, o1), Near_1.0(o1, o2)); Conjunction(Behind(o0, o1), Color_red(o0)); Conjunction(Conjunction(Behind(o0, o1), LeftQuadrant(o0)), Shape_cube(o1))",911,9089,0.10023104852018924
-"Conjunction(Conjunction(Behind(o0, o1), FrontOf(o1, o2)), LeftOf(o0, o2)); Conjunction(Color_blue(o0), TopQuadrant(o2)); Conjunction(FrontOf(o0, o1), Material_metal(o0))",739,9261,0.0797969981643451
-"Conjunction(Far_3.0(o0, o1), LeftOf(o0, o1)); Conjunction(BottomQuadrant(o2), RightOf(o0, o2)); Conjunction(Conjunction(Color_gray(o2), Material_metal(o2)), RightOf(o1, o2))",713,9287,0.076773985140519
-"Conjunction(Conjunction(Conjunction(LeftOf(o0, o1), LeftQuadrant(o1)), Material_metal(o0)), Shape_cube(o2)); BottomQuadrant(o2); Conjunction(LeftQuadrant(o2), TopQuadrant(o2))",791,9209,0.08589423390161799
-"BottomQuadrant(o0); Conjunction(Conjunction(Conjunction(Material_metal(o1), RightQuadrant(o0)), Shape_cylinder(o2)), TopQuadrant(o2)); Conjunction(Behind(o0, o2), LeftQuadrant(o2))",896,9104,0.0984182776801406
-"Conjunction(Color_green(o0), FrontOf(o1, o2)); FrontOf(o0, o1); Conjunction(Conjunction(Conjunction(BottomQuadrant(o1), Far_3.0(o0, o2)), Material_metal(o0)), RightQuadrant(o2))",555,9445,0.058761249338274216
-"Conjunction(Conjunction(FrontOf(o0, o1), Material_metal(o1)), Near_1.0(o1, o2)); Conjunction(FrontOf(o0, o1), RightOf(o1, o2)); Conjunction(Color_brown(o0), LeftOf(o1, o2))",765,9235,0.0828370330265295
-"Conjunction(BottomQuadrant(o0), LeftOf(o0, o1)); LeftOf(o1, o2); Conjunction(Conjunction(Conjunction(Behind(o1, o2), Color_gray(o0)), LeftOf(o0, o2)), Material_rubber(o0))",794,9206,0.08624809906582663
-"Conjunction(Conjunction(Conjunction(Color_yellow(o0), FrontOf(o1, o2)), RightOf(o0, o2)), Shape_sphere(o1)); Conjunction(FrontOf(o1, o2), Near_1.0(o0, o1)); Far_3.0(o1, o2)",954,9046,0.10546097722750387
-"Conjunction(BottomQuadrant(o0), RightOf(o0, o1)); Conjunction(Color_green(o0), Far_3.0(o0, o2)); Conjunction(Conjunction(BottomQuadrant(o1), Shape_cylinder(o2)), TopQuadrant(o2))",671,9329,0.0719262514738986
-"Conjunction(RightOf(o0, o1), TopQuadrant(o2)); Conjunction(Conjunction(Conjunction(Color_gray(o0), LeftOf(o0, o2)), RightOf(o0, o1)), Shape_sphere(o1)); RightOf(o1, o2)",557,9443,0.05898549189876099
-"Conjunction(Conjunction(Conjunction(Color_yellow(o0), LeftQuadrant(o1)), RightQuadrant(o0)), Shape_cube(o0)); FrontOf(o0, o2); Conjunction(Behind(o1, o2), FrontOf(o0, o2))",700,9300,0.07526881720430108
-"Conjunction(Conjunction(Behind(o0, o1), Near_1.0(o0, o2)), TopQuadrant(o2)); Conjunction(Conjunction(Color_green(o1), LeftOf(o0, o2)), Shape_cube(o1)); RightOf(o0, o1)",517,9483,0.05451861225350627
-"BottomQuadrant(o0); FrontOf(o0, o1); Conjunction(Conjunction(Conjunction(Conjunction(Behind(o0, o1), Color_cyan(o0)), Far_3.0(o1, o2)), FrontOf(o0, o2)), Material_rubber(o2))",602,9398,0.06405618216641838
-"Conjunction(Conjunction(FrontOf(o0, o1), RightOf(o1, o2)), Shape_sphere(o0)); Conjunction(Far_3.0(o0, o2), LeftOf(o1, o2)); Conjunction(Behind(o1, o2), Color_red(o0))",641,9359,0.06849022331445667
-"LeftQuadrant(o0); Conjunction(Conjunction(Conjunction(FrontOf(o0, o1), Material_metal(o0)), Near_1.0(o0, o2)), Shape_cube(o0)); Conjunction(Near_1.0(o0, o1), TopQuadrant(o2))",997,9003,0.11074086415639231
-"Behind(o0, o1); Conjunction(Conjunction(FrontOf(o0, o1), Material_metal(o1)), RightOf(o0, o1)); Conjunction(Conjunction(Far_3.0(o1, o2), Material_metal(o2)), Near_1.0(o0, o1))",825,9175,0.08991825613079019
-"Conjunction(FrontOf(o0, o1), RightQuadrant(o1)); Conjunction(Conjunction(Color_purple(o2), Far_3.0(o1, o2)), Material_metal(o0)); Conjunction(BottomQuadrant(o0), LeftOf(o1, o2))",970,9030,0.10741971207087486
-"Conjunction(LeftQuadrant(o0), Shape_cylinder(o0)); Conjunction(Conjunction(Color_purple(o1), Far_3.0(o1, o2)), TopQuadrant(o2)); Conjunction(LeftQuadrant(o1), Near_1.0(o0, o1))",966,9034,0.10692937790568961
-"Conjunction(Conjunction(Far_3.0(o0, o1), FrontOf(o0, o2)), Near_1.0(o1, o2)); Conjunction(Conjunction(Color_green(o2), FrontOf(o1, o2)), Material_rubber(o0)); Near_1.0(o1, o2)",995,9005,0.110494169905608
-"Conjunction(Material_metal(o0), Near_1.0(o0, o1)); Conjunction(Far_3.0(o1, o2), LeftQuadrant(o1)); Conjunction(Conjunction(Color_yellow(o0), FrontOf(o1, o2)), Near_1.0(o0, o1))",842,9158,0.09194147193710417
-"Conjunction(Conjunction(BottomQuadrant(o0), Near_1.0(o1, o2)), TopQuadrant(o1)); FrontOf(o0, o2); Conjunction(Conjunction(BottomQuadrant(o1), Material_rubber(o0)), Shape_sphere(o2))",537,9463,0.056747331712987424
-"Conjunction(Color_blue(o0), Far_3.0(o1, o2)); Conjunction(Conjunction(Behind(o0, o2), Color_brown(o2)), LeftQuadrant(o0)); Conjunction(Behind(o0, o1), RightQuadrant(o2))",530,9470,0.0559662090813094
-"Conjunction(BottomQuadrant(o0), Far_3.0(o0, o1)); Conjunction(Conjunction(Conjunction(BottomQuadrant(o0), Color_gray(o1)), Near_1.0(o0, o2)), Shape_cube(o1)); Near_1.0(o0, o2)",577,9423,0.06123315292369733
-"Conjunction(Conjunction(BottomQuadrant(o0), Far_3.0(o0, o1)), Material_metal(o1)); Conjunction(BottomQuadrant(o2), LeftOf(o1, o2)); Conjunction(Color_gray(o2), RightQuadrant(o0))",856,9144,0.09361329833770779
-"Near_1.0(o0, o1); Conjunction(Conjunction(BottomQuadrant(o1), RightQuadrant(o1)), TopQuadrant(o0)); Conjunction(Conjunction(Color_cyan(o2), Far_3.0(o0, o2)), Material_rubber(o1))",598,9402,0.06360348861944268
-"Conjunction(Material_rubber(o0), Near_1.0(o0, o1)); Conjunction(BottomQuadrant(o2), LeftOf(o0, o1)); Conjunction(Conjunction(Behind(o0, o1), RightOf(o0, o1)), Shape_cube(o2))",536,9464,0.0566356720202874
+"(BottomQuadrant(o0), RightOf(o0, o1)); (Behind(o1, o2), Material_metal(o1), Shape_cylinder(o2)); (LeftOf(o0, o1), Near_1.0(o0, o2))",645,9355,0.0689470871191876
+"(Color_yellow(o0), FrontOf(o1, o2), RightQuadrant(o1)); BottomQuadrant(o1); (LeftQuadrant(o2), Material_metal(o0), TopQuadrant(o1))",699,9301,0.0751532093323298
+"(Color_brown(o0), LeftOf(o0, o1)); (BottomQuadrant(o0), RightOf(o0, o2), Shape_sphere(o2)); (BottomQuadrant(o1), RightOf(o1, o2))",543,9457,0.0574177857671566
+"BottomQuadrant(o0); (BottomQuadrant(o1), FrontOf(o0, o2), Material_metal(o2)); (Color_purple(o2), RightQuadrant(o1), TopQuadrant(o0))",568,9432,0.0602205258693808
+"(Color_blue(o0), Far_3.0(o0, o1), RightOf(o0, o2)); (BottomQuadrant(o0), FrontOf(o1, o2), Material_rubber(o0)); TopQuadrant(o1)",764,9236,0.0827197921177999
+"(Near_1.0(o0, o1), RightOf(o1, o2)); (BottomQuadrant(o1), Color_yellow(o1), Material_metal(o2), RightOf(o0, o2)); Near_1.0(o0, o1)",633,9367,0.0675776662752215
+"(Behind(o0, o1), LeftOf(o0, o2), Near_1.0(o0, o2), Shape_sphere(o0)); (Material_rubber(o2), Near_1.0(o0, o1)); LeftOf(o0, o1)",783,9217,0.0849517196484756
+"(BottomQuadrant(o0), LeftOf(o1, o2)); (FrontOf(o1, o2), Material_rubber(o0), RightOf(o0, o1)); (Color_gray(o0), Far_3.0(o0, o1))",834,9166,0.0909884355225834
+"(LeftOf(o0, o1), Material_metal(o1), Near_1.0(o0, o2), Shape_cube(o2)); (LeftOf(o0, o1), RightQuadrant(o0)); LeftOf(o1, o2)",976,9024,0.1081560283687943
+"(Far_3.0(o0, o1), FrontOf(o0, o1), Shape_sphere(o1)); Near_1.0(o0, o1); (Color_red(o0), FrontOf(o1, o2), RightOf(o0, o2))",543,9457,0.0574177857671566
+"(BottomQuadrant(o0), Material_metal(o1), RightOf(o0, o2)); (FrontOf(o1, o2), LeftOf(o0, o2)); (Color_cyan(o1), LeftQuadrant(o0))",528,9472,0.0557432432432432
+"(BottomQuadrant(o0), FrontOf(o0, o1)); (Material_metal(o2), RightOf(o0, o2), Shape_cube(o0)); (Behind(o0, o1), LeftOf(o0, o1))",856,9144,0.0936132983377077
+"(LeftQuadrant(o0), RightOf(o0, o1), Shape_cylinder(o2)); (Color_yellow(o2), Far_3.0(o1, o2)); (RightQuadrant(o0), TopQuadrant(o2))",635,9365,0.0678056593699946
+"(LeftOf(o0, o1), Near_1.0(o1, o2)); (Behind(o0, o1), Color_red(o0)); (Behind(o0, o1), LeftQuadrant(o0), Shape_cube(o1))",911,9089,0.1002310485201892
+"(Behind(o0, o1), FrontOf(o1, o2), LeftOf(o0, o2)); (Color_blue(o0), TopQuadrant(o2)); (FrontOf(o0, o1), Material_metal(o0))",739,9261,0.0797969981643451
+"(Far_3.0(o0, o1), LeftOf(o0, o1)); (BottomQuadrant(o2), RightOf(o0, o2)); (Color_gray(o2), Material_metal(o2), RightOf(o1, o2))",713,9287,0.076773985140519
+"(LeftOf(o0, o1), LeftQuadrant(o1), Material_metal(o0), Shape_cube(o2)); BottomQuadrant(o2); (LeftQuadrant(o2), TopQuadrant(o2))",791,9209,0.0858942339016179
+"BottomQuadrant(o0); (Material_metal(o1), RightQuadrant(o0), Shape_cylinder(o2), TopQuadrant(o2)); (Behind(o0, o2), LeftQuadrant(o2))",896,9104,0.0984182776801406
+"(Color_green(o0), FrontOf(o1, o2)); FrontOf(o0, o1); (BottomQuadrant(o1), Far_3.0(o0, o2), Material_metal(o0), RightQuadrant(o2))",555,9445,0.0587612493382742
+"(FrontOf(o0, o1), Material_metal(o1), Near_1.0(o1, o2)); (FrontOf(o0, o1), RightOf(o1, o2)); (Color_brown(o0), LeftOf(o1, o2))",765,9235,0.0828370330265295
+"(BottomQuadrant(o0), LeftOf(o0, o1)); LeftOf(o1, o2); (Behind(o1, o2), Color_gray(o0), LeftOf(o0, o2), Material_rubber(o0))",794,9206,0.0862480990658266
+"(Color_yellow(o0), FrontOf(o1, o2), RightOf(o0, o2), Shape_sphere(o1)); (FrontOf(o1, o2), Near_1.0(o0, o1)); Far_3.0(o1, o2)",954,9046,0.1054609772275038
+"(BottomQuadrant(o0), RightOf(o0, o1)); (Color_green(o0), Far_3.0(o0, o2)); (BottomQuadrant(o1), Shape_cylinder(o2), TopQuadrant(o2))",671,9329,0.0719262514738986
+"(RightOf(o0, o1), TopQuadrant(o2)); (Color_gray(o0), LeftOf(o0, o2), RightOf(o0, o1), Shape_sphere(o1)); RightOf(o1, o2)",557,9443,0.0589854918987609
+"(Color_yellow(o0), LeftQuadrant(o1), RightQuadrant(o0), Shape_cube(o0)); FrontOf(o0, o2); (Behind(o1, o2), FrontOf(o0, o2))",700,9300,0.075268817204301
+"(Behind(o0, o1), Near_1.0(o0, o2), TopQuadrant(o2)); (Color_green(o1), LeftOf(o0, o2), Shape_cube(o1)); RightOf(o0, o1)",517,9483,0.0545186122535062
+"BottomQuadrant(o0); FrontOf(o0, o1); (Behind(o0, o1), Color_cyan(o0), Far_3.0(o1, o2), FrontOf(o0, o2), Material_rubber(o2))",602,9398,0.0640561821664183
+"(FrontOf(o0, o1), RightOf(o1, o2), Shape_sphere(o0)); (Far_3.0(o0, o2), LeftOf(o1, o2)); (Behind(o1, o2), Color_red(o0))",641,9359,0.0684902233144566
+"LeftQuadrant(o0); (FrontOf(o0, o1), Material_metal(o0), Near_1.0(o0, o2), Shape_cube(o0)); (Near_1.0(o0, o1), TopQuadrant(o2))",997,9003,0.1107408641563923
+"Behind(o0, o1); (FrontOf(o0, o1), Material_metal(o1), RightOf(o0, o1)); (Far_3.0(o1, o2), Material_metal(o2), Near_1.0(o0, o1))",825,9175,0.0899182561307901
+"(FrontOf(o0, o1), RightQuadrant(o1)); (Color_purple(o2), Far_3.0(o1, o2), Material_metal(o0)); (BottomQuadrant(o0), LeftOf(o1, o2))",970,9030,0.1074197120708748
+"(LeftQuadrant(o0), Shape_cylinder(o0)); (Color_purple(o1), Far_3.0(o1, o2), TopQuadrant(o2)); (LeftQuadrant(o1), Near_1.0(o0, o1))",966,9034,0.1069293779056896
+"(Far_3.0(o0, o1), FrontOf(o0, o2), Near_1.0(o1, o2)); (Color_green(o2), FrontOf(o1, o2), Material_rubber(o0)); Near_1.0(o1, o2)",995,9005,0.110494169905608
+"(Material_metal(o0), Near_1.0(o0, o1)); (Far_3.0(o1, o2), LeftQuadrant(o1)); (Color_yellow(o0), FrontOf(o1, o2), Near_1.0(o0, o1))",842,9158,0.0919414719371041
+"(BottomQuadrant(o0), Near_1.0(o1, o2), TopQuadrant(o1)); FrontOf(o0, o2); (BottomQuadrant(o1), Material_rubber(o0), Shape_sphere(o2))",537,9463,0.0567473317129874
+"(Color_blue(o0), Far_3.0(o1, o2)); (Behind(o0, o2), Color_brown(o2), LeftQuadrant(o0)); (Behind(o0, o1), RightQuadrant(o2))",530,9470,0.0559662090813094
+"(BottomQuadrant(o0), Far_3.0(o0, o1)); (BottomQuadrant(o0), Color_gray(o1), Near_1.0(o0, o2), Shape_cube(o1)); Near_1.0(o0, o2)",577,9423,0.0612331529236973
+"(BottomQuadrant(o0), Far_3.0(o0, o1), Material_metal(o1)); (BottomQuadrant(o2), LeftOf(o1, o2)); (Color_gray(o2), RightQuadrant(o0))",856,9144,0.0936132983377077
+"Near_1.0(o0, o1); (BottomQuadrant(o1), RightQuadrant(o1), TopQuadrant(o0)); (Color_cyan(o2), Far_3.0(o0, o2), Material_rubber(o1))",598,9402,0.0636034886194426
+"(Material_rubber(o0), Near_1.0(o0, o1)); (BottomQuadrant(o2), LeftOf(o0, o1)); (Behind(o0, o1), RightOf(o0, o1), Shape_cube(o2))",536,9464,0.0566356720202874

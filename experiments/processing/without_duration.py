@@ -235,15 +235,15 @@ def prepare_data_for_various_types_of_queries(sampling_rate):
     else:
         dataset_name = "without_duration-sampling_rate_{}".format(sampling_rate)
     query_strs = [
-        "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))",
-        "Conjunction(FrontOf(o0, o1), TopQuadrant(o0))",
-        "Near_1(o0, o1); Far_3(o0, o1)",
-        "Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))",
-        "Far_3(o0, o1); Near_1(o0, o1); Far_3(o0, o1)",
-        "Conjunction(Far_3(o0, o1), BottomQuadrant(o0)); Near_1(o0, o1)",
-        "Far_3(o0, o1); Conjunction(Near_1(o0, o1), Behind(o0, o1))",
-        "Conjunction(Far_3(o0, o1), LeftQuadrant(o0)); Conjunction(Near_1(o0, o1), LeftQuadrant(o0))",
-        "Far_3(o0, o1); Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))"
+        "(BottomQuadrant(o0), Near_1.0(o0, o1))",
+        "(FrontOf(o0, o1), TopQuadrant(o0))",
+        "Near_1.0(o0, o1); Far_3.0(o0, o1)",
+        "(Behind(o0, o1), LeftQuadrant(o0), Near_1.0(o0, o1))",
+        "Far_3.0(o0, o1); Near_1.0(o0, o1); Far_3.0(o0, o1)",
+        "(BottomQuadrant(o0), Far_3.0(o0, o1)); Near_1.0(o0, o1)",
+        "Far_3.0(o0, o1); (Behind(o0, o1), Near_1.0(o0, o1))",
+        "(Far_3.0(o0, o1), LeftQuadrant(o0)); (LeftQuadrant(o0), Near_1.0(o0, o1))",
+        "Far_3.0(o0, o1); (Behind(o0, o1), LeftQuadrant(o0), Near_1.0(o0, o1))"
         ]
     predicates = [
         ("Near_1", "BottomQuadrant"),

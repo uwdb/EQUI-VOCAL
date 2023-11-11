@@ -1736,7 +1736,7 @@ def dsl_to_program_old(program_str):
     return program
 
 if __name__ == '__main__':
-    target_query = "Duration((Color_red(o0), Far_3(o0, o1), Shape_cylinder(o1)), 25); (Near_1(o0, o1), RightQuadrant(o2), TopQuadrant(o2))"
+    target_query = "(Eastward2(o1), Eastward4(o0)); (Eastward2(o1), Eastward3(o0))"
     target_program = dsl_to_program(target_query)
     print(target_program)
     print(program_to_dsl(target_program))

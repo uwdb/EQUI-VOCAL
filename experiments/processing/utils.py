@@ -62,4 +62,4 @@ def construct_train_test_per_query(dir_name, query_str, n_train, n_test):
     print("labels_test", len(labels_test), sum(labels_test))
 
 if __name__ == '__main__':
-    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/without_duration", n_train=500)
+    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/inputs/without_duration", n_train=500)

@@ -261,14 +261,14 @@ if __name__ == '__main__':
     elif dataset_name.startswith("without_duration"):
         query_strs = [
             "(BottomQuadrant(o0), Near_1.0(o0, o1))",
-            "Conjunction(FrontOf(o0, o1), TopQuadrant(o0))",
-            "Near_1(o0, o1); Far_3(o0, o1)",
-            "Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))",
-            "Far_3(o0, o1); Near_1(o0, o1); Far_3(o0, o1)",
-            "Conjunction(Far_3(o0, o1), BottomQuadrant(o0)); Near_1(o0, o1)",
-            "Far_3(o0, o1); Conjunction(Near_1(o0, o1), Behind(o0, o1))",
-            "Conjunction(Far_3(o0, o1), LeftQuadrant(o0)); Conjunction(Near_1(o0, o1), LeftQuadrant(o0))",
-            "Far_3(o0, o1); Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))"
+            "(FrontOf(o0, o1), TopQuadrant(o0))",
+            "Near_1.0(o0, o1); Far_3.0(o0, o1)",
+            "(Behind(o0, o1), LeftQuadrant(o0), Near_1.0(o0, o1))",
+            "Far_3.0(o0, o1); Near_1.0(o0, o1); Far_3.0(o0, o1)",
+            "(BottomQuadrant(o0), Far_3.0(o0, o1)); Near_1.0(o0, o1)",
+            "Far_3.0(o0, o1); (Behind(o0, o1), Near_1.0(o0, o1))",
+            "(Far_3.0(o0, o1), LeftQuadrant(o0)); (LeftQuadrant(o0), Near_1.0(o0, o1))",
+            "Far_3.0(o0, o1); (Behind(o0, o1), LeftQuadrant(o0), Near_1.0(o0, o1))"
             ]
         if method_str in ["quivr_original", "quivr_original_no_kleene"]:
             predicate_dicts = [
