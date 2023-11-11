@@ -10,7 +10,7 @@ import random
 from lru import LRU
 from collections import deque
 import os
-from src.utils import str_to_program
+from src.utils import dsl_to_program_quivr
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -405,7 +405,7 @@ class QUIVROriginal:
         answer = []
         for line in lines:
             if line.startswith("Start"): # A query
-                program = str_to_program(line)
+                program = dsl_to_program_quivr(line)
                 answer.append(program)
             elif line.startswith("[Count candidate queries]"):
                 self.count_candidate_queries = int(line.replace("[Count candidate queries] ", ""))
