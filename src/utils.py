@@ -1657,7 +1657,7 @@ def program_to_dsl_old(orig_program, rewrite_variables=True):
                         rewritten_variables.append("o" + str(encountered_variables.index(v)))
                 # Sort rewritten variables
                 # NOTE: Why do we want to sort?
-                # We assume that the order of variables in a predicate does not matter
+                # We assume that the order of variables in a predicate does not matter; LeftOf(o1, o0) == RightOf(o0, o1)
                 rewritten_variables = sorted(rewritten_variables)
                 scene_graph[i]["variables"] = rewritten_variables
         dict["scene_graph"] = scene_graph
