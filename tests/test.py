@@ -1,4 +1,4 @@
-from quivr.utils import print_program, str_to_program, get_depth_and_npred
+from quivr.utils import print_program, dsl_to_program_quivr, get_depth_and_npred
 import json
 import random
 import math
@@ -61,7 +61,7 @@ def test_vocal(n_labeled_pos, n_labeled_neg, program_str):
     labels = labels[sampled_labeled_index]
     memoize_all_inputs = [{} for _ in range(len(inputs))]
 
-    program = str_to_program(program_str)
+    program = dsl_to_program_quivr(program_str)
     print(print_program(program))
     # compute score
     score, memoize_all_inputs = compute_query_score(program, inputs, labels, memoize_all_inputs)
@@ -90,14 +90,14 @@ def test_query_equivalent(n_labeled_pos, n_labeled_neg, program_str1, program_st
 
     # compute score
     _start = time.time()
-    program1 = str_to_program(program_str1)
+    program1 = dsl_to_program_quivr(program_str1)
     print(print_program(program1))
     score1, memoize_all_inputs = compute_query_score(program1, inputs, labels, memoize_all_inputs)
     print("program1 score: ", score1)
     print("program1 time: ", time.time() - _start)
 
     _start = time.time()
-    program2 = str_to_program(program_str2)
+    program2 = dsl_to_program_quivr(program_str2)
     print(print_program(program2))
     score2, memoize_all_inputs = compute_query_score(program2, inputs, labels, memoize_all_inputs)
     print("program2 score: ", score2)
@@ -131,7 +131,7 @@ def test_quivr_answer_correctness(n_labeled_pos, n_labeled_neg):
                 continue
             if is_answer:
                 # convert program string to program object
-                program = str_to_program(line)
+                program = dsl_to_program_quivr(line)
                 print(line)
                 # compute score
                 score, memoize_all_inputs = compute_query_score(program, inputs, labels, memoize_all_inputs)
@@ -162,7 +162,7 @@ def test_quivr_soft(n_labeled_pos, n_labeled_neg, program_str):
 
     memoize_all_inputs = [{} for _ in range(len(inputs))]
 
-    program = str_to_program(program_str)
+    program = dsl_to_program_quivr(program_str)
     print(print_program(program))
     # compute score
     score, memoize_all_inputs = compute_query_score(program, inputs, labels, memoize_all_inputs)
@@ -189,7 +189,7 @@ def test_query(dataset_name, target_query, test_query):
     for i in range(len(inputs)):
         input = inputs[i]
         memoize = LRU(10000)
-        program = str_to_program(test_query)
+        program = dsl_to_program_quivr(test_query)
         result, new_memoize = program.execute(input, -1, memoize, {})
         y_pred.append(int(result[0, len(input[0])] > 0))
         memoize.update(new_memoize)
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     # test_query_equivalent(100, 100, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Conjunction(Kleene(Far_1.1), MinLength_2)), True*), Near_1.05), True*), Conjunction(Kleene(Conjunction(Near_1.05, Far_0.9)), MinLength_10)), True*)", "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Duration(Far_1.1, 2)), True*), Near_1.05), True*), Duration(Conjunction(Near_1.05, Far_0.9), 10)), True*)")
     # test_vocal(1, 5, "Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(Sequencing(True*, Near_1.05), True*), Conjunction(LeftOf, BackOf)), True*), Duration(Conjunction(TopQuadrant, Far_0.9), 5)), True*)")
     test_query("vary_num_examples-sampling_rate_4", "Near_1.05(o0, o1); Far_0.9(o0, o1); Near_1.05(o0, o1)", "Start(Sequencing(Sequencing(Sequencing(Sequencing(Near_1.05, True*), Far_0.9), True*), Near_1.05))")
-    program = str_to_program("Start(Sequencing(Sequencing(Sequencing(Sequencing(Near_1.05, True*), Far_0.9), True*), Near_1.05))")
+    program = dsl_to_program_quivr("Start(Sequencing(Sequencing(Sequencing(Sequencing(Near_1.05, True*), Far_0.9), True*), Near_1.05))")
     print(get_depth_and_npred(program))
 
 

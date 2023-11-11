@@ -4,7 +4,7 @@ import itertools
 import shutil
 import numpy as np
 import os
-from src.utils import rewrite_program_postgres, str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence
+from src.utils import program_to_dsl, dsl_to_program, postgres_execute, postgres_execute_cache_sequence
 import csv
 from itertools import repeat
 from concurrent.futures import ThreadPoolExecutor
@@ -62,4 +62,4 @@ def construct_train_test_per_query(dir_name, query_str, n_train, n_test):
     print("labels_test", len(labels_test), sum(labels_test))
 
 if __name__ == '__main__':
-    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/src/quivr/inputs/without_duration", n_train=500)
+    construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/inputs/without_duration", n_train=500)

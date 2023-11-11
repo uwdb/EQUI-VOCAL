@@ -1,5 +1,5 @@
 from src.methods.base_method import BaseMethod
-from src.utils import rewrite_program_postgres, str_to_program_postgres
+from src.utils import program_to_dsl, dsl_to_program
 from src.query_graph import QueryGraph
 import numpy as np
 import time
@@ -196,8 +196,8 @@ class VOCALPostgres(BaseMethod):
         print("final_answers")
         self.output_log.append("[Final answers]")
         for query_graph, score in self.answers:
-            print("answer", rewrite_program_postgres(query_graph.program, self.rewrite_variables), score)
-            self.output_log.append((rewrite_program_postgres(query_graph.program, self.rewrite_variables), score))
+            print("answer", program_to_dsl(query_graph.program, self.rewrite_variables), score)
+            self.output_log.append((program_to_dsl(query_graph.program, self.rewrite_variables), score))
         total_time = time.time() - self._start_total_time
         print("[Runtime] query expansion time: {}, segment selection time: {}, retain top k queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k_queries_time, total_time))
         self.output_log.append("[Total runtime] query expansion time: {}, segment selection time: {}, retain top k queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k_queries_time, total_time))
@@ -270,7 +270,7 @@ class VOCALPostgres(BaseMethod):
                     updated_scores.append(result)
                 for i in range(len(new_candidate_queries)):
                     new_candidate_queries[i][1] = updated_scores[i]
-                    print("initialization", rewrite_program_postgres(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
+                    print("initialization", program_to_dsl(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
                 self.candidate_queries = new_candidate_queries
                 self.answers.extend(self.candidate_queries)
                 self.n_prediction_count += len(self.labeled_index) * len(self.candidate_queries)
@@ -278,7 +278,7 @@ class VOCALPostgres(BaseMethod):
                 # Expand queries
                 for candidate_query in self.candidate_queries:
                     candidate_query_graph, _ = candidate_query
-                    print("expand search space", rewrite_program_postgres(candidate_query_graph.program, self.rewrite_variables))
+                    print("expand search space", program_to_dsl(candidate_query_graph.program, self.rewrite_variables))
                     all_children = candidate_query_graph.get_all_children_unrestricted_postgres()
                     new_candidate_queries.extend([[child, -1] for child in all_children])
 
@@ -286,17 +286,17 @@ class VOCALPostgres(BaseMethod):
                 new_candidate_queries_removing_duplicates = []
                 print("[new_candidate_queries] before removing duplicates:", len(new_candidate_queries))
                 for query, score in new_candidate_queries:
-                    print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                    print(program_to_dsl(query.program, self.rewrite_variables), score)
                 signatures = set()
                 for query, score in new_candidate_queries:
-                    signature = rewrite_program_postgres(query.program, self.rewrite_variables)
+                    signature = program_to_dsl(query.program, self.rewrite_variables)
                     if signature not in signatures:
-                        query.program = str_to_program_postgres(signature)
+                        query.program = dsl_to_program(signature)
                         new_candidate_queries_removing_duplicates.append([query, score])
                         signatures.add(signature)
                 print("[new_candidate_queries] after removing duplicates:", len(new_candidate_queries_removing_duplicates))
                 for query, score in new_candidate_queries_removing_duplicates:
-                    print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                    print(program_to_dsl(query.program, self.rewrite_variables), score)
                 self.candidate_queries = new_candidate_queries_removing_duplicates
                 self.n_queries_explored += len(self.candidate_queries)
 
@@ -315,17 +315,17 @@ class VOCALPostgres(BaseMethod):
             answers_removing_duplicates = []
             print("[self.answers] before removing duplicates:", len(self.answers))
             for query, score in self.answers:
-                print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                print(program_to_dsl(query.program, self.rewrite_variables), score)
             signatures = set()
             for query, score in self.answers:
-                signature = rewrite_program_postgres(query.program, self.rewrite_variables)
+                signature = program_to_dsl(query.program, self.rewrite_variables)
                 if signature not in signatures:
-                    query.program = str_to_program_postgres(signature)
+                    query.program = dsl_to_program(signature)
                     answers_removing_duplicates.append([query, score])
                     signatures.add(signature)
             print("[self.answers] after removing duplicates:", len(answers_removing_duplicates))
             for query, score in answers_removing_duplicates:
-                print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                print(program_to_dsl(query.program, self.rewrite_variables), score)
             self.answers = answers_removing_duplicates
             # Keep the top-k queries
             self.answers = sorted(self.answers, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)
@@ -368,16 +368,16 @@ class VOCALPostgres(BaseMethod):
                     candidate_idx = np.random.choice(np.arange(self.candidate_queries.shape[0]), size=min(self.beam_width, self.candidate_queries.shape[0]), replace=False, p=weight)
                     print("candidate_idx", candidate_idx)
                     self.candidate_queries = self.candidate_queries[candidate_idx].tolist()
-                    print("beam_width queries", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width queries", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
                 elif self.strategy == "topk":
                     # Sorted with randomized ties
                     self.candidate_queries = sorted(self.candidate_queries, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)[:self.beam_width]
-                    print("beam_width queries", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width queries", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
                 elif self.strategy == "topk_including_ties":
                     self.candidate_queries = sorted(self.candidate_queries, key=lambda x: x[1], reverse=True)
                     utility_bound = self.candidate_queries[:self.beam_width][-1][1]
                     self.candidate_queries = [e for e in self.candidate_queries if e[1] >= utility_bound]
-                    print("beam_width {} queries".format(len(self.candidate_queries)), [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width {} queries".format(len(self.candidate_queries)), [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
             else:
                 self.candidate_queries = []
 
@@ -395,13 +395,13 @@ class VOCALPostgres(BaseMethod):
             self.answers = [e for e in self.answers if e[1] >= utility_bound]
             # self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             # self.answers = self.answers[:self.k]
-            print("top k queries", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.answers])
+            print("top k queries", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.answers])
             self.retain_top_k_queries_time += time.time() - _start_retain_top_k_queries_time
             self.best_query_after_each_iter = [e for e in self.answers if e[1] >= best_score]
-            print("best query after each iter", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.best_query_after_each_iter])
+            print("best query after each iter", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.best_query_after_each_iter])
             print(using("profile"))
             for query, score in self.best_query_after_each_iter:
-                self.output_log.append((rewrite_program_postgres(query.program, self.rewrite_variables), score))
+                self.output_log.append((program_to_dsl(query.program, self.rewrite_variables), score))
             self.output_log.append("[Runtime so far] {}".format(time.time() - self._start_total_time))
             self.iteration += 1
 
@@ -459,7 +459,7 @@ class VOCALPostgres(BaseMethod):
                     updated_scores.append(result)
                 for i in range(len(new_candidate_queries)):
                     new_candidate_queries[i][1] = updated_scores[i]
-                    print("initialization", rewrite_program_postgres(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
+                    print("initialization", program_to_dsl(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
                 self.candidate_queries = new_candidate_queries
                 self.answers.extend(self.candidate_queries)
                 self.n_prediction_count += len(self.labeled_index) * len(self.candidate_queries)
@@ -467,7 +467,7 @@ class VOCALPostgres(BaseMethod):
                 # Expand queries
                 for candidate_query in self.candidate_queries:
                     candidate_query_graph, _ = candidate_query
-                    print("expand search space", rewrite_program_postgres(candidate_query_graph.program, self.rewrite_variables))
+                    print("expand search space", program_to_dsl(candidate_query_graph.program, self.rewrite_variables))
                     all_children = candidate_query_graph.get_all_children_unrestricted_postgres()
                     new_candidate_queries.extend([[child, -1] for child in all_children])
 
@@ -475,17 +475,17 @@ class VOCALPostgres(BaseMethod):
                 new_candidate_queries_removing_duplicates = []
                 print("[new_candidate_queries] before removing duplicates:", len(new_candidate_queries))
                 for query, score in new_candidate_queries:
-                    print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                    print(program_to_dsl(query.program, self.rewrite_variables), score)
                 signatures = set()
                 for query, score in new_candidate_queries:
-                    signature = rewrite_program_postgres(query.program, self.rewrite_variables)
+                    signature = program_to_dsl(query.program, self.rewrite_variables)
                     if signature not in signatures:
-                        query.program = str_to_program_postgres(signature)
+                        query.program = dsl_to_program(signature)
                         new_candidate_queries_removing_duplicates.append([query, score])
                         signatures.add(signature)
                 print("[new_candidate_queries] after removing duplicates:", len(new_candidate_queries_removing_duplicates))
                 for query, score in new_candidate_queries_removing_duplicates:
-                    print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                    print(program_to_dsl(query.program, self.rewrite_variables), score)
                 self.candidate_queries = new_candidate_queries_removing_duplicates
                 self.n_queries_explored += len(self.candidate_queries)
 
@@ -507,17 +507,17 @@ class VOCALPostgres(BaseMethod):
             answers_removing_duplicates = []
             print("[self.answers] before removing duplicates:", len(self.answers))
             for query, score in self.answers:
-                print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                print(program_to_dsl(query.program, self.rewrite_variables), score)
             signatures = set()
             for query, score in self.answers:
-                signature = rewrite_program_postgres(query.program, self.rewrite_variables)
+                signature = program_to_dsl(query.program, self.rewrite_variables)
                 if signature not in signatures:
-                    query.program = str_to_program_postgres(signature)
+                    query.program = dsl_to_program(signature)
                     answers_removing_duplicates.append([query, score])
                     signatures.add(signature)
             print("[self.answers] after removing duplicates:", len(answers_removing_duplicates))
             for query, score in answers_removing_duplicates:
-                print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                print(program_to_dsl(query.program, self.rewrite_variables), score)
             self.answers = answers_removing_duplicates
             # Keep the top-k queries
             self.answers = sorted(self.answers, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)
@@ -566,16 +566,16 @@ class VOCALPostgres(BaseMethod):
                     candidate_idx = np.random.choice(np.arange(self.candidate_queries.shape[0]), size=min(self.beam_width, self.candidate_queries.shape[0]), replace=False, p=weight)
                     print("candidate_idx", candidate_idx)
                     self.candidate_queries = self.candidate_queries[candidate_idx].tolist()
-                    print("beam_width queries", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width queries", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
                 elif self.strategy == "topk":
                     # Sorted with randomized ties
                     self.candidate_queries = sorted(self.candidate_queries, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)[:self.beam_width]
-                    print("beam_width queries", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width queries", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
                 elif self.strategy == "topk_including_ties":
                     self.candidate_queries = sorted(self.candidate_queries, key=lambda x: x[1], reverse=True)
                     utility_bound = self.candidate_queries[:self.beam_width][-1][1]
                     self.candidate_queries = [e for e in self.candidate_queries if e[1] >= utility_bound]
-                    print("beam_width {} queries".format(len(self.candidate_queries)), [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width {} queries".format(len(self.candidate_queries)), [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
             else:
                 self.candidate_queries = []
 
@@ -593,19 +593,19 @@ class VOCALPostgres(BaseMethod):
             self.answers = [e for e in self.answers if e[1] >= utility_bound]
             # self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             # self.answers = self.answers[:self.k]
-            top_k_queries_with_scores = [[rewrite_program_postgres(query.program, self.rewrite_variables), score] for query, score in self.answers]
+            top_k_queries_with_scores = [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.answers]
             print("top k queries", top_k_queries_with_scores)
             log_dict["top_k_queries_with_scores"] = top_k_queries_with_scores
             self.retain_top_k_queries_time += time.time() - _start_retain_top_k_queries_time
             self.best_query_after_each_iter = [e for e in self.answers if e[1] >= best_score]
-            print("best query after each iter", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.best_query_after_each_iter])
+            print("best query after each iter", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.best_query_after_each_iter])
             print(using("profile"))
             for query, score in self.best_query_after_each_iter:
-                self.output_log.append((rewrite_program_postgres(query.program, self.rewrite_variables), score))
+                self.output_log.append((program_to_dsl(query.program, self.rewrite_variables), score))
             self.output_log.append("[Runtime so far] {}".format(time.time() - self._start_total_time))
             self.iteration += 1
-            log_dict["best_query"] = rewrite_program_postgres(self.answers[0][0].program, self.rewrite_variables)
-            log_dict["best_score"] = self.answers[0][1].item()
+            log_dict["best_query"] = program_to_dsl(self.best_query_after_each_iter[0][0].program, self.rewrite_variables)
+            log_dict["best_score"] = self.best_query_after_each_iter[0][1].item()
             # Prediction
             pred_per_query = self.execute_over_all_inputs_postgres(self.answers[0][0].program, is_test=True)
             print("predicted_labels_test", pred_per_query)
@@ -664,16 +664,16 @@ class VOCALPostgres(BaseMethod):
                     candidate_idx = np.random.choice(np.arange(self.candidate_queries.shape[0]), size=min(self.beam_width, self.candidate_queries.shape[0]), replace=False, p=weight)
                     print("candidate_idx", candidate_idx)
                     self.candidate_queries = self.candidate_queries[candidate_idx].tolist()
-                    print("beam_width queries", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width queries", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
                 elif self.strategy == "topk":
                     # Sorted with randomized ties
                     self.candidate_queries = sorted(self.candidate_queries, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)[:self.beam_width]
-                    print("beam_width queries", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width queries", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
                 elif self.strategy == "topk_including_ties":
                     self.candidate_queries = sorted(self.candidate_queries, key=lambda x: x[1], reverse=True)
                     utility_bound = self.candidate_queries[:self.beam_width][-1][1]
                     self.candidate_queries = [e for e in self.candidate_queries if e[1] >= utility_bound]
-                    print("beam_width {} queries".format(len(self.candidate_queries)), [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
+                    print("beam_width {} queries".format(len(self.candidate_queries)), [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.candidate_queries])
             else:
                 self.candidate_queries = []
 
@@ -691,18 +691,18 @@ class VOCALPostgres(BaseMethod):
             self.answers = [e for e in self.answers if e[1] >= utility_bound]
             # self.answers = sorted(self.answers, key=lambda x: x[1], reverse=True)
             # self.answers = self.answers[:self.k]
-            top_k_queries_with_scores = [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.answers]
+            top_k_queries_with_scores = [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.answers]
             print("top k queries", top_k_queries_with_scores)
             log_dict["top_k_queries_with_scores"] = top_k_queries_with_scores
             self.retain_top_k_queries_time += time.time() - _start_retain_top_k_queries_time
             self.best_query_after_each_iter = [e for e in self.answers if e[1] >= best_score]
-            print("best query after each iter", [(rewrite_program_postgres(query.program, self.rewrite_variables), score) for query, score in self.best_query_after_each_iter])
+            print("best query after each iter", [(program_to_dsl(query.program, self.rewrite_variables), score) for query, score in self.best_query_after_each_iter])
             print(using("profile"))
             for query, score in self.best_query_after_each_iter:
-                self.output_log.append((rewrite_program_postgres(query.program, self.rewrite_variables), score))
+                self.output_log.append((program_to_dsl(query.program, self.rewrite_variables), score))
             self.output_log.append("[Runtime so far] {}".format(time.time() - self._start_total_time))
             self.iteration += 1
-            log_dict["best_query_list"] = [rewrite_program_postgres(query.program, self.rewrite_variables) for query, _ in self.best_query_after_each_iter]
+            log_dict["best_query_list"] = [program_to_dsl(query.program, self.rewrite_variables) for query, _ in self.best_query_after_each_iter]
             log_dict["best_score_list"] = [score.item() for _, score in self.best_query_after_each_iter]
             # Prediction
             pred_per_query = self.execute_over_all_inputs_postgres(self.best_query_after_each_iter[0][0].program, is_test=True)
@@ -758,7 +758,7 @@ class VOCALPostgres(BaseMethod):
                     updated_scores.append(result)
                 for i in range(len(new_candidate_queries)):
                     new_candidate_queries[i][1] = updated_scores[i]
-                    print("initialization", rewrite_program_postgres(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
+                    print("initialization", program_to_dsl(new_candidate_queries[i][0].program, self.rewrite_variables), updated_scores[i])
                 self.candidate_queries = new_candidate_queries
                 self.answers.extend(self.candidate_queries)
                 self.n_prediction_count += len(self.labeled_index) * len(self.candidate_queries)
@@ -766,7 +766,7 @@ class VOCALPostgres(BaseMethod):
                 # Expand queries
                 for candidate_query in self.candidate_queries:
                     candidate_query_graph, _ = candidate_query
-                    print("expand search space", rewrite_program_postgres(candidate_query_graph.program, self.rewrite_variables))
+                    print("expand search space", program_to_dsl(candidate_query_graph.program, self.rewrite_variables))
                     all_children = candidate_query_graph.get_all_children_unrestricted_postgres()
                     new_candidate_queries.extend([[child, -1] for child in all_children])
 
@@ -774,17 +774,17 @@ class VOCALPostgres(BaseMethod):
                 new_candidate_queries_removing_duplicates = []
                 print("[new_candidate_queries] before removing duplicates:", len(new_candidate_queries))
                 for query, score in new_candidate_queries:
-                    print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                    print(program_to_dsl(query.program, self.rewrite_variables), score)
                 signatures = set()
                 for query, score in new_candidate_queries:
-                    signature = rewrite_program_postgres(query.program, self.rewrite_variables)
+                    signature = program_to_dsl(query.program, self.rewrite_variables)
                     if signature not in signatures:
-                        query.program = str_to_program_postgres(signature)
+                        query.program = dsl_to_program(signature)
                         new_candidate_queries_removing_duplicates.append([query, score])
                         signatures.add(signature)
                 print("[new_candidate_queries] after removing duplicates:", len(new_candidate_queries_removing_duplicates))
                 for query, score in new_candidate_queries_removing_duplicates:
-                    print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                    print(program_to_dsl(query.program, self.rewrite_variables), score)
                 self.candidate_queries = new_candidate_queries_removing_duplicates
                 self.n_queries_explored += len(self.candidate_queries)
 
@@ -807,17 +807,17 @@ class VOCALPostgres(BaseMethod):
             answers_removing_duplicates = []
             print("[self.answers] before removing duplicates:", len(self.answers))
             for query, score in self.answers:
-                print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                print(program_to_dsl(query.program, self.rewrite_variables), score)
             signatures = set()
             for query, score in self.answers:
-                signature = rewrite_program_postgres(query.program, self.rewrite_variables)
+                signature = program_to_dsl(query.program, self.rewrite_variables)
                 if signature not in signatures:
-                    query.program = str_to_program_postgres(signature)
+                    query.program = dsl_to_program(signature)
                     answers_removing_duplicates.append([query, score])
                     signatures.add(signature)
             print("[self.answers] after removing duplicates:", len(answers_removing_duplicates))
             for query, score in answers_removing_duplicates:
-                print(rewrite_program_postgres(query.program, self.rewrite_variables), score)
+                print(program_to_dsl(query.program, self.rewrite_variables), score)
             self.answers = answers_removing_duplicates
             # Keep the top-k queries
             self.answers = sorted(self.answers, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)

@@ -6,7 +6,7 @@ import shutil
 import numpy as np
 import src.dsl
 import os
-from src.utils import str_to_program, print_program
+from src.utils import dsl_to_program_quivr, print_program
 import csv
 from itertools import repeat
 from functools import partial
@@ -175,7 +175,7 @@ def prepare_trajectory_pairs_given_target_query(program_str, ratio_lower_bound, 
 
     ratio: minimum ratio of positive examples to negative examples
     """
-    program = str_to_program(program_str)
+    program = dsl_to_program_quivr(program_str)
     # read in trajectory pairs from file
     with open(os.path.join("inputs/trajectory_pairs.json"), 'r') as f:
         sample_inputs = json.loads(f.read())

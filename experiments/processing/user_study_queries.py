@@ -1,47 +1,37 @@
 from experiments.processing.prepare_data_postgres import prepare_data_given_target_query, construct_train_test
 
-from src.utils import str_to_program_postgres, rewrite_program_postgres
+from src.utils import dsl_to_program, program_to_dsl
 
 if __name__ == '__main__':
     query_programs = [
-        # [
-        #     {'scene_graph': [{'predicate': 'Far', 'parameter': 3, 'variables': ['o0', 'o1']}, {'predicate': 'Color', 'parameter': 'red', 'variables': ['o0']}, {'predicate': 'Shape', 'parameter': 'cylinder', 'variables': ['o1']}], 'duration_constraint': 1},
-        #     {'scene_graph': [{'predicate': 'Near', 'parameter': 1, 'variables': ['o0', 'o1']}], 'duration_constraint': 1}
-        # ],
-        # [
-        #     {'scene_graph': [{'predicate': 'Far', 'parameter': 3, 'variables': ['o0', 'o1']}, {'predicate': 'Color', 'parameter': 'red', 'variables': ['o0']}, {'predicate': 'Shape', 'parameter': 'cylinder', 'variables': ['o1']}], 'duration_constraint': 1},
-        #     {'scene_graph': [{'predicate': 'Near', 'parameter': 1, 'variables': ['o0', 'o1']}, {'predicate': 'TopQuadrant', 'parameter': None, 'variables': ['o2']}, {'predicate': 'RightQuadrant', 'parameter': None, 'variables': ['o2']}], 'duration_constraint': 1}
-        # ],
-        # [
-        #     {'scene_graph': [{'predicate': 'Far', 'parameter': 3, 'variables': ['o0', 'o1']}, {'predicate': 'Color', 'parameter': 'red', 'variables': ['o0']}, {'predicate': 'Shape', 'parameter': 'cylinder', 'variables': ['o1']}], 'duration_constraint': 25},
-        #     {'scene_graph': [{'predicate': 'Near', 'parameter': 1, 'variables': ['o0', 'o1']}, {'predicate': 'TopQuadrant', 'parameter': None, 'variables': ['o2']}, {'predicate': 'RightQuadrant', 'parameter': None, 'variables': ['o2']}], 'duration_constraint': 1}
-        # ],
-    #     [
-    #         {'scene_graph': [{'predicate': 'Color', 'parameter': 'purple', 'variables': ['o0']}, {'predicate': 'material', 'parameter': 'metal', 'variables': ['o0']}, {'predicate': 'BottomQuadrant', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Behind', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1}
-    #     ],
-    #    [
-    #         {'scene_graph': [{'predicate': 'Color', 'parameter': 'purple', 'variables': ['o0']}, {'predicate': 'material', 'parameter': 'metal', 'variables': ['o0']}, {'predicate': 'BottomQuadrant', 'parameter': None, 'variables': ['o1']}, {'predicate': 'Behind', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
-    #         {'scene_graph': [{'predicate': 'TopQuadrant', 'parameter': None, 'variables': ['o1']}], 'duration_constraint': 1}
-    #     ],
-        [
-            {'scene_graph': [{'predicate': 'Shape', 'parameter': 'sphere', 'variables': ['o0']}, {'predicate': 'material', 'parameter': 'metal', 'variables': ['o0']}, {'predicate': 'FrontOf', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
-            {'scene_graph': [{'predicate': 'Behind', 'parameter': None, 'variables': ['o0', 'o1']}, {'predicate': 'Near', 'parameter': 1, 'variables': ['o0', 'o2']}], 'duration_constraint': 1},
-            {'scene_graph': [{'predicate': 'FrontOf', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
+       [
+            {"scene_graph": [{"predicate": "Far", "parameter": 3, "variables": ["o0", "o1"]}, {"predicate": "Color", "parameter": "red", "variables": ["o0"]}, {"predicate": "Shape", "parameter": "cylinder", "variables": ["o1"]}], "duration_constraint": 1},
+            {"scene_graph": [{"predicate": "Near", "parameter": 1, "variables": ["o0", "o1"]}], "duration_constraint": 1}
         ],
         [
-            {'scene_graph': [{'predicate': 'Shape', 'parameter': 'sphere', 'variables': ['o1']}, {'predicate': 'material', 'parameter': 'metal', 'variables': ['o1']}, {'predicate': 'FrontOf', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
-            {'scene_graph': [{'predicate': 'Behind', 'parameter': None, 'variables': ['o0', 'o1']}, {'predicate': 'Near', 'parameter': 1, 'variables': ['o0', 'o2']}], 'duration_constraint': 1},
-            {'scene_graph': [{'predicate': 'FrontOf', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
+            {"scene_graph": [{"predicate": "Far", "parameter": 3, "variables": ["o0", "o1"]}, {"predicate": "Color", "parameter": "red", "variables": ["o0"]}, {"predicate": "Shape", "parameter": "cylinder", "variables": ["o1"]}], "duration_constraint": 1},
+            {"scene_graph": [{"predicate": "Near", "parameter": 1, "variables": ["o0", "o1"]}, {"predicate": "TopQuadrant", "parameter": None, "variables": ["o2"]}, {"predicate": "RightQuadrant", "parameter": None, "variables": ["o2"]}], "duration_constraint": 1}
         ],
         [
-            {'scene_graph': [{'predicate': 'Shape', 'parameter': 'sphere', 'variables': ['o2']}, {'predicate': 'material', 'parameter': 'metal', 'variables': ['o2']}, {'predicate': 'FrontOf', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
-            {'scene_graph': [{'predicate': 'Behind', 'parameter': None, 'variables': ['o0', 'o1']}, {'predicate': 'Near', 'parameter': 1, 'variables': ['o0', 'o2']}], 'duration_constraint': 1},
-            {'scene_graph': [{'predicate': 'FrontOf', 'parameter': None, 'variables': ['o0', 'o1']}], 'duration_constraint': 1},
+            {"scene_graph": [{"predicate": "Far", "parameter": 3, "variables": ["o0", "o1"]}, {"predicate": "Color", "parameter": "red", "variables": ["o0"]}, {"predicate": "Shape", "parameter": "cylinder", "variables": ["o1"]}], "duration_constraint": 25},
+            {"scene_graph": [{"predicate": "Near", "parameter": 1, "variables": ["o0", "o1"]}, {"predicate": "TopQuadrant", "parameter": None, "variables": ["o2"]}, {"predicate": "RightQuadrant", "parameter": None, "variables": ["o2"]}], "duration_constraint": 1}
+        ],
+        [
+            {"scene_graph": [{"predicate": "Color", "parameter": "purple", "variables": ["o0"]}, {"predicate": "material", "parameter": "metal", "variables": ["o0"]}, {"predicate": "BottomQuadrant", "parameter": None, "variables": ["o1"]}, {"predicate": "Behind", "parameter": None, "variables": ["o0", "o1"]}], "duration_constraint": 1}
+        ],
+        [
+            {"scene_graph": [{"predicate": "Color", "parameter": "purple", "variables": ["o0"]}, {"predicate": "material", "parameter": "metal", "variables": ["o0"]}, {"predicate": "BottomQuadrant", "parameter": None, "variables": ["o1"]}, {"predicate": "Behind", "parameter": None, "variables": ["o0", "o1"]}], "duration_constraint": 1},
+            {"scene_graph": [{"predicate": "TopQuadrant", "parameter": None, "variables": ["o1"]}], "duration_constraint": 1}
+        ],
+        [
+            {"scene_graph": [{"predicate": "Color", "parameter": "purple", "variables": ["o0"]}, {"predicate": "material", "parameter": "metal", "variables": ["o0"]}, {"predicate": "BottomQuadrant", "parameter": None, "variables": ["o1"]}, {"predicate": "Behind", "parameter": None, "variables": ["o0", "o1"]}], "duration_constraint": 1},
+            {"scene_graph": [{"predicate": "TopQuadrant", "parameter": None, "variables": ["o1"]}], "duration_constraint": 1},
+            {"scene_graph": [{"predicate": "BottomQuadrant", "parameter": None, "variables": ["o2"]}, {"predicate": "RightQuadrant", "parameter": None, "variables": ["o2"]}], "duration_constraint": 25}
         ],
     ]
     for query_program in query_programs:
         dataset_name = "user_study_queries_scene_graph"
-        query_str = rewrite_program_postgres(query_program)
+        query_str = program_to_dsl(query_program)
         print(query_str)
         prepare_data_given_target_query(query_str, 0, 1, dataset_name, "Obj_clevrer", sampling_rate=None)
         construct_train_test("/gscratch/balazinska/enhaoz/complex_event_video/inputs/{}".format(dataset_name), n_train=500)

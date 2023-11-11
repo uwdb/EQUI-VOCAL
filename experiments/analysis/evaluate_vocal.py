@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.metrics import f1_score
 from lru import LRU
 import time
-from src.utils import str_to_program_postgres, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching
+from src.utils import dsl_to_program, postgres_execute, postgres_execute_cache_sequence, postgres_execute_no_caching
 import math
 import argparse
 import multiprocessing
@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampling_rate, port, multithread, task_name, value, **kwargs):
     def compute_f1_score(test_query):
-        test_program = str_to_program_postgres(test_query)
+        test_program = dsl_to_program(test_query)
         conn = connections.getconn()
         outputs, new_memo = postgres_execute_cache_sequence(conn, test_program, memo, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
         connections.putconn(conn)
@@ -52,7 +52,7 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
         if task_name in ["trajectory"]:
             budgets = list(range(12, 21)) + list(range(25, 51, 5))
         elif task_name == "warsaw":
-            budgets = [15, 20, 25, 30, 40, 50]
+            budgets = [12, 15, 20, 25, 30, 40, 50]
         elif task_name in ["lambda_trajectory"]:
             budgets = [20]
         elif task_name in ["lambda_scene_graph", "cpu"]:
@@ -78,7 +78,10 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
     list_size = 72159
     memo = [{} for _ in range(list_size)]
     # Read the test data
-    test_dir = os.path.join(input_dir, dataset_name, "test")
+    if dataset_name.startswith("user_study_queries_scene_graph"):
+        test_dir = os.path.join(input_dir, "user_study_queries_scene_graph", "test")
+    else:
+        test_dir = os.path.join(input_dir, dataset_name, "test")
     inputs_filename = query_str + "_inputs.json"
     labels_filename = query_str + "_labels.json"
     with open(os.path.join(test_dir, inputs_filename), 'r') as f:
@@ -97,7 +100,7 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
             if task_name == "trajectory":
                 log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_1-nvars_2-bw_10-pool_size_100-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(budget))
             elif task_name == "warsaw":
-                log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_1-nvars_2-bw_10-pool_size_100-n_sampled_videos_500-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(budget))
+                log_dir = os.path.join(output_dir, dataset_name, method, "nip_2-nin_10-npred_5-depth_3-max_d_15-nvars_2-bw_10-pool_size_100-n_sampled_videos_5000-k_100-budget_{}-thread_1-lru_None-lambda_0.01".format(budget))
             elif task_name == "budget":
                 log_dir = os.path.join(output_dir, dataset_name, method, "nip_15-nin_15-npred_7-depth_3-max_d_15-nvars_3-bw_10-pool_size_100-k_1000-budget_{}-thread_4-lru_None-lambda_0.001".format(budget))
             elif task_name == "num_init":
@@ -229,9 +232,9 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
         with open(os.path.join(exp_dir, "stats", method, "{}.json".format(query_str)), "w") as f:
             json.dump(out_dict, f)
     elif task_name == "warsaw":
-        if not os.path.exists(os.path.join(exp_dir, "stats", method + "-max_d_1-n_sampled_videos_500")):
-            os.makedirs(os.path.join(exp_dir, "stats", method + "-max_d_1-n_sampled_videos_500"), exist_ok=True)
-        with open(os.path.join(exp_dir, "stats", method + "-max_d_1-n_sampled_videos_500", "{}.json".format(query_str)), "w") as f:
+        if not os.path.exists(os.path.join(exp_dir, "stats", method + "-max_d_15-n_sampled_videos_5000")):
+            os.makedirs(os.path.join(exp_dir, "stats", method + "-max_d_15-n_sampled_videos_5000"), exist_ok=True)
+        with open(os.path.join(exp_dir, "stats", method + "-max_d_15-n_sampled_videos_5000", "{}.json".format(query_str)), "w") as f:
             json.dump(out_dict, f)
 
     #### vary init ####
@@ -279,7 +282,7 @@ def evaluate_vocal(dataset_name, input_dir, output_dir, method, query_str, sampl
 
 def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, method, query_str, sampling_rate, port, multithread):
     def compute_f1_score(test_query):
-        test_program = str_to_program_postgres(test_query)
+        test_program = dsl_to_program(test_query)
         conn = connections.getconn()
         outputs, new_memo = postgres_execute_cache_sequence(conn, test_program, memo, inputs_table_name, input_vids, is_trajectory=is_trajectory, sampling_rate=sampling_rate)
         connections.putconn(conn)
@@ -314,7 +317,10 @@ def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, m
     list_size = 72159
     memo = [{} for _ in range(list_size)]
     # Read the test data
-    test_dir = os.path.join(input_dir, dataset_name, "test")
+    if dataset_name.startswith("user_study_queries_scene_graph"):
+        test_dir = os.path.join(input_dir, "user_study_queries_scene_graph", "test")
+    else:
+        test_dir = os.path.join(input_dir, dataset_name, "test")
     inputs_filename = query_str + "_inputs.json"
     labels_filename = query_str + "_labels.json"
     with open(os.path.join(test_dir, inputs_filename), 'r') as f:
@@ -398,7 +404,7 @@ def evaluate_vocal_no_params(dataset_name, input_dir, output_dir, config_name, m
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset_name", type=str, help='Dataset to evaluate.', choices=['synthetic_scene_graph_easy', 'synthetic_scene_graph_medium', 'synthetic_scene_graph_hard', 'without_duration-sampling_rate_4', 'trajectories_duration', 'trajectories_handwritten', 'user_study_queries_scene_graph', 'warsaw', 'synthetic_scene_graph_hard_v2'])
+    ap.add_argument("--dataset_name", type=str, help='Dataset to evaluate.')
     ap.add_argument("--config_name", type=str, default="", help='Config directory name.')
     ap.add_argument("--query_str", type=str, help='Target query to evalaute, written in the compact notation.')
     ap.add_argument("--method", type=str, help='Query synthesis method.')
