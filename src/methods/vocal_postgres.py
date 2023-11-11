@@ -92,7 +92,7 @@ class VOCALPostgres(BaseMethod):
         else:
             raise ValueError("num_threads must be 1 or greater")
         # Initialize the pools
-        self.dsn = "dbname=myinner_db user=enhaoz host=127.0.0.1 port={}".format(port)
+        self.dsn = "dbname=myinner_db user=zhangenhao host=127.0.0.1 port={}".format(port)
         # TODO: set the isolation level to read committed?
         # self.connections = [psycopg.connect(self.dsn) for _ in range(self.num_threads)]
         self.connections = psycopg.pool.ThreadedConnectionPool(1, self.num_threads, self.dsn)
@@ -162,11 +162,14 @@ class VOCALPostgres(BaseMethod):
         else:
             return random.randint(0, 1) * 2 - 1
 
-    def run_init(self, init_labeled_index):
+    def run_init(self, init_labeled_index, user_labels=None):
         self._start_total_time = time.time()
         self.init_nlabels = len(init_labeled_index)
         # Deep copy
         self.labeled_index = copy.deepcopy(init_labeled_index)
+
+        if user_labels is not None:
+            self.labels[self.labeled_index] = user_labels
 
         if self.is_trajectory:
             if self.dataset_name.startswith("collision"):
@@ -604,7 +607,7 @@ class VOCALPostgres(BaseMethod):
             log_dict["best_query"] = program_to_dsl(self.best_query_after_each_iter[0][0].program, self.rewrite_variables)
             log_dict["best_score"] = self.best_query_after_each_iter[0][1].item()
             # Prediction
-            pred_per_query = self.execute_over_all_inputs_postgres(self.best_query_after_each_iter[0][0].program, is_test=True)
+            pred_per_query = self.execute_over_all_inputs_postgres(self.answers[0][0].program, is_test=True)
             print("predicted_labels_test", pred_per_query)
             log_dict["predicted_labels_test"] = pred_per_query
             log.append(log_dict)
