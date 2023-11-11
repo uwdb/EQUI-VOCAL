@@ -29,7 +29,7 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
         with open("/gscratch/balazinska/enhaoz/complex_event_video/inputs/trajectory_pairs.json", 'r') as f:
             trajectories = json.load(f)
     trajectories = np.asarray(trajectories, dtype=object)
-    labels = np.asarray(labels, dtype=object)
+    labels = np.asarray(labels)
     inputs = trajectories[inputs]
 
     # Down-sample the trajectory once every sampling_rate frames
@@ -45,6 +45,8 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
         sampled_idx = np.random.choice(len(inputs), 5000, replace=False)
         inputs = inputs[sampled_idx]
         labels = labels[sampled_idx]
+
+    inputs = [np.array(input, dtype=float) for input in inputs.tolist()]
 
     memoize_all_inputs = [{} for _ in range(len(inputs))]
 
@@ -64,7 +66,7 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
         if line == "[Step {}]".format(step):
             returned_queries = []
             continue
-        elif line.startswith("[# queries]") or line.startswith("[Count candidate queries]") or line.startswith("[Count predictions]"):
+        elif line.startswith("[# queries]") or line.startswith("[Count candidate queries]") or line.startswith("[Count predictions]") or line.startswith("[Trial"):
             continue
         elif line.startswith("[Runtime so far]"):
             runtime = float(line.replace("[Runtime so far] ", ""))
@@ -74,7 +76,6 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
         elif line.startswith("[Memory footprint]"):
             memory = float(line.replace("[Memory footprint] profile: mem=", "").replace(" MB", ""))
             memory_all_steps.append(memory)
-            returned_queries_all_steps.append(returned_queries)
             print("number of queries: ", len(returned_queries))
             print(returned_queries)
             step += 1
@@ -84,6 +85,7 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
             # If more than 10 queries are returned, we sample 10 queries (for warsaw trajectories)
             if len(returned_queries) > 10:
                 returned_queries = np.random.choice(returned_queries, 10, replace=False)
+            returned_queries_all_steps.append(returned_queries)
         else:
             program = dsl_to_program_quivr(line)
             depth, num_nontrivial_predicates, num_trivial_predicates = get_depth_and_npred(program)
@@ -99,6 +101,9 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
                     returned_queries = [line]
                 elif depth == min_depth:
                     returned_queries.append(line)
+    # Remove last step
+    # returned_queries_all_steps = returned_queries_all_steps[:-1]
+    # runtime_all_steps = runtime_all_steps[:-1]
 
     for returned_queries, runtime in zip(returned_queries_all_steps, runtime_all_steps):
         if len(returned_queries) == 0:
@@ -118,6 +123,7 @@ def evaluate_quivr(dataset_name, method, query_str, run, sampling_rate):
                 prediction_matrix.append(pred_per_input)
             prediction_matrix = np.asarray(prediction_matrix)
             f1_scores = []
+            print("prediction_matrix", prediction_matrix)
             for i in range(len(returned_queries)):
                 f1 = f1_score(labels, prediction_matrix[:, i])
                 f1_scores.append(f1)
