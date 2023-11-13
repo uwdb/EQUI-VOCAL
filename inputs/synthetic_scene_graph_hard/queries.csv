@@ -1,41 +1,41 @@
 query,npos,nneg,ratio
-"Duration(LeftQuadrant(o0), 5); Duration((Color_brown(o0), LeftQuadrant(o0), RightOf(o1, o2), Shape_cube(o2)), 5); Duration((BottomQuadrant(o1), LeftQuadrant(o2)), 15)",984,9016,0.1091393078970718
-"Duration((Far_3.0(o0, o1), FrontOf(o0, o2), RightOf(o0, o2)), 15); Duration((Color_brown(o0), TopQuadrant(o0)), 15); Duration((Far_3.0(o0, o2), Material_metal(o0)), 5)",818,9182,0.0890873448050533
-"Duration(LeftOf(o0, o1), 10); Duration((BottomQuadrant(o2), Far_3.0(o0, o2), RightOf(o0, o1)), 5); (Material_metal(o1), RightQuadrant(o1), Shape_cylinder(o0))",791,9209,0.0858942339016179
-"Duration((Color_cyan(o0), LeftQuadrant(o1), RightQuadrant(o0), Shape_sphere(o0)), 5); Duration((RightQuadrant(o0), TopQuadrant(o0)), 15); Duration(RightOf(o0, o2), 15)",857,9143,0.0937329104232746
-"Duration((LeftOf(o0, o1), LeftQuadrant(o2), RightQuadrant(o1)), 5); Duration((Material_rubber(o2), Near_1.0(o0, o1)), 15); (Color_purple(o2), Near_1.0(o0, o1))",629,9371,0.0671219720414043
-"Duration(Far_3.0(o0, o1), 10); Duration(FrontOf(o0, o1), 5); Duration((Behind(o0, o1), BottomQuadrant(o2), Material_rubber(o1), Shape_cylinder(o1), TopQuadrant(o0)), 15)",932,9068,0.1027790030877812
-"Duration((Color_red(o0), LeftOf(o0, o1), Material_metal(o1)), 10); Duration((Behind(o1, o2), BottomQuadrant(o1)), 5); Duration((BottomQuadrant(o1), LeftQuadrant(o2)), 5)",602,9398,0.0640561821664183
-"Duration((Behind(o0, o1), LeftQuadrant(o0), Material_metal(o2), RightQuadrant(o2)), 5); Duration((Material_rubber(o1), Near_1.0(o0, o1)), 5); Duration(FrontOf(o0, o1), 15)",729,9271,0.0786322942508898
-"Duration((BottomQuadrant(o0), LeftOf(o0, o1)), 15); Duration((LeftQuadrant(o1), RightQuadrant(o2), Shape_cube(o0)), 15); Duration((RightOf(o0, o1), Shape_cube(o0)), 10)",827,9173,0.0901558922925978
-"(RightQuadrant(o0), Shape_cube(o0), TopQuadrant(o1)); Duration((Color_red(o0), RightQuadrant(o0)), 15); Duration((Behind(o0, o1), FrontOf(o1, o2)), 15)",744,9256,0.0803802938634399
-"Duration((Behind(o0, o1), Color_cyan(o1)), 10); Duration((Far_3.0(o1, o2), RightOf(o0, o1), Shape_cylinder(o0)), 5); Duration((Far_3.0(o0, o1), LeftQuadrant(o1)), 15)",977,9023,0.1082788429568879
-"Duration(LeftQuadrant(o0), 15); FrontOf(o0, o1); Duration((BottomQuadrant(o0), Color_green(o0), LeftQuadrant(o0), RightOf(o1, o2), Shape_cube(o1)), 5)",675,9325,0.0723860589812332
-"(Material_rubber(o0), Near_1.0(o0, o1)); Duration((RightOf(o0, o1), TopQuadrant(o2)), 5); Duration((Far_3.0(o0, o1), FrontOf(o0, o1), Material_metal(o1)), 15)",983,9017,0.1090163025396473
-"(BottomQuadrant(o0), LeftQuadrant(o1), Shape_sphere(o0)); Duration(LeftOf(o0, o2), 5); Duration((RightQuadrant(o1), Shape_sphere(o1), TopQuadrant(o2)), 10)",659,9341,0.0705491917353602
-"(LeftOf(o0, o1), Material_rubber(o1)); Duration((BottomQuadrant(o2), TopQuadrant(o0)), 15); Duration((Color_green(o1), Far_3.0(o1, o2), RightQuadrant(o2)), 10)",637,9363,0.0680337498664957
-"Duration((RightOf(o0, o1), Shape_cube(o1)), 15); Duration((Near_1.0(o0, o2), RightQuadrant(o0)), 15); Duration((Behind(o0, o2), Far_3.0(o1, o2), Material_rubber(o1)), 10)",805,9195,0.087547580206634
-"Duration((Material_rubber(o0), Near_1.0(o1, o2), RightQuadrant(o1)), 5); (Far_3.0(o1, o2), Shape_cylinder(o2)); Duration((FrontOf(o1, o2), TopQuadrant(o2)), 5)",704,9296,0.0757314974182444
-"Duration((Color_blue(o0), RightOf(o0, o1), RightQuadrant(o0)), 10); Duration((RightOf(o1, o2), Shape_cube(o0)), 15); (Behind(o1, o2), LeftQuadrant(o1))",686,9314,0.0736525660296328
-"Duration((Near_1.0(o0, o1), TopQuadrant(o1)), 10); Duration(Far_3.0(o0, o2), 5); Duration((Behind(o1, o2), Color_blue(o0), Shape_cube(o1), TopQuadrant(o1)), 5)",747,9253,0.0807305738679347
-"(Far_3.0(o0, o1), RightQuadrant(o2)); (Color_gray(o2), Near_1.0(o0, o1), Shape_cube(o1), TopQuadrant(o0)); Duration(TopQuadrant(o1), 15)",904,9096,0.0993843447669305
-"Duration((Color_purple(o0), Far_3.0(o0, o1), LeftQuadrant(o2)), 10); Duration((LeftQuadrant(o0), Material_metal(o1)), 15); Duration((FrontOf(o0, o2), LeftQuadrant(o1)), 10)",980,9020,0.1086474501108647
-"Duration((BottomQuadrant(o0), Color_red(o0), Material_metal(o1), RightOf(o1, o2), TopQuadrant(o2)), 10); Duration(FrontOf(o0, o2), 15); Duration(LeftOf(o1, o2), 15)",505,9495,0.05318588730911
-"RightOf(o0, o1); Duration((Color_cyan(o2), FrontOf(o1, o2), LeftQuadrant(o2)), 15); Duration((Behind(o0, o1), FrontOf(o0, o2), Shape_sphere(o1)), 5)",980,9020,0.1086474501108647
-"Duration((Color_green(o0), LeftQuadrant(o1), Material_metal(o1)), 10); (Far_3.0(o0, o2), RightOf(o0, o1)); Duration((Behind(o0, o2), RightQuadrant(o1)), 15)",581,9419,0.0616838305552606
-"(Far_3.0(o0, o1), Near_1.0(o0, o2)); Duration((Color_blue(o2), Far_3.0(o0, o1), LeftOf(o0, o1)), 5); (Behind(o0, o2), Material_rubber(o0))",865,9135,0.0946907498631636
-"(FrontOf(o0, o1), RightQuadrant(o0)); Duration((Behind(o1, o2), Material_metal(o2)), 5); (BottomQuadrant(o1), Material_metal(o2), Near_1.0(o0, o1))",786,9214,0.0853049706967657
-"Duration((Behind(o0, o1), LeftOf(o0, o2), Near_1.0(o1, o2)), 10); Duration(LeftOf(o0, o1), 15); Duration((Color_brown(o2), LeftOf(o0, o1), Material_metal(o0)), 15)",824,9176,0.089799476896251
-"Duration((LeftQuadrant(o0), RightOf(o0, o1)), 5); Duration((FrontOf(o0, o1), Material_metal(o0)), 5); Duration((Behind(o1, o2), Color_brown(o2), Far_3.0(o0, o2)), 15)",981,9019,0.1087703736556159
-"Duration(LeftOf(o0, o1), 10); Duration((FrontOf(o1, o2), Near_1.0(o0, o2)), 5); Duration((Color_yellow(o0), Material_rubber(o0), RightOf(o1, o2), TopQuadrant(o2)), 10)",895,9105,0.0982976386600768
-"Duration((Behind(o0, o1), Color_blue(o0), Material_metal(o2)), 10); Duration((Behind(o0, o2), LeftQuadrant(o0), RightOf(o1, o2)), 5); Duration(LeftQuadrant(o1), 5)",993,9007,0.1102475852115021
-"(FrontOf(o0, o1), LeftOf(o0, o1), TopQuadrant(o2)); (Color_purple(o2), RightOf(o0, o2)); Duration((Behind(o0, o1), Material_metal(o1)), 15)",622,9378,0.0663254425250586
-"RightQuadrant(o0); Duration((Behind(o0, o1), Near_1.0(o1, o2)), 10); Duration((Material_rubber(o1), RightOf(o0, o1), RightQuadrant(o2), Shape_sphere(o0)), 10)",986,9014,0.1093854004881295
-"Duration((FrontOf(o0, o1), LeftOf(o0, o1)), 5); Duration((Color_gray(o0), FrontOf(o0, o1), RightOf(o1, o2)), 15); (Color_purple(o2), TopQuadrant(o0))",906,9094,0.0996261271167802
-"Duration((Color_brown(o0), LeftOf(o0, o1)), 10); (Far_3.0(o1, o2), LeftQuadrant(o1)); Duration((Behind(o1, o2), RightOf(o1, o2), Shape_cylinder(o1)), 10)",720,9280,0.0775862068965517
-"(Behind(o0, o1), Material_metal(o2)); (FrontOf(o0, o1), LeftOf(o0, o1)); Duration((Near_1.0(o0, o2), Shape_cube(o0), TopQuadrant(o1)), 10)",620,9380,0.0660980810234541
-"Duration((BottomQuadrant(o0), Far_3.0(o0, o1), Material_metal(o0)), 5); Duration((LeftOf(o0, o1), RightOf(o0, o2), Shape_cube(o1)), 15); Duration(Behind(o0, o2), 10)",692,9308,0.0743446497636441
-"Duration(RightQuadrant(o0), 10); Duration((LeftOf(o1, o2), RightOf(o0, o1)), 5); Duration((Color_red(o0), LeftQuadrant(o2), Material_rubber(o2), RightOf(o1, o2)), 10)",915,9085,0.1007154650522839
-"Duration((Color_brown(o0), Material_rubber(o1), Near_1.0(o0, o1), RightQuadrant(o2)), 10); Duration(FrontOf(o0, o1), 10); (FrontOf(o0, o1), LeftOf(o0, o1))",538,9462,0.056859015007398
-"(Behind(o0, o1), Color_brown(o1), LeftQuadrant(o2), Shape_cylinder(o1)); Duration(RightOf(o0, o1), 15); Duration((BottomQuadrant(o2), RightOf(o0, o2)), 10)",655,9345,0.0700909577314071
-"(BottomQuadrant(o0), LeftOf(o1, o2), RightQuadrant(o0)); Duration(Far_3.0(o1, o2), 10); (Material_metal(o2), RightOf(o1, o2), Shape_cylinder(o0))",859,9141,0.0939722131057871
+"Duration(LeftQuadrant(o0), 5); Duration((Color(o0, 'brown'), LeftQuadrant(o0), RightOf(o1, o2), Shape(o2, 'cube')), 5); Duration((BottomQuadrant(o1), LeftQuadrant(o2)), 15)",984,9016,0.1091393078970718
+"Duration((Far(o0, o1, 3.0), FrontOf(o0, o2), RightOf(o0, o2)), 15); Duration((Color(o0, 'brown'), TopQuadrant(o0)), 15); Duration((Far(o0, o2, 3.0), Material(o0, 'metal')), 5)",818,9182,0.0890873448050533
+"Duration(LeftOf(o0, o1), 10); Duration((BottomQuadrant(o2), Far(o0, o2, 3.0), RightOf(o0, o1)), 5); (Material(o1, 'metal'), RightQuadrant(o1), Shape(o0, 'cylinder'))",791,9209,0.0858942339016179
+"Duration((Color(o0, 'cyan'), LeftQuadrant(o1), RightQuadrant(o0), Shape(o0, 'sphere')), 5); Duration((RightQuadrant(o0), TopQuadrant(o0)), 15); Duration(RightOf(o0, o2), 15)",857,9143,0.0937329104232746
+"Duration((LeftOf(o0, o1), LeftQuadrant(o2), RightQuadrant(o1)), 5); Duration((Material(o2, 'rubber'), Near(o0, o1, 1.0)), 15); (Color(o2, 'purple'), Near(o0, o1, 1.0))",629,9371,0.0671219720414043
+"Duration(Far(o0, o1, 3.0), 10); Duration(FrontOf(o0, o1), 5); Duration((Behind(o0, o1), BottomQuadrant(o2), Material(o1, 'rubber'), Shape(o1, 'cylinder'), TopQuadrant(o0)), 15)",932,9068,0.1027790030877812
+"Duration((Color(o0, 'red'), LeftOf(o0, o1), Material(o1, 'metal')), 10); Duration((Behind(o1, o2), BottomQuadrant(o1)), 5); Duration((BottomQuadrant(o1), LeftQuadrant(o2)), 5)",602,9398,0.0640561821664183
+"Duration((Behind(o0, o1), LeftQuadrant(o0), Material(o2, 'metal'), RightQuadrant(o2)), 5); Duration((Material(o1, 'rubber'), Near(o0, o1, 1.0)), 5); Duration(FrontOf(o0, o1), 15)",729,9271,0.0786322942508898
+"Duration((BottomQuadrant(o0), LeftOf(o0, o1)), 15); Duration((LeftQuadrant(o1), RightQuadrant(o2), Shape(o0, 'cube')), 15); Duration((RightOf(o0, o1), Shape(o0, 'cube')), 10)",827,9173,0.0901558922925978
+"(RightQuadrant(o0), Shape(o0, 'cube'), TopQuadrant(o1)); Duration((Color(o0, 'red'), RightQuadrant(o0)), 15); Duration((Behind(o0, o1), FrontOf(o1, o2)), 15)",744,9256,0.0803802938634399
+"Duration((Behind(o0, o1), Color(o1, 'cyan')), 10); Duration((Far(o1, o2, 3.0), RightOf(o0, o1), Shape(o0, 'cylinder')), 5); Duration((Far(o0, o1, 3.0), LeftQuadrant(o1)), 15)",977,9023,0.1082788429568879
+"Duration(LeftQuadrant(o0), 15); FrontOf(o0, o1); Duration((BottomQuadrant(o0), Color(o0, 'green'), LeftQuadrant(o0), RightOf(o1, o2), Shape(o1, 'cube')), 5)",675,9325,0.0723860589812332
+"(Material(o0, 'rubber'), Near(o0, o1, 1.0)); Duration((RightOf(o0, o1), TopQuadrant(o2)), 5); Duration((Far(o0, o1, 3.0), FrontOf(o0, o1), Material(o1, 'metal')), 15)",983,9017,0.1090163025396473
+"(BottomQuadrant(o0), LeftQuadrant(o1), Shape(o0, 'sphere')); Duration(LeftOf(o0, o2), 5); Duration((RightQuadrant(o1), Shape(o1, 'sphere'), TopQuadrant(o2)), 10)",659,9341,0.0705491917353602
+"(LeftOf(o0, o1), Material(o1, 'rubber')); Duration((BottomQuadrant(o2), TopQuadrant(o0)), 15); Duration((Color(o1, 'green'), Far(o1, o2, 3.0), RightQuadrant(o2)), 10)",637,9363,0.0680337498664957
+"Duration((RightOf(o0, o1), Shape(o1, 'cube')), 15); Duration((Near(o0, o2, 1.0), RightQuadrant(o0)), 15); Duration((Behind(o0, o2), Far(o1, o2, 3.0), Material(o1, 'rubber')), 10)",805,9195,0.087547580206634
+"Duration((Material(o0, 'rubber'), Near(o1, o2, 1.0), RightQuadrant(o1)), 5); (Far(o1, o2, 3.0), Shape(o2, 'cylinder')); Duration((FrontOf(o1, o2), TopQuadrant(o2)), 5)",704,9296,0.0757314974182444
+"Duration((Color(o0, 'blue'), RightOf(o0, o1), RightQuadrant(o0)), 10); Duration((RightOf(o1, o2), Shape(o0, 'cube')), 15); (Behind(o1, o2), LeftQuadrant(o1))",686,9314,0.0736525660296328
+"Duration((Near(o0, o1, 1.0), TopQuadrant(o1)), 10); Duration(Far(o0, o2, 3.0), 5); Duration((Behind(o1, o2), Color(o0, 'blue'), Shape(o1, 'cube'), TopQuadrant(o1)), 5)",747,9253,0.0807305738679347
+"(Far(o0, o1, 3.0), RightQuadrant(o2)); (Color(o2, 'gray'), Near(o0, o1, 1.0), Shape(o1, 'cube'), TopQuadrant(o0)); Duration(TopQuadrant(o1), 15)",904,9096,0.0993843447669305
+"Duration((Color(o0, 'purple'), Far(o0, o1, 3.0), LeftQuadrant(o2)), 10); Duration((LeftQuadrant(o0), Material(o1, 'metal')), 15); Duration((FrontOf(o0, o2), LeftQuadrant(o1)), 10)",980,9020,0.1086474501108647
+"Duration((BottomQuadrant(o0), Color(o0, 'red'), Material(o1, 'metal'), RightOf(o1, o2), TopQuadrant(o2)), 10); Duration(FrontOf(o0, o2), 15); Duration(LeftOf(o1, o2), 15)",505,9495,0.05318588730911
+"RightOf(o0, o1); Duration((Color(o2, 'cyan'), FrontOf(o1, o2), LeftQuadrant(o2)), 15); Duration((Behind(o0, o1), FrontOf(o0, o2), Shape(o1, 'sphere')), 5)",980,9020,0.1086474501108647
+"Duration((Color(o0, 'green'), LeftQuadrant(o1), Material(o1, 'metal')), 10); (Far(o0, o2, 3.0), RightOf(o0, o1)); Duration((Behind(o0, o2), RightQuadrant(o1)), 15)",581,9419,0.0616838305552606
+"(Far(o0, o1, 3.0), Near(o0, o2, 1.0)); Duration((Color(o2, 'blue'), Far(o0, o1, 3.0), LeftOf(o0, o1)), 5); (Behind(o0, o2), Material(o0, 'rubber'))",865,9135,0.0946907498631636
+"(FrontOf(o0, o1), RightQuadrant(o0)); Duration((Behind(o1, o2), Material(o2, 'metal')), 5); (BottomQuadrant(o1), Material(o2, 'metal'), Near(o0, o1, 1.0))",786,9214,0.0853049706967657
+"Duration((Behind(o0, o1), LeftOf(o0, o2), Near(o1, o2, 1.0)), 10); Duration(LeftOf(o0, o1), 15); Duration((Color(o2, 'brown'), LeftOf(o0, o1), Material(o0, 'metal')), 15)",824,9176,0.089799476896251
+"Duration((LeftQuadrant(o0), RightOf(o0, o1)), 5); Duration((FrontOf(o0, o1), Material(o0, 'metal')), 5); Duration((Behind(o1, o2), Color(o2, 'brown'), Far(o0, o2, 3.0)), 15)",981,9019,0.1087703736556159
+"Duration(LeftOf(o0, o1), 10); Duration((FrontOf(o1, o2), Near(o0, o2, 1.0)), 5); Duration((Color(o0, 'yellow'), Material(o0, 'rubber'), RightOf(o1, o2), TopQuadrant(o2)), 10)",895,9105,0.0982976386600768
+"Duration((Behind(o0, o1), Color(o0, 'blue'), Material(o2, 'metal')), 10); Duration((Behind(o0, o2), LeftQuadrant(o0), RightOf(o1, o2)), 5); Duration(LeftQuadrant(o1), 5)",993,9007,0.1102475852115021
+"(FrontOf(o0, o1), LeftOf(o0, o1), TopQuadrant(o2)); (Color(o2, 'purple'), RightOf(o0, o2)); Duration((Behind(o0, o1), Material(o1, 'metal')), 15)",622,9378,0.0663254425250586
+"RightQuadrant(o0); Duration((Behind(o0, o1), Near(o1, o2, 1.0)), 10); Duration((Material(o1, 'rubber'), RightOf(o0, o1), RightQuadrant(o2), Shape(o0, 'sphere')), 10)",986,9014,0.1093854004881295
+"Duration((FrontOf(o0, o1), LeftOf(o0, o1)), 5); Duration((Color(o0, 'gray'), FrontOf(o0, o1), RightOf(o1, o2)), 15); (Color(o2, 'purple'), TopQuadrant(o0))",906,9094,0.0996261271167802
+"Duration((Color(o0, 'brown'), LeftOf(o0, o1)), 10); (Far(o1, o2, 3.0), LeftQuadrant(o1)); Duration((Behind(o1, o2), RightOf(o1, o2), Shape(o1, 'cylinder')), 10)",720,9280,0.0775862068965517
+"(Behind(o0, o1), Material(o2, 'metal')); (FrontOf(o0, o1), LeftOf(o0, o1)); Duration((Near(o0, o2, 1.0), Shape(o0, 'cube'), TopQuadrant(o1)), 10)",620,9380,0.0660980810234541
+"Duration((BottomQuadrant(o0), Far(o0, o1, 3.0), Material(o0, 'metal')), 5); Duration((LeftOf(o0, o1), RightOf(o0, o2), Shape(o1, 'cube')), 15); Duration(Behind(o0, o2), 10)",692,9308,0.0743446497636441
+"Duration(RightQuadrant(o0), 10); Duration((LeftOf(o1, o2), RightOf(o0, o1)), 5); Duration((Color(o0, 'red'), LeftQuadrant(o2), Material(o2, 'rubber'), RightOf(o1, o2)), 10)",915,9085,0.1007154650522839
+"Duration((Color(o0, 'brown'), Material(o1, 'rubber'), Near(o0, o1, 1.0), RightQuadrant(o2)), 10); Duration(FrontOf(o0, o1), 10); (FrontOf(o0, o1), LeftOf(o0, o1))",538,9462,0.056859015007398
+"(Behind(o0, o1), Color(o1, 'brown'), LeftQuadrant(o2), Shape(o1, 'cylinder')); Duration(RightOf(o0, o1), 15); Duration((BottomQuadrant(o2), RightOf(o0, o2)), 10)",655,9345,0.0700909577314071
+"(BottomQuadrant(o0), LeftOf(o1, o2), RightQuadrant(o0)); Duration(Far(o1, o2, 3.0), 10); (Material(o2, 'metal'), RightOf(o1, o2), Shape(o0, 'cylinder'))",859,9141,0.0939722131057871
