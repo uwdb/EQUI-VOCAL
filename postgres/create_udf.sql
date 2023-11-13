@@ -1,157 +1,159 @@
+\set functors_path '/home/enhao/EQUI-VOCAL/postgres/functors'
+
 CREATE OR REPLACE FUNCTION Near(double precision, text, text, text, double precision, double precision, double precision, double precision, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Near'
+:'functors_path', 'Near'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Far(double precision, text, text, text, double precision, double precision, double precision, double precision, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Far'
+:'functors_path', 'Far'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION LeftOf(text, text, text, double precision, double precision, double precision, double precision, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'LeftOf'
+:'functors_path', 'LeftOf'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION RightOf(text, text, text, double precision, double precision, double precision, double precision, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'RightOf'
+:'functors_path', 'RightOf'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Behind(text, text, text, double precision, double precision, double precision, double precision, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Behind'
+:'functors_path', 'Behind'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION FrontOf(text, text, text, double precision, double precision, double precision, double precision, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'FrontOf'
+:'functors_path', 'FrontOf'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION LeftQuadrant(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'LeftQuadrant'
+:'functors_path', 'LeftQuadrant'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION RightQuadrant(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'RightQuadrant'
+:'functors_path', 'RightQuadrant'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION TopQuadrant(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'TopQuadrant'
+:'functors_path', 'TopQuadrant'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION BottomQuadrant(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'BottomQuadrant'
+:'functors_path', 'BottomQuadrant'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Color(text, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Color'
+:'functors_path', 'Color'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Shape(text, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Shape'
+:'functors_path', 'Shape'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Material(text, text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Material'
+:'functors_path', 'Material'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Red(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Red'
+:'functors_path', 'Red'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Gray(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Gray'
+:'functors_path', 'Gray'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Blue(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Blue'
+:'functors_path', 'Blue'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Green(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Green'
+:'functors_path', 'Green'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Brown(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Brown'
+:'functors_path', 'Brown'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Cyan(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Cyan'
+:'functors_path', 'Cyan'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Purple(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Purple'
+:'functors_path', 'Purple'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Yellow(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Yellow'
+:'functors_path', 'Yellow'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Cube(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Cube'
+:'functors_path', 'Cube'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Sphere(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Sphere'
+:'functors_path', 'Sphere'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Cylinder(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Cylinder'
+:'functors_path', 'Cylinder'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Metal(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Metal'
+:'functors_path', 'Metal'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Rubber(text, text, text, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Rubber'
+:'functors_path', 'Rubber'
 LANGUAGE C STRICT;
 
 -- For Shibuya dataset
 CREATE OR REPLACE FUNCTION LeftPoly(double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'LeftPoly'
+:'functors_path', 'LeftPoly'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION RightPoly(double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'RightPoly'
+:'functors_path', 'RightPoly'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION TopPoly(double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'TopPoly'
+:'functors_path', 'TopPoly'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION BottomPoly(double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'BottomPoly'
+:'functors_path', 'BottomPoly'
 LANGUAGE C STRICT;
 
 -- For Warsaw dataset
 CREATE OR REPLACE FUNCTION Eastward4(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Eastward4'
+:'functors_path', 'Eastward4'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION Eastward3(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Eastward3'
+:'functors_path', 'Eastward3'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION Eastward2(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Eastward2'
+:'functors_path', 'Eastward2'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION Westward2(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Westward2'
+:'functors_path', 'Westward2'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION Southward1Upper(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Southward1Upper'
+:'functors_path', 'Southward1Upper'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION Stopped(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Stopped'
+:'functors_path', 'Stopped'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION HighAccel(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'HighAccel'
+:'functors_path', 'HighAccel'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION DistanceSmall(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'DistanceSmall'
+:'functors_path', 'DistanceSmall'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION Faster(double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision, double precision) RETURNS boolean AS
-'/Users/zhangenhao/Desktop/UW/Research/equi-vocal-demo/EQUI-VOCAL/postgres/functors', 'Faster'
+:'functors_path', 'Faster'
 LANGUAGE C;
