@@ -1288,8 +1288,14 @@ def program_to_dsl(orig_program, rewrite_variables=True):
 
     def print_scene_graph_helper(predicate_list):
         predicate = predicate_list[-1]
-        predicate_name = f"{predicate['predicate']}_{predicate.get('parameter')}" if predicate.get('parameter') else predicate['predicate']
+        predicate_name = predicate['predicate']
+        # f"{predicate['predicate']}_{predicate.get('parameter')}" if predicate.get('parameter') else predicate['predicate']
         predicate_variables = ", ".join(predicate["variables"])
+        if predicate.get("parameter"):
+            if isinstance(predicate["parameter"], str):
+                predicate_variables = "{}, '{}'".format(predicate_variables, predicate["parameter"])
+            else:
+                predicate_variables = "{}, {}".format(predicate_variables, predicate["parameter"])
         if len(predicate_list) == 1:
             return "{}({})".format(predicate_name, predicate_variables)
         else:
@@ -1319,7 +1325,10 @@ def program_to_dsl(orig_program, rewrite_variables=True):
                         rewritten_variables.append("o" + str(encountered_variables.index(v)))
                 # Sort rewritten variables
                 # NOTE: Why do we want to sort?
-                # We assume that the order of variables in a predicate does not matter
+                # We assume that the order of variables in a predicate does not matter:
+                # 1) Near(o1, o2) == Near(o2, o1)
+                # 2) Although LeftOf(o1, o2) != LeftOf(o2, o1), we have LeftOf(o1, o2) == RightOf(o2, o1)
+                # However, this is not true in general.
                 rewritten_variables = sorted(rewritten_variables)
                 scene_graph[i]["variables"] = rewritten_variables
         dict["scene_graph"] = scene_graph
@@ -1336,6 +1345,13 @@ def program_to_dsl(orig_program, rewrite_variables=True):
     query = print_query(scene_graphs)
     return query
 
+# Function to check if the string is numeric (integer or float)
+def is_numeric(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 def dsl_to_program(dsl_str):
     """
@@ -1401,7 +1417,9 @@ def dsl_to_program(dsl_str):
 
     def parse_predicate(predicate_str):
         """
-        Parses a predicate.
+        Parses a predicate. A predicate has the following format:
+            predicate_name(variable1[, variable2][, parameter])
+        parameter can be a string or a number.
 
         Args:
             predicate_str (str): The predicate string to be parsed.
@@ -1411,20 +1429,24 @@ def dsl_to_program(dsl_str):
         """
         dict = {}
         # Near_0.95(o0, o1)
+        # Color(o1, "purple")
         idx = predicate_str.find("(")
         idx_r = predicate_str.rfind(")")
-        predicate_name = predicate_str[:idx].split("_")
-        dict["predicate"] = predicate_name[0]
-        if len(predicate_name) > 1:
-            try:
-                dict["parameter"] = float(predicate_name[1])
-            except:
-                dict["parameter"] = predicate_name[1]
+        predicate_name = predicate_str[:idx]
+        dict["predicate"] = predicate_name
+        predicate_arguments = predicate_str[idx+1:idx_r].split(", ")
+        # if the last argument is a string, then it is the parameter
+        if predicate_arguments[-1][0] in ["'", '"'] and predicate_arguments[-1][-1] in ["'", '"']:
+            dict["parameter"] = predicate_arguments[-1][1:-1]
+            dict["variables"] = predicate_arguments[:-1]
+        # if the last argument is numeric, it is also a parameter
+        elif is_numeric(predicate_arguments[-1]):
+            dict["parameter"] = float(predicate_arguments[-1])
+            dict["variables"] = predicate_arguments[:-1]
+        # otherwise, there is no parameter
         else:
             dict["parameter"] = None
-        # dict["parameter"] = float(predicate_name[1]) if len(predicate_name) > 1 else None
-        predicate_variables = predicate_str[idx+1:idx_r]
-        dict["variables"] = predicate_variables.split(", ")
+            dict["variables"] = predicate_arguments
         return dict
 
     scene_graph_str_list = dsl_str.split("; ")
@@ -1438,7 +1460,6 @@ def dsl_to_program(dsl_str):
         # remove the outermost parentheses if any
         if scene_graph_str.startswith("(") and scene_graph_str.endswith(")"):
             scene_graph_str = scene_graph_str[1:-1]
-        print(scene_graph_str)
         scene_graph = {"scene_graph": parse_conjunction(scene_graph_str), "duration_constraint": duration_constraint}
         program.append(scene_graph)
     return program
@@ -1446,6 +1467,7 @@ def dsl_to_program(dsl_str):
 
 def rewrite_vars_name_for_scene_graph(orig_dict):
     """
+    [deprecated] This logic is integrated into the program_to_dsl method (when rewrite_variables=True)
     Input:
     program: scene graph in the dictionary format. Predicates in the scene graph are sorted. The only rewrite is to rename variables.
     {'scene_graph': [{'predicate': 'LeftQuadrant', 'parameter': None, 'variables': ['o2']}, {'predicate': 'RightOf', 'parameter': None, 'variables': ['o0', 'o2']}], 'duration_constraint': 1}
@@ -1609,7 +1631,180 @@ def quivr_str_to_postgres_program(quivr_str):
             scene_graph[0]["duration_constraint"] = int(submodule_list[1])
             return scene_graph
 
-def program_to_dsl_old(orig_program, rewrite_variables=True):
+
+def program_to_dsl_v2(orig_program, rewrite_variables=True):
+    """
+    [deprecated]
+    Input:
+    program: query in the dictionary format
+    Output: query in dsl string format, which is ordered properly (uniquely).
+    NOTE: For trajectories, we don't rewrite the variables, since we expect the query to indicate which objects the predicate is referring to, as assumed in the Quivr paper.
+    """
+    def print_scene_graph(predicate_list):
+        if len(predicate_list) == 1:
+            return print_scene_graph_helper(predicate_list)
+        else:
+            return "({})".format(print_scene_graph_helper(predicate_list))
+
+    def print_scene_graph_helper(predicate_list):
+        predicate = predicate_list[-1]
+        predicate_name = f"{predicate['predicate']}_{predicate.get('parameter')}" if predicate.get('parameter') else predicate['predicate']
+        predicate_variables = ", ".join(predicate["variables"])
+        if len(predicate_list) == 1:
+            return "{}({})".format(predicate_name, predicate_variables)
+        else:
+            return "{}, {}({})".format(print_scene_graph_helper(predicate_list[:-1]), predicate_name, predicate_variables)
+
+    def print_query(scene_graphs):
+        if len(scene_graphs) == 1:
+            return scene_graphs[0]
+        else:
+            return "{}; {}".format(print_query(scene_graphs[:-1]), scene_graphs[-1])
+
+    program = copy.deepcopy(orig_program)
+    # Rewrite the program
+    encountered_variables = []
+    for dict in program:
+        scene_graph = dict["scene_graph"]
+        scene_graph = sorted(scene_graph, key=lambda x: x["predicate"] + " ".join(x["variables"]))
+        if rewrite_variables:
+            # Rewrite variables
+            for i, p in enumerate(scene_graph):
+                rewritten_variables = []
+                for v in p["variables"]:
+                    if v not in encountered_variables:
+                        encountered_variables.append(v)
+                        rewritten_variables.append("o" + str(len(encountered_variables) - 1))
+                    else:
+                        rewritten_variables.append("o" + str(encountered_variables.index(v)))
+                # Sort rewritten variables
+                # NOTE: Why do we want to sort?
+                # We assume that the order of variables in a predicate does not matter
+                rewritten_variables = sorted(rewritten_variables)
+                scene_graph[i]["variables"] = rewritten_variables
+        dict["scene_graph"] = scene_graph
+
+    scene_graphs = []
+    for dict in program:
+        scene_graph = dict["scene_graph"]
+        duration_constraint = int(dict["duration_constraint"])
+        scene_graph_str = print_scene_graph(scene_graph)
+        if duration_constraint > 1:
+            scene_graph_str = "Duration({}, {})".format(scene_graph_str, duration_constraint)
+        scene_graphs.append(scene_graph_str)
+
+    query = print_query(scene_graphs)
+    return query
+
+
+def dsl_to_program_v2(dsl_str):
+    """
+    [deprecated]
+    Converts a DSL string into a program.
+
+    Args:
+        dsl_str (str): The DSL string to be converted.
+
+    Returns:
+        list: A list of scene graphs, where each scene graph is a dictionary containing a list of predicates and a duration constraint.
+    """
+
+    def parse_duration(scene_graph_str):
+        """
+        Parses the duration of a scene graph.
+
+        Args:
+            scene_graph_str (str): The scene graph string to be parsed.
+
+        Returns:
+            list: A list of submodules.
+        """
+        idx = scene_graph_str.find("(")
+        idx_r = scene_graph_str.rfind(")")
+        submodules = scene_graph_str[idx+1:idx_r]
+        counter = 0
+        submodule_list = []
+        submodule_start = 0
+        for i, char in enumerate(submodules):
+            if char == "," and counter == 0:
+                submodule_list.append(submodules[submodule_start:i])
+                submodule_start = i+2
+            elif char == "(":
+                counter += 1
+            elif char == ")":
+                counter -= 1
+        submodule_list.append(submodules[submodule_start:])
+        return submodule_list
+
+    def parse_conjunction(scene_graph_str):
+        """
+        Parses the conjunction of a scene graph.
+
+        Args:
+            scene_graph_str (str): The scene graph string to be parsed.
+
+        Returns:
+            list: A list of predicates.
+        """
+        predicate_list = []
+        idx = 0
+        counter = 0
+        for i, char in enumerate(scene_graph_str):
+            if char == "(":
+                counter += 1
+            elif char == ")":
+                counter -= 1
+            elif char == "," and counter == 0:
+                predicate_list.append(scene_graph_str[idx:i].strip())
+                idx = i+1
+        predicate_list.append(scene_graph_str[idx:].strip())
+        return [parse_predicate(predicate) for predicate in predicate_list]
+
+    def parse_predicate(predicate_str):
+        """
+        Parses a predicate.
+
+        Args:
+            predicate_str (str): The predicate string to be parsed.
+
+        Returns:
+            dict: A dictionary containing the predicate name, parameter (if any), and variables.
+        """
+        dict = {}
+        # Near_0.95(o0, o1)
+        idx = predicate_str.find("(")
+        idx_r = predicate_str.rfind(")")
+        predicate_name = predicate_str[:idx].split("_")
+        dict["predicate"] = predicate_name[0]
+        if len(predicate_name) > 1:
+            try:
+                dict["parameter"] = float(predicate_name[1])
+            except:
+                dict["parameter"] = predicate_name[1]
+        else:
+            dict["parameter"] = None
+        # dict["parameter"] = float(predicate_name[1]) if len(predicate_name) > 1 else None
+        predicate_variables = predicate_str[idx+1:idx_r]
+        dict["variables"] = predicate_variables.split(", ")
+        return dict
+
+    scene_graph_str_list = dsl_str.split("; ")
+    program = []
+    for scene_graph_str in scene_graph_str_list:
+        duration_constraint = 1
+        if scene_graph_str.startswith("Duration"):
+            submodule_list = parse_duration(scene_graph_str)
+            duration_constraint = int(submodule_list[-1])
+            scene_graph_str = submodule_list[0]
+        # remove the outermost parentheses if any
+        if scene_graph_str.startswith("(") and scene_graph_str.endswith(")"):
+            scene_graph_str = scene_graph_str[1:-1]
+        scene_graph = {"scene_graph": parse_conjunction(scene_graph_str), "duration_constraint": duration_constraint}
+        program.append(scene_graph)
+    return program
+
+
+def program_to_dsl_v1(orig_program, rewrite_variables=True):
     """
     [deprecated]
     Input:
@@ -1675,7 +1870,7 @@ def program_to_dsl_old(orig_program, rewrite_variables=True):
     return query
 
 
-def dsl_to_program_old(program_str):
+def dsl_to_program_v1(program_str):
     """
     [deprecated]
     """
@@ -1735,8 +1930,24 @@ def dsl_to_program_old(program_str):
         program.append(scene_graph)
     return program
 
+def get_inputs_table_name_and_is_trajectory(dataset_name):
+    if dataset_name.startswith("collision"):
+        inputs_table_name = "Obj_collision"
+        is_trajectory = True
+    elif "scene_graph" in dataset_name:
+        inputs_table_name = "Obj_clevrer"
+        is_trajectory = False
+    elif dataset_name == "warsaw":
+        inputs_table_name = "Obj_warsaw"
+        is_trajectory = True
+    else:
+        inputs_table_name = "Obj_trajectories"
+        is_trajectory = True
+    return inputs_table_name, is_trajectory
+
+
 if __name__ == '__main__':
-    target_query = "Duration((Color_red(o0), Far_3(o0, o1), Shape_cylinder(o1)), 25); (Near_1(o0, o1), RightQuadrant(o2), TopQuadrant(o2))"
+    target_query = "Duration((Color(o0, 'red'), Far(o0, o1, 3), Shape(o1, 'cylinder')), 25); (Near(o0, o1, 1), RightQuadrant(o2), TopQuadrant(o2))"
     target_program = dsl_to_program(target_query)
     print(target_program)
     print(program_to_dsl(target_program))
