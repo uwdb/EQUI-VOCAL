@@ -34,3 +34,4 @@ easy-install.pth
 !inputs/trajectories_duration/
 !inputs/user_study_queries_scene_graph/
 !inputs/warsaw/
+!inputs/id_to_query.json
