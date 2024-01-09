@@ -17,7 +17,7 @@ import yaml
 current_dir = os.path.dirname(os.path.realpath(__file__))
 base_dir = os.path.dirname(os.path.dirname(current_dir))
 
-def compute_f1_score_single_query(test_query, gt_query, dataset_name, multithread, input_dir, ):
+def compute_f1_score_single_query(test_query, gt_query, dataset_name, multithread, input_dir):
     # read username from yaml file
     config = yaml.safe_load(open(os.path.join(base_dir, "configs/config.yaml")))
     username = config["postgres"]["username"]
@@ -50,7 +50,6 @@ def compute_f1_score_single_query(test_query, gt_query, dataset_name, multithrea
         else:
             preds.append(0)
     score = f1_score(labels, preds)
-    print(score)
     return score
 
 if __name__ == "__main__":

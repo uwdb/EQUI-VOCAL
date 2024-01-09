@@ -1271,35 +1271,34 @@ def postgres_execute_no_caching(conn, current_query, memo, inputs_table_name, in
         conn.commit()
     return output_vids, new_memo
 
+def print_scene_graph(predicate_list):
+    if len(predicate_list) == 1:
+        return print_scene_graph_helper(predicate_list)
+    else:
+        return "({})".format(print_scene_graph_helper(predicate_list))
 
-def program_to_dsl(orig_program, rewrite_variables=True):
+def print_scene_graph_helper(predicate_list):
+    predicate = predicate_list[-1]
+    predicate_name = predicate['predicate']
+    # f"{predicate['predicate']}_{predicate.get('parameter')}" if predicate.get('parameter') else predicate['predicate']
+    predicate_variables = ", ".join(predicate["variables"])
+    if predicate.get("parameter"):
+        if isinstance(predicate["parameter"], str):
+            predicate_variables = "{}, '{}'".format(predicate_variables, predicate["parameter"])
+        else:
+            predicate_variables = "{}, {}".format(predicate_variables, predicate["parameter"])
+    if len(predicate_list) == 1:
+        return "{}({})".format(predicate_name, predicate_variables)
+    else:
+        return "{}, {}({})".format(print_scene_graph_helper(predicate_list[:-1]), predicate_name, predicate_variables)
+
+def program_to_dsl(orig_program, rewrite_variables=True, sort_variables=True):
     """
     Input:
     program: query in the dictionary format
     Output: query in dsl string format, which is ordered properly (uniquely).
     NOTE: For trajectories, we don't rewrite the variables, since we expect the query to indicate which objects the predicate is referring to, as assumed in the Quivr paper.
     """
-    def print_scene_graph(predicate_list):
-        if len(predicate_list) == 1:
-            return print_scene_graph_helper(predicate_list)
-        else:
-            return "({})".format(print_scene_graph_helper(predicate_list))
-
-    def print_scene_graph_helper(predicate_list):
-        predicate = predicate_list[-1]
-        predicate_name = predicate['predicate']
-        # f"{predicate['predicate']}_{predicate.get('parameter')}" if predicate.get('parameter') else predicate['predicate']
-        predicate_variables = ", ".join(predicate["variables"])
-        if predicate.get("parameter"):
-            if isinstance(predicate["parameter"], str):
-                predicate_variables = "{}, '{}'".format(predicate_variables, predicate["parameter"])
-            else:
-                predicate_variables = "{}, {}".format(predicate_variables, predicate["parameter"])
-        if len(predicate_list) == 1:
-            return "{}({})".format(predicate_name, predicate_variables)
-        else:
-            return "{}, {}({})".format(print_scene_graph_helper(predicate_list[:-1]), predicate_name, predicate_variables)
-
     def print_query(scene_graphs):
         if len(scene_graphs) == 1:
             return scene_graphs[0]
@@ -1328,7 +1327,8 @@ def program_to_dsl(orig_program, rewrite_variables=True):
                 # 1) Near(o1, o2) == Near(o2, o1)
                 # 2) Although LeftOf(o1, o2) != LeftOf(o2, o1), we have LeftOf(o1, o2) == RightOf(o2, o1)
                 # However, this is not true in general.
-                rewritten_variables = sorted(rewritten_variables)
+                if sort_variables:
+                    rewritten_variables = sorted(rewritten_variables)
                 scene_graph[i]["variables"] = rewritten_variables
         dict["scene_graph"] = scene_graph
 
