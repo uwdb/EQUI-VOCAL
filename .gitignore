@@ -17,6 +17,9 @@ src/datalog/souffle/*
 inputs/*
 inputs/without_duration-sampling_rate_4/PATSQL/
 outputs/*
+models/*
+mylocal_db/*
+udfs/*
 *.ipynb_checkpoints/
 easy-install.pth
 *.o
