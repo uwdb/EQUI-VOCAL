@@ -10,7 +10,10 @@ from src.methods.quivr_original_no_kleene import QUIVROriginalNoKleene
 from src.methods.vocal_postgres import VOCALPostgres
 from src.methods.vocal_postgres_no_active_learning import VOCALPostgresNoActiveLearning
 import src.dsl as dsl
+from src.utils import program_to_dsl, dsl_to_program
 import time
+from itertools import combinations, product
+import ast
 
 def test_quivr_original(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, with_kleene):
     if dataset_name.startswith("collision"):
@@ -100,6 +103,146 @@ def test_quivr_original_active_learning(dataset_name, n_init_pos, n_init_neg, np
     output_log = algorithm.active_learning_stage(init_labeled_index, log_dirname, log_filename)
 
     return output_log
+
+#ARMADILLO
+def test_algorithm_reuse(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir, sub_scenegraphs, sub_predicates, reuse_workload):
+    dataset_name = "user_study_queries_scene_graph"
+    old_alg = True
+    workloads = [[ #basic
+        "(Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')); Near(o0, o1, 1.0)",
+        "(Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')); (Near(o0, o1, 1.0), RightQuadrant(o2), TopQuadrant(o2))",
+        "Duration((Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')), 25); (Near(o0, o1, 1.0), RightQuadrant(o2), TopQuadrant(o2))",
+        #Duration((Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')), 25); (Near(o0, o1, 1.0), RightQuadrant(o2), TopQuadrant(o2))_inputs# "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0))",
+        # "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0)); TopQuadrant(o1)",
+        # "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0)); TopQuadrant(o1); Duration(Conjunction(BottomQuadrant(o2), RightQuadrant(o2)), 25)"
+    ],
+    [ #sg
+       "(LeftOf(o0, o1), Shape(o0, 'sphere'), Shape(o1, 'sphere')); RightOf(o0, o1)",
+        "(LeftOf(o0, o1), Shape(o0, 'sphere'), Shape(o1, 'sphere')); (LeftOf(o0, o2), RightOf(o0, o1)); RightOf(o0, o2)",
+        "(BottomQuadrant(o0), Color(o1, 'yellow'), Far(o0, o1, 3.0)); (LeftOf(o0, o2), Material(o2, 'metal')); RightOf(o0, o2)",
+        "Duration((LeftOf(o0, o1), Shape(o0, 'sphere'), Shape(o1, 'sphere')), 15); (LeftOf(o0, o2), RightOf(o0, o1)); Duration(RightOf(o0, o2), 15)"
+    ],
+    [ #pred
+        "(Color(o0, 'yellow'), Color(o1, 'blue'), LeftOf(o0, o1)); RightOf(o0, o1)",
+        "(Color(o0, 'yellow'), LeftOf(o0, o1), Shape(o1, 'sphere')); RightOf(o0, o1)",
+        "(Color(o0, 'yellow'), Shape(o1, 'cylinder'), TopQuadrant(o1)); (LeftOf(o0, o2), Shape(o2, 'sphere')); Duration(RightOf(o0, o2), 15)"
+    ]]
+    query_strs = workloads[reuse_workload]
+    query_str = query_strs[0] #"(Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')); Near(o0, o1, 1.0)"
+    query_idx = query_strs.index(query_str)
+    with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
+        inputs = json.load(f)
+    with open(os.path.join(input_dir, "{}/train/{}_labels.json".format(dataset_name, query_str)), 'r') as f:
+        labels = json.load(f)
+    inputs = np.asarray(inputs) # input video ids
+    labels = np.asarray(labels)
+    pos_idx = np.where(labels == 1)[0]
+    neg_idx = np.where(labels == 0)[0]
+    print("pos_idx", len(pos_idx), pos_idx, "neg_idx", len(neg_idx), neg_idx)
+
+    if "sampling_rate" in dataset_name:
+        splits = dataset_name.split("-")
+        for split in splits:
+            if split.startswith("sampling_rate_"):
+                sampling_rate = int(split.replace("sampling_rate_", ""))
+                break
+    else:
+        sampling_rate = None
+    print("sampling_rate", sampling_rate)
+    init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
+    print(init_labeled_index)
+
+    if method == "vocal_postgres":
+        algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
+    elif method == "vocal_postgres_no_active_learning":
+        algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
+    output_log = algorithm.run(init_labeled_index)
+    #ARMADILLO
+    output = []
+    fa_index_threshold = -1
+    output.append(output_log)
+    for i in range(1, len(query_strs)):
+        query_idx = i
+        query_str = query_strs[query_idx]
+        with open(os.path.join(input_dir, "{}/train/{}_inputs.json".format(dataset_name, query_str)), 'r') as f:
+            inputs = json.load(f)
+        with open(os.path.join(input_dir, "{}/train/{}_labels.json".format(dataset_name, query_str)), 'r') as f:
+            labels = json.load(f)
+        inputs = np.asarray(inputs) # input video ids
+        labels = np.asarray(labels)
+        pos_idx = np.where(labels == 1)[0]
+        neg_idx = np.where(labels == 0)[0]
+        init_labeled_index = random.sample(pos_idx.tolist(), n_init_pos) + random.sample(neg_idx.tolist(), n_init_neg)
+        #if (i==1): new_candidate_query = (dsl_to_program("(Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')); Near(o0, o1, 1.0)"), 0.96)  #"" #what if final query is wrong
+        #elif (i==2): new_candidate_query = (dsl_to_program("(Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')); (Near(o0, o1, 1.0), RightQuadrant(o2), TopQuadrant(o2))"), 0.90)
+        new_candidate_queries = [] # move this out of for loop
+        print(len(output))
+        index = output[i-1].index("[Final answers]")
+        index +=1
+        end = output[i-1].index("[Total runtime]")
+        fa_index_threshold = end + 1
+        print("Final answers index: ", index)
+        print("Final answers end index: ", end )
+        print("GATHERING SEED QUERIES FOR NEXT ROUND")
+        if(index+5< end):
+            end = index+5
+        for j in range(index, end):
+            # new_candidate_query_graph = QueryGraph(self.dataset_name, self.max_npred, self.max_depth, self.max_nontrivial, self.max_trivial, self.max_duration, self.max_vars, self.predicate_list, is_trajectory=self.is_trajectory)
+            # new_candidate_query_graph.program = dsl_to_program(output_log[j+1+i][0])
+            print("seed query:", output[i-1][j])
+            new_candidate_query = (dsl_to_program(output[i-1][j][0]), output[i-1][j][1])
+            new_candidate_queries.append(new_candidate_query) 
+
+            if sub_scenegraphs or sub_predicates:
+                # #GENERATE SUBQUERIES
+                preds = [[p for p in query['scene_graph']] for query in new_candidate_query[0]]
+                combos = [{} for k in range(len(new_candidate_query[0]))]
+                # #Get pred combinations from each scene graph
+
+                # #g1, g1;g2, g1;g2;g3
+                for graph in range(len(new_candidate_query[0])): #each scene graph
+                    candidate_scenegraph = (new_candidate_query[0][:(graph+1)], 0)
+                    new_candidate_queries.append(candidate_scenegraph)
+
+                    if sub_predicates:
+                        for l in range(0, len(preds[graph])+1):
+                            comb = combinations(preds[graph], l)
+                            for combo in list(comb):
+                                combo = list(combo)
+                                combos[graph][str(combo)] = combo
+
+                #             # flatten list of all combinations for that scene graph
+            # # cartesian product(cartesian product (all sub combinations in each scene graph) , sub combinations in the next scene graph)
+            # # each list has to include empty list
+            # # dictionary/set to eliminate duplicates
+            # # # Create crossproduct of predicate combinations
+
+            if sub_predicates:
+                full_combos = list(product(*combos)) # check that it can contain empty predicates
+                for item in full_combos:# each scene graph in the current query or in queries in signatures
+                    q = []
+                    for m in range(0, len(item)):
+                        if(len(ast.literal_eval(item[m])) > 0):
+                            q.append({"scene_graph": ast.literal_eval(item[m]), "duration_constraint":new_candidate_query[0][m]["duration_constraint"]})
+                    if(len(q) > 0):
+                        candidate_subquery = (q, 0)
+                        new_candidate_queries.append(candidate_subquery)
+
+
+        if not old_alg:
+            if method == "vocal_postgres":
+                algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg, seed_queries = new_candidate_queries)#[new_candidate_query])
+            elif method == "vocal_postgres_no_active_learning":
+                algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg, seed_queries = new_candidate_queries) #[new_candidate_query])
+            output_log = algorithm.run(init_labeled_index)
+        else:
+            if method == "vocal_postgres":
+                algorithm = VOCALPostgres(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
+            elif method == "vocal_postgres_no_active_learning":
+                algorithm = VOCALPostgresNoActiveLearning(dataset_name, inputs, labels, predicate_dict, max_npred=npred, max_depth=depth, max_duration=max_duration, beam_width=beam_width, pool_size=pool_size, n_sampled_videos=n_sampled_videos, k=k, budget=budget, multithread=multithread, strategy=strategy, max_vars=max_vars, port=port, sampling_rate=sampling_rate, lru_capacity=lru_capacity, reg_lambda=reg_lambda, n_init_pos=n_init_pos, n_init_neg=n_init_neg)
+            output_log = algorithm.run(init_labeled_index)
+        output.append(output_log)
+    return output
 
 def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir):
 
@@ -304,6 +447,9 @@ if __name__ == '__main__':
     ap.add_argument('--reg_lambda', type=float, default=0.01, help='Regularization parameter.')
     ap.add_argument('--input_dir', type=str, default="../inputs", help='Input directory.')
     ap.add_argument('--output_dir', type=str, default="../outputs", help='Output directory.')
+    ap.add_argument('--sub_scenegraphs', action="store_true", help='Query reuse - subgraphs.')
+    ap.add_argument('--sub_predicates', action="store_true", help='Query reuse - subpredicates.')
+    ap.add_argument('--reuse_workload', type=int, default=0, help='Query reuse workload.')
 
     args = ap.parse_args()
     method_str = args.method
@@ -332,10 +478,13 @@ if __name__ == '__main__':
     reg_lambda = args.reg_lambda
     input_dir = args.input_dir
     output_dir = args.output_dir
+    sub_scenegraphs = args.sub_scenegraphs
+    sub_predicates = args.sub_predicates
+    reuse_workload = args.reuse_workload
+    
     random.seed(run_id)
     np.random.seed(run_id)
     # random.seed(time.time())
-
     # Define file directory and name
     if method_str in ["quivr_original", "quivr_original_no_kleene", "quivr_original_active_learning", "quivr_original_no_kleene_active_learning"]:
         method_name = method_str
@@ -345,14 +494,13 @@ if __name__ == '__main__':
         config_name = "nip_{}-nin_{}-npred_{}-depth_{}-max_d_{}-nvars_{}-bw_{}-pool_size_{}-n_sampled_videos_{}-k_{}-budget_{}-thread_{}-lru_{}-lambda_{}".format(n_init_pos, n_init_neg, npred, depth, max_duration, max_vars, beam_width, pool_size, n_sampled_videos, k, budget, multithread, lru_capacity, reg_lambda)
 
     log_dirname = os.path.join(output_dir, dataset_name, method_name, config_name)
-    log_filename = "{}-{}".format(query_str, run_id)
+    log_filename = "{}-{} old run sub:{} pred: {} wkld {}".format(query_str, run_id, sub_scenegraphs, sub_predicates, reuse_workload+1) # change up run_id
     # if dir not exist, create it
     if output_to_file:
         if not os.path.exists(os.path.join(log_dirname, "verbose")):
             os.makedirs(os.path.join(log_dirname, "verbose"), exist_ok=True)
         verbose_f = open(os.path.join(log_dirname, "verbose", "{}.log".format(log_filename)), 'w')
         sys.stdout = verbose_f
-
 
     # Define candidate predicates
     if dataset_name.startswith("trajectories_handwritten") or dataset_name.startswith("trajectories_duration"):
@@ -426,7 +574,8 @@ if __name__ == '__main__':
     elif method_str == "exhaustive":
         test_exhaustive(n_init_pos, n_init_neg, npred, depth, max_duration, multithread, predicate_dict, input_dir)
     elif method_str in ['vocal_postgres', 'vocal_postgres_no_active_learning']:
-        output_log = test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
+        #ARMADILLO
+        output_log = test_algorithm_reuse(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir, sub_scenegraphs, sub_predicates, reuse_workload) #test_algorithm(method_str, dataset_name, n_init_pos, n_init_neg, npred, depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, query_str, predicate_dict, lru_capacity, reg_lambda, strategy, max_vars, port, input_dir)
     elif method_str in ["quivr_original_active_learning", "quivr_original_no_kleene_active_learning"]:
         output_log = test_quivr_original_active_learning(dataset_name, n_init_pos, n_init_neg, npred, n_nontrivial, n_trivial, depth, max_duration, budget, multithread, query_str, predicate_dict, lru_capacity, input_dir, os.path.join(output_dir, dataset_name, method_name.replace("_active_learning", "_zero_step"), config_name), log_filename)
     if output_to_file:

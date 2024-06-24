@@ -14,14 +14,21 @@ from psycopg2 import pool
 import uuid
 import threading
 import copy
+import math
 
 def using(point=""):
     usage=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return '''%s: mem=%s MB'''%(point, usage/1024.0 )
 
 class VOCALPostgres(BaseMethod):
+    #ARMADILLO
+    # def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg, test_inputs=None, test_labels=None, iteration = 0, candidate_queries = None):
+    #     print("hi")
+    #     self.__init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg, test_inputs=None, test_labels=None)
+    #     self.iteration = iteration 
+    #     self.candidate_queries = candidate_queries
 
-    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg, test_inputs=None, test_labels=None):
+    def __init__(self, dataset_name, inputs, labels, predicate_list, max_npred, max_depth, max_duration, beam_width, pool_size, n_sampled_videos, k, budget, multithread, strategy, max_vars, port, sampling_rate, lru_capacity, reg_lambda, n_init_pos, n_init_neg, test_inputs=None, test_labels=None, iteration=0, seed_queries=None):
         self.dataset_name = dataset_name
         self.inputs = inputs
         self.labels = labels
@@ -47,35 +54,63 @@ class VOCALPostgres(BaseMethod):
         self.get_query_score = self.compute_query_score_postgres
         self.n_init_pos = n_init_pos
         self.n_init_neg = n_init_neg
-        if self.dataset_name.startswith("user_study"):
-            self.duration_unit = 25
-        else:
-            self.duration_unit = 5
-        self.label_count_per_iter = 0 # Used for live demo task: the number of labels collected in the current iteration so far
-        # self.filtered_index = [] # Create an empty list to store the indices of the videos that have been filtered out during the active learning process
-
-        if self.duration_unit == 1:
-            samples_per_iter = [0] * (self.max_npred + (self.max_duration - 1) * self.max_depth)
-        else:
-            samples_per_iter = [0] * (self.max_npred + (self.max_duration // self.duration_unit) * self.max_depth)
-        for i in range((self.budget - self.n_init_pos - self.n_init_neg)):
-            samples_per_iter[len(samples_per_iter)//2+((i% len(samples_per_iter)+1)//2)*(-1)**(i% len(samples_per_iter))] += 1 # Iterate from the middle
-        self.samples_per_iter = samples_per_iter
-
-        print(samples_per_iter)
-
         if "scene_graph" in self.dataset_name:
             self.is_trajectory = False
         else:
             self.is_trajectory = True
         print("is_trajectory", self.is_trajectory)
 
+        #ARMADILLO
+        self.candidate_queries = []
+        self.is_seeded = False
+        if(seed_queries is not None):
+            self.is_seeded = True
+            print("Seed queries passed")
+            for sq in seed_queries:
+                prog = sq[0]
+                seed_query_graph = QueryGraph(self.dataset_name, self.max_npred, self.max_depth, self.max_nontrivial, self.max_trivial, self.max_duration, self.max_vars, self.predicate_list, depth = len(prog), npred =sum([len(prog[i]['scene_graph']) for i in range(len(prog))]) , is_trajectory=self.is_trajectory)
+                seed_query_graph.program = prog             
+                self.candidate_queries.append((seed_query_graph, sq[1]))
+                print("candidate queries:", self.candidate_queries)
+        if self.dataset_name.startswith("user_study"):
+            self.duration_unit = 25
+        else:
+            self.duration_unit = 5
+
+
+
+        self.label_count_per_iter = 0 # Used for live demo task: the number of labels collected in the current iteration so far
+        # self.filtered_index = [] # Create an empty list to store the indices of the videos that have been filtered out during the active learning process
+        
+        # how many steps in 
+        num_pred = 0
+        num_duration = 0
+        if seed_queries is not None:
+            num_pred = math.inf
+            for seed_query in seed_queries:
+                q = seed_query[0] #dsl_to_program(seed_query[0])
+                np = 0
+                for scene_graph in q:
+                    print(scene_graph["duration_constraint"])
+                    num_duration += round(scene_graph["duration_constraint"])
+                    np += len(scene_graph["scene_graph"])
+                num_pred = min(np, num_pred)
+        if self.duration_unit == 1:
+            samples_per_iter = [0] * ((self.max_npred - int(num_pred) )+ (self.max_duration - 1) * self.max_depth)
+        else:
+            samples_per_iter = [0] * ((self.max_npred - int(num_pred) ) + (self.max_duration // self.duration_unit) * self.max_depth)
+        for i in range((self.budget - self.n_init_pos - self.n_init_neg)):
+            samples_per_iter[len(samples_per_iter)//2+((i% len(samples_per_iter)+1)//2)*(-1)**(i% len(samples_per_iter))] += 1 # Iterate from the middle
+        self.samples_per_iter = samples_per_iter
+
+
+
         self.rewrite_variables = not self.is_trajectory
 
         self.sampling_rate = sampling_rate
 
         self.best_query_after_each_iter = []
-        self.iteration = 0
+        self.iteration = iteration #0
         self.query_expansion_time = 0
         self.segment_selection_time = 0
         self.retain_top_k_queries_time = 0
@@ -92,7 +127,7 @@ class VOCALPostgres(BaseMethod):
         else:
             raise ValueError("num_threads must be 1 or greater")
         # Initialize the pools
-        self.dsn = "dbname=myinner_db user=zhangenhao host=127.0.0.1 port={}".format(port)
+        self.dsn = "dbname=myinner_db user=mganti host=127.0.0.1 port={}".format(port)
         # TODO: set the isolation level to read committed?
         # self.connections = [psycopg.connect(self.dsn) for _ in range(self.num_threads)]
         self.connections = psycopg.pool.ThreadedConnectionPool(1, self.num_threads, self.dsn)
@@ -147,6 +182,8 @@ class VOCALPostgres(BaseMethod):
             conn.commit()
         self.connections.putconn(conn)
         print("Time to create inputs table: {}".format(time.time() - _start))
+        print(self.iteration)
+        print("candidate queries: {}".format(self.candidate_queries))
 
     @staticmethod
     def chunk_list(lst, n):
@@ -185,7 +222,7 @@ class VOCALPostgres(BaseMethod):
             self.memo = [LRU(self.lru_capacity) for _ in range(list_size)]
         else:
             self.memo = [{} for _ in range(list_size)]
-        self.candidate_queries = []
+        #self.candidate_queries = []
 
     def run(self, init_labeled_index):
         self.run_init(init_labeled_index)
@@ -193,14 +230,15 @@ class VOCALPostgres(BaseMethod):
         self.main()
 
         # RETURN: the list.
-        print("final_answers")
+        print("[Final answers]")
         self.output_log.append("[Final answers]")
         for query_graph, score in self.answers:
             print("answer", program_to_dsl(query_graph.program, self.rewrite_variables), score)
             self.output_log.append((program_to_dsl(query_graph.program, self.rewrite_variables), score))
         total_time = time.time() - self._start_total_time
         print("[Runtime] query expansion time: {}, segment selection time: {}, retain top k queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k_queries_time, total_time))
-        self.output_log.append("[Total runtime] query expansion time: {}, segment selection time: {}, retain top k queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k_queries_time, total_time))
+        self.output_log.append("[Total runtime]")
+        self.output_log.append("query expansion time: {}, segment selection time: {}, retain top k queries time: {}, total time: {}".format(self.query_expansion_time, self.segment_selection_time, self.retain_top_k_queries_time, total_time))
         print("n_queries_explored", self.n_queries_explored)
         self.output_log.append("[# queries explored] {}".format(self.n_queries_explored))
         print("n_prediction_count", self.n_prediction_count)
@@ -231,6 +269,27 @@ class VOCALPostgres(BaseMethod):
             _start_query_expansion_time = time.time()
             new_candidate_queries = []
             if self.iteration == 0:
+                iteration0_time = time.time()
+                #ARMADILLO
+                if self.is_seeded:
+                    scores = []
+                    for result in self.executor.map(self.get_query_score, [query.program for query, _ in self.candidate_queries]):
+                        scores.append(result)
+                    print("Getting scores, time = ", time.time() - iteration0_time)
+                    iteration0_time1 = time.time()
+                    for i in range(len(self.candidate_queries)):
+                        self.candidate_queries[i] = (self.candidate_queries[i][0], scores[i])
+                    #self.candidate_queries = [q for q in self.candidate_queries if q[1] in sorted(scores)[-1*self.beam_width:]]
+                    self.candidate_queries = sorted(self.candidate_queries, key=lambda x: cmp_to_key(self.compare_with_ties)(x[1]), reverse=True)[:self.beam_width]
+                    #optionally, truncate to beam width
+                    for i in range(len(self.candidate_queries)):
+                        print("seed query filtering", program_to_dsl(self.candidate_queries[i][0].program, self.rewrite_variables), self.candidate_queries[i][1])
+
+                    self.iteration += 1
+                    print("filtering time = ", time.time() - iteration0_time1)
+                    print("[INITIALIZING SEED QUERIES]: time = ", time.time() - iteration0_time, "; ", self.candidate_queries)
+                    continue
+                print("initializing regular queries")
                 pred_instances = []
                 for pred in self.predicate_list:
                     if pred["parameters"]:
@@ -274,6 +333,8 @@ class VOCALPostgres(BaseMethod):
                 self.candidate_queries = new_candidate_queries
                 self.answers.extend(self.candidate_queries)
                 self.n_prediction_count += len(self.labeled_index) * len(self.candidate_queries)
+
+                print("Total first iteration time: ", time.time() - iteration0_time)
             else:
                 # Expand queries
                 for candidate_query in self.candidate_queries:

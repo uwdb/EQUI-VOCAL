@@ -6,7 +6,7 @@ from src.utils import print_program, program_to_dsl, dsl_to_program, get_depth_a
 
 class QueryGraph(object):
 
-    def __init__(self, dataset_name, max_npred, max_depth, max_nontrivial, max_trivial, max_duration, max_vars, predicate_list, is_trajectory, topdown_or_bottomup="bottomup"):
+    def __init__(self, dataset_name, max_npred, max_depth, max_nontrivial, max_trivial, max_duration, max_vars, predicate_list, is_trajectory,depth = 0, npred = 0, topdown_or_bottomup="bottomup"):
         self.dataset_name = dataset_name
         self.max_npred = max_npred
         self.max_depth = max_depth
@@ -25,10 +25,11 @@ class QueryGraph(object):
         else:
             self.duration_unit = 5
 
-        self.depth = 0
-        self.npred = 0 # npred = n_trivial + n_nontrivial
+        #armadillo
+        self.depth = depth #0
+        self.npred = npred #0 # npred = n_trivial + n_nontrivial
         self.n_trivial = 0 # number of <true>* predicates
-        self.n_nontrivial = 0
+        self.n_nontrivial =0
         self.variables = ["o{}".format(i) for i in range(max_vars)]
         self.is_trajectory = is_trajectory
 
