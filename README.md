@@ -59,14 +59,15 @@ cc -bundle -flat_namespace -undefined suppress -o functors.so functors.o
 ```
 
 ###
-Set up PL/Python in Postgres:
-conda install doesn't work for me, so I had to apt-get install it and then copy the files over to the correct directory
-```sh
-cp /usr/share/postgresql/12/extension/plpython3u.control /home/enhao/miniconda3/envs/equi-vocal/share/extension/
-cp /usr/share/postgresql/12/extension/plpython3u--1.0.sql /home/enhao/miniconda3/envs/equi-vocal/share/extension/
-cp /usr/share/postgresql/12/extension/plpgsql--unpackaged--1.0.sql /home/enhao/miniconda3/envs/equi-vocal/share/extension/
-cp /usr/lib/postgresql/12/lib/plpython3.so /home/enhao/miniconda3/envs/equi-vocal/lib/
-```
+> [!TIP]
+> Set up PL/Python in Postgres:
+> conda install doesn't work for me, so I had to apt-get install it and then copy the files over to the correct directory
+> ```sh
+> cp /usr/share/postgresql/12/extension/plpython3u.control /home/enhao/miniconda3/envs/equi-vocal/share/extension/
+> cp /usr/share/postgresql/12/extension/plpython3u--1.0.sql /home/enhao/miniconda3/envs/equi-vocal/share/extension/
+> cp /usr/share/postgresql/12/extension/plpgsql--unpackaged--1.0.sql /home/enhao/miniconda3/envs/equi-vocal/share/extension/
+> cp /usr/lib/postgresql/12/lib/plpython3.so /home/enhao/miniconda3/envs/equi-vocal/lib/
+> ```
 
 ### Run query synthesis
 To synthesis query, run this command under the `<project_root_dir>/src` directory:
