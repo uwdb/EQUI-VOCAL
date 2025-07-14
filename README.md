@@ -47,12 +47,8 @@ psql -f postgres/alter_config-cpu_1-mem_100.sql myinner_db
 # 5. Restart the server
 pg_ctl -D mylocal_db restart
 # 6. Compile and link C functions: https://www.postgresql.org/docs/current/xfunc-c.html#DFUNC
-# 6.1. Linux:
 cc -I"$(pg_config --includedir-server)" -fPIC -c functors.c
 cc -shared -o functors.so functors.o
-# 6.2. macOS:
-cc -I"$(pg_config --includedir-server)" -c functors.c
-cc -bundle -flat_namespace -undefined suppress -o functors.so functors.o
 # 7. Create relations
 psql -f postgres/create_table.sql myinner_db
 # 8. Load data
