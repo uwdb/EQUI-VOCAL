@@ -24,6 +24,8 @@ udfs/*
 easy-install.pth
 *.o
 *.so
+postgres/obj_clevrer.csv
+postgres/obj_trajectories.csv
 
 # Un-ignore the following
 !LICENSE.txt
