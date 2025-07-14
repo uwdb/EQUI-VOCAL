@@ -18,13 +18,8 @@ conda activate equi-vocal
 python -m pip install -e .
 ```
 
-The project uses Git Large File Storage to track large files.
+Download [obj_clevrer.csv](https://drive.google.com/file/d/1XdlEJRmQTUAvywUiPAduXJKPt0MzTVh5/view?usp=drive_link) and [obj_trajectories.csv](https://drive.google.com/file/d/1BoL6VXN8Ltn_f5zzfslk9gaGDfJzX7kw/view?usp=sharing). Place both files under `postgres/`.
 
-```sh
-# Pull large files
-git lfs install
-git lfs pull
-```
 
 in postgres/create_udf.sql, change all file paths to correct path to EQUI-VOCAL/postgres/functors
 
