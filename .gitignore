@@ -29,6 +29,7 @@ postgres/obj_trajectories.csv
 
 # Un-ignore the following
 !LICENSE.txt
+!inputs/demo_queries_scene_graph/
 !inputs/synthetic_scene_graph_easy/
 !inputs/synthetic_scene_graph_medium/
 !inputs/synthetic_scene_graph_hard/
