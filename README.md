@@ -36,26 +36,29 @@ Run the following commands to create a PostgreSQL server instance and then load 
 
 ```sh
 cd <project_root_dir>
-# Create a PostgreSQL server instance
+# 1. Create a PostgreSQL server instance
 initdb -D mylocal_db --no-locale --encoding=UTF8
-# Start the server
+# 2. Start the server (by default, using port 5432)
 pg_ctl -D mylocal_db start
-# Create a database
+# 3. Create a database
 createdb --owner=<user_name> myinner_db
-# Configure
-psql -f postgres/alter_config-cpu_1-mem_100.sql  myinner_db
-# Restart the server
+# 4. Configure
+psql -f postgres/alter_config-cpu_1-mem_100.sql myinner_db
+# 5. Restart the server
 pg_ctl -D mylocal_db restart
-# Create relations
-psql -f postgres/create_table.sql myinner_db
-# Load data
-psql -f postgres/load_data.sql myinner_db
-# Load user-defined functions
-psql -f postgres/create_udf.sql myinner_db
-# Recompile and link C functions:
-cc -I /usr/local/Cellar/postgresql@14/14.7/include/postgresql@14/server -c functors.c
+# 6. Compile and link C functions: https://www.postgresql.org/docs/current/xfunc-c.html#DFUNC
+# 6.1. Linux:
+cc -I"$(pg_config --includedir-server)" -fPIC -c functors.c
+cc -shared -o functors.so functors.o
+# 6.2. macOS:
+cc -I"$(pg_config --includedir-server)" -c functors.c
 cc -bundle -flat_namespace -undefined suppress -o functors.so functors.o
-
+# 7. Create relations
+psql -f postgres/create_table.sql myinner_db
+# 8. Load data
+psql -f postgres/load_data.sql myinner_db
+# 9. Load user-defined functions
+psql -f postgres/create_udf.sql myinner_db
 ```
 
 ###
