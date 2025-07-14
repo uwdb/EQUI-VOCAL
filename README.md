@@ -20,15 +20,14 @@ python -m pip install -e .
 
 Download [obj_clevrer.csv](https://drive.google.com/file/d/1XdlEJRmQTUAvywUiPAduXJKPt0MzTVh5/view?usp=drive_link) and [obj_trajectories.csv](https://drive.google.com/file/d/1BoL6VXN8Ltn_f5zzfslk9gaGDfJzX7kw/view?usp=sharing). Place both files under `postgres/`.
 
-
-in postgres/create_udf.sql, change all file paths to correct path to EQUI-VOCAL/postgres/functors
-
-in src/methods/vocal_postgres.py :
-
-Line 87: change user value to user name
-
-Line 128: Replace file path with correct file path to functors folder
-
+> [!TIP]
+> in postgres/create_udf.sql, change all file paths to correct path to EQUI-VOCAL/postgres/functors
+>
+> in src/methods/vocal_postgres.py :
+>
+> Line 87: change user value to user name
+>
+> Line 128: Replace file path with correct file path to functors folder
 
 ## Example Usage
 
