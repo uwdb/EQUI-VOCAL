@@ -319,12 +319,12 @@ def rewrite_program(program):
         joined_names = ', '.join(collected_names)
         return program.name + "(" + joined_names + ")"
 
-def print_scene_graph(predicate_list):
-    # Conj(Conj(p13, p12), p11)
-    if len(predicate_list) == 1:
-        return predicate_list[0]
-    else:
-        return "Conjunction({}, {})".format(print_scene_graph(predicate_list[:-1]), predicate_list[-1])
+# def print_scene_graph(predicate_list):
+#     # Conj(Conj(p13, p12), p11)
+#     if len(predicate_list) == 1:
+#         return predicate_list[0]
+#     else:
+#         return "Conjunction({}, {})".format(print_scene_graph(predicate_list[:-1]), predicate_list[-1])
 
 def rewrite_program_helper(program):
     if issubclass(type(program), dsl.Predicate):

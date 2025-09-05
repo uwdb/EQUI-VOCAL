@@ -15,13 +15,13 @@ class NpEncoder(json.JSONEncoder):
 if __name__=="__main__":
     dataset_name = "demo_queries_scene_graph"
 
-    query_str = "(Color_purple(o0), Color_cyan(o1), Far_3.0(o0, o1)); Near_1.0(o0, o1)"
+    query_str = "(Color(o0, 'purple'), Color(o1, 'cyan'), Far(o0, o1, 3.0)); Near(o0, o1, 1.0)"
     n_init_pos = n_init_neg = 5
 
-    # query_str = "(Color_red(o0), LeftOf(o0, o1), Shape_cube(o1), TopQuadrant(o2)); BottomQuadrant(o2)"
+    # query_str = "(Color(o0, 'red'), LeftOf(o0, o1), Shape(o1, 'cube'), TopQuadrant(o2)); BottomQuadrant(o2)"
     # n_init_pos = n_init_neg = 5
 
-    # query_str = "Duration((Color_yellow(o0), LeftOf(o0, o1), Shape_cylinder(o1)), 10); Duration(RightOf(o0, o1), 10)"
+    # query_str = "Duration((Color(o0, 'yellow'), LeftOf(o0, o1), Shape(o1, 'cylinder')), 10); Duration(RightOf(o0, o1), 10)"
     # n_init_pos = n_init_neg = 10
 
     predicate_dict = [{"name": "Near", "parameters": [1], "nargs": 2}, {"name": "Far", "parameters": [3], "nargs": 2}, {"name": "LeftOf", "parameters": None, "nargs": 2}, {"name": "Behind", "parameters": None, "nargs": 2}, {"name": "RightOf", "parameters": None, "nargs": 2}, {"name": "FrontOf", "parameters": None, "nargs": 2}, {"name": "RightQuadrant", "parameters": None, "nargs": 1}, {"name": "LeftQuadrant", "parameters": None, "nargs": 1}, {"name": "TopQuadrant", "parameters": None, "nargs": 1}, {"name": "BottomQuadrant", "parameters": None, "nargs": 1}, {"name": "Color", "parameters": ["gray", "red", "blue", "green", "brown", "cyan", "purple", "yellow"], "nargs": 1}, {"name": "Shape", "parameters": ["cube", "sphere", "cylinder"], "nargs": 1}, {"name": "Material", "parameters": ["metal", "rubber"], "nargs": 1}]

@@ -14,7 +14,7 @@ python \
     --budget 20 \
     --multithread 1 \
     --strategy "topk" \
-    --query_str "Conjunction(Near_1(o0, o1), BottomQuadrant(o0))" `# TQ1` \
+    --query_str "(BottomQuadrant(o0), Near(o0, o1, 1.0))" `# TQ1` \
     --run_id 0 \
     --output_dir "../outputs_test" \
     --reg_lambda 0.01

@@ -25,9 +25,7 @@ Download [obj_clevrer.csv](https://drive.google.com/file/d/1XdlEJRmQTUAvywUiPAdu
 >
 > in src/methods/vocal_postgres.py :
 >
-> Line 87: change user value to user name
->
-> Line 128: Replace file path with correct file path to functors folder
+> Initialize `self.dsn` with the correct dbname, user name, and host.
 
 ## Example Usage
 

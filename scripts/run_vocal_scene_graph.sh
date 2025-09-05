@@ -4,7 +4,7 @@ python \
     --n_init_pos 10 \
     --n_init_neg 10 \
     --dataset_name "synthetic_scene_graph_hard" `# options: synthetic_scene_graph_easy, synthetic_scene_graph_medium, synthetic_scene_graph_hard`\
-    --query_str "Conjunction(Behind(o0, o1), Material_metal(o2)); Conjunction(FrontOf(o0, o1), LeftOf(o0, o1)); Duration(Conjunction(Conjunction(Near_1.0(o0, o2), Shape_cube(o0)), TopQuadrant(o1)), 10)" `# An Easy query` \
+    --query_str "(Behind(o0, o1), Material(o2, 'metal')); (FrontOf(o0, o1), LeftOf(o0, o1)); Duration((Near(o0, o2, 1.0), Shape(o0, 'cube'), TopQuadrant(o1)), 10)" `# A hard query` \
     --npred 7 \
     --depth 3 \
     --max_duration 15 \
