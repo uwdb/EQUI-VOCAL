@@ -108,12 +108,12 @@ def test_algorithm(method, dataset_name, n_init_pos, n_init_neg, npred, depth, m
             fn_error_rates = [0.061, 0.091, 0.286, 0.123, 0.133, 0.714]
             fp_error_rates = [0.25, 0.169, 0.308, 0.065, 0.028, 0.029]
             query_strs = [
-                "Conjunction(Conjunction(Color_red(o0), Far_3(o0, o1)), Shape_cylinder(o1)); Near_1(o0, o1)",
-                "Conjunction(Conjunction(Color_red(o0), Far_3(o0, o1)), Shape_cylinder(o1)); Conjunction(Conjunction(Near_1(o0, o1), RightQuadrant(o2)), TopQuadrant(o2))",
-                "Duration(Conjunction(Conjunction(Color_red(o0), Far_3(o0, o1)), Shape_cylinder(o1)), 25); Conjunction(Conjunction(Near_1(o0, o1), RightQuadrant(o2)), TopQuadrant(o2))",
-                "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0))",
-                "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0)); TopQuadrant(o1)",
-                "Conjunction(Conjunction(Conjunction(Behind(o0, o1), BottomQuadrant(o1)), Color_purple(o0)), material_metal(o0)); TopQuadrant(o1); Duration(Conjunction(BottomQuadrant(o2), RightQuadrant(o2)), 25)"
+                "(Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')); Near(o0, o1, 1.0)",
+                "(Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')); (Near(o0, o1, 1.0), RightQuadrant(o2), TopQuadrant(o2))",
+                "Duration((Color(o0, 'red'), Far(o0, o1, 3.0), Shape(o1, 'cylinder')), 25); (Near(o0, o1, 1.0), RightQuadrant(o2), TopQuadrant(o2))",
+                "(Behind(o0, o1), BottomQuadrant(o1), Color(o0, 'purple'), Material(o0, 'metal'))",
+                "(Behind(o0, o1), BottomQuadrant(o1), Color(o0, 'purple'), Material(o0, 'metal')); TopQuadrant(o1)",
+                "(Behind(o0, o1), BottomQuadrant(o1), Color(o0, 'purple'), Material(o0, 'metal')); TopQuadrant(o1); Duration((BottomQuadrant(o2), RightQuadrant(o2)), 25)"
             ]
             query_idx = query_strs.index(query_str)
             fn_error_rate = fn_error_rates[query_idx]
@@ -378,15 +378,15 @@ if __name__ == '__main__':
             raise NotImplementedError
     elif dataset_name.startswith("without_duration"):
         query_strs = [
-            "(BottomQuadrant(o0), Near_1.0(o0, o1))",
-            "Conjunction(FrontOf(o0, o1), TopQuadrant(o0))",
-            "Near_1(o0, o1); Far_3(o0, o1)",
-            "Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))",
-            "Far_3(o0, o1); Near_1(o0, o1); Far_3(o0, o1)",
-            "Conjunction(Far_3(o0, o1), BottomQuadrant(o0)); Near_1(o0, o1)",
-            "Far_3(o0, o1); Conjunction(Near_1(o0, o1), Behind(o0, o1))",
-            "Conjunction(Far_3(o0, o1), LeftQuadrant(o0)); Conjunction(Near_1(o0, o1), LeftQuadrant(o0))",
-            "Far_3(o0, o1); Conjunction(Conjunction(Near_1(o0, o1), LeftQuadrant(o0)), Behind(o0, o1))"
+            "(BottomQuadrant(o0), Near(o0, o1, 1.0))",
+            "(FrontOf(o0, o1), TopQuadrant(o0))",
+            "Near(o0, o1, 1.0); Far(o0, o1, 3.0)",
+            "(Behind(o0, o1), LeftQuadrant(o0), Near(o0, o1, 1.0))",
+            "Far(o0, o1, 3.0); Near(o0, o1, 1.0); Far(o0, o1, 3.0)",
+            "(BottomQuadrant(o0), Far(o0, o1, 3.0)); Near(o0, o1, 1.0)",
+            "Far(o0, o1, 3.0); (Behind(o0, o1), Near(o0, o1, 1.0))",
+            "(Far(o0, o1, 3.0), LeftQuadrant(o0)); (LeftQuadrant(o0), Near(o0, o1, 1.0))",
+            "Far(o0, o1, 3.0); (Behind(o0, o1), LeftQuadrant(o0), Near(o0, o1, 1.0))"
             ]
         if method_str in ["quivr_original", "quivr_original_no_kleene", "quivr_original_active_learning", "quivr_original_no_kleene_active_learning"]:
             predicate_dicts = [
