@@ -16,5 +16,6 @@ python \
     --strategy "topk" \
     --query_str "(BottomQuadrant(o0), Near(o0, o1, 1.0))" `# TQ1` \
     --run_id 0 \
-    --output_dir "../outputs_test" \
+    --output_to_file \
+    --output_dir "../outputs" \
     --reg_lambda 0.01

@@ -16,5 +16,6 @@ python \
     --multithread 4 \
     --strategy "topk" \
     --run_id 0 \
-    --output_dir "../outputs_test" \
+    --output_to_file \
+    --output_dir "../outputs" \
     --reg_lambda 0.001
